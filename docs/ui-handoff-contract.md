@@ -70,14 +70,14 @@ Timestamps are ISO UTC strings. Decimal money and quantities are strings. API er
 - `POST /api/agents/{id}/lifecycle` — `{ action: pause | resume | stop }`; resume requires the attached matching backtest.
 - `POST /api/agents/{id}/fork` — `{}` or `{ name }`; new draft has no copied paper state.
 - `GET /api/backtests/coverage?symbol={symbol}` → source-backed `BacktestCoverage`, 1,441-candle requirement and blocking reason.
-- `POST /api/backtests` — `{ recipe }`, authenticated; persisted `BacktestRun`. Same `runTick` engine as paper execution. New completed runs include optional `metrics.benchmarks`; older stored metrics may omit it.
+- `POST /api/backtests` — `{ recipe }`, authenticated; persisted `BacktestRun`. Same `runTick` engine as paper execution. New completed runs include optional `metrics.benchmarks`; older stored metrics may omit it. Use the exact shape in `docs/api-contracts.md`; data provenance comes from the parent run's `dataSource`, `historyDataHash`, `historyProvenance`, and `pricingAssumptions`.
 - `POST /api/agents/{id}/launch` — `{ backtestRunId }`; requires complete matching recipe/data proof, >=720 decisions, >=1 entry, and metrics.
-- `POST /api/agents/{id}/tick` — requires `Idempotency-Key`; server market/history; running owned agent only. Returns `PaperTickResponse`.
-- `POST /api/agents/{id}/tick?asOf={exactClosedCandleEndAt}` — reproducible exact historical paper replay; 721 prior bars required; canonical timestamp is idempotency identity.
+- `POST /api/agents/{id}/tick` — requires `Idempotency-Key`; server market/history; running owned agent only. Returns `PaperTickResponse`. New ticks earlier than the latest decision return `409 CONFLICT`.
+- `POST /api/agents/{id}/tick?asOf={exactClosedCandleEndAt}` — reproducible exact historical paper replay; 721 prior bars required; canonical timestamp is idempotency identity. An old existing tick remains idempotently readable; a new backdated tick conflicts.
 - `GET /api/agents/{id}/tape` → `TapeResponse`, decisions plus associated PAPER orders.
 - `GET /api/agents/{id}/positions` → `PaperPositionsResponse`.
 
-Private requests use same-origin cookies with `credentials: "include"`; owner identity comes from session state on the server. Cross-owner and missing IDs return 404. Decision and order persistence is idempotent by agent/tick/order sequence.
+Private requests use same-origin cookies with `credentials: "include"`; owner identity comes from session state on the server. Cross-owner and missing IDs return 404. A tick locks and rechecks the owner-scoped agent, reloads account/position state, evaluates `runTick`, and persists decision/order/position/account changes atomically. Concurrent distinct tick IDs serialize before evaluation; retries return the original decision and order count.
 
 ### Public read-only proof
 

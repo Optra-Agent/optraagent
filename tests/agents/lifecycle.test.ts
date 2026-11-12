@@ -60,8 +60,23 @@ describe("persisted agent lifecycle", () => {
   it("fork_has_a_new_recipe_hash_and_copies_no_positions_or_tick_ids", async () => {
     const { connection, owner, repository, handlers } = await createHarness();
     try {
-      const source = await repository.createAgent({ ownerId: owner.id, name: recipe.name, templateId: recipe.templateId, status: "draft", recipe, recipeHash: canonicalRecipeHash(recipe), createdAt: now });
-      await repository.persistTick({ ownerId: owner.id, agentId: source.id, snapshot: null, decision: makeDecision(source.id, source.recipeHash) });
+      const source = await repository.createAgent({ ownerId: owner.id, name: recipe.name, templateId: "custom", status: "running", recipe, recipeHash: canonicalRecipeHash(recipe), createdAt: now });
+      await repository.persistTick({
+        ownerId: owner.id,
+        agentId: source.id,
+        tickId: "initial",
+        occurredAt: now.toISOString(),
+        snapshot: null,
+        evaluate: ({ agent, account, position }) => ({
+          decision: makeDecision(agent.id, agent.recipeHash),
+          orderIntents: [],
+          portfolio: {
+            account: account ?? { initialCapitalUsd: "0", cashUsd: "0", realizedPnlUsd: "0", peakEquityUsd: "0", dailyStartEquityUsd: "0", dailyStartDate: now.toISOString().slice(0, 10) },
+            position,
+            positionAction: "unchanged",
+          },
+        }),
+      });
       await connection.db.insert(paperPositions).values({
         agentId: source.id, symbol: "AAPL", quantity: "1", averageEntryUsd: "100", markPriceUsd: "101", unrealizedPnlUsd: "1", status: "open", updatedAt: now,
       });
@@ -115,6 +130,39 @@ describe("persisted agent lifecycle", () => {
       expect(stop.status).toBe(200);
       expect(tick.status).toBe(409);
       expect(snapshotCalls).toBe(0);
+    } finally {
+      await connection.close();
+    }
+  });
+
+  it("rejects_a_tick_when_the_agent_stops_after_preflight", async () => {
+    const { connection, owner, session, repository } = await createHarness();
+    try {
+      const source = await repository.createAgent({ ownerId: owner.id, name: recipe.name, templateId: "custom", status: "running", recipe, recipeHash: canonicalRecipeHash(recipe), createdAt: now });
+      const racedRepository = new Proxy(repository, {
+        get(target, property, receiver) {
+          if (property === "persistTick") {
+            return async (...args: Parameters<typeof repository.persistTick>) => {
+              await target.transitionAgent(owner.id, source.id, "running", "stopped", now);
+              return target.persistTick(...args);
+            };
+          }
+          const value = Reflect.get(target, property, receiver) as unknown;
+          return typeof value === "function" ? value.bind(target) : value;
+        },
+      });
+      const paper = createPaperHandlers({
+        repository: racedRepository,
+        readSession: async () => session,
+        getSnapshot: async () => { throw new Error("Captured failure should produce a skip evaluation."); },
+        now: () => now,
+      });
+
+      const tick = await paper.tick(new Request("http://localhost", { method: "POST", headers: { "idempotency-key": "stop-race" } }), source.id);
+
+      expect(tick.status).toBe(409);
+      await expect(tick.json()).resolves.toMatchObject({ error: { code: "CONFLICT" } });
+      await expect(repository.listTape(owner.id, source.id)).resolves.toEqual([]);
     } finally {
       await connection.close();
     }

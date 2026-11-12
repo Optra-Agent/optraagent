@@ -7,6 +7,7 @@ import { createDatabase } from "../../lib/db/client";
 import { canonicalRecipeHash } from "../../lib/hooks/recipe-validator";
 import { DrizzlePaperRepository } from "../../lib/paper/drizzle-repository";
 import type { AgentDecision, MarketSnapshot, RecipeV1 } from "../../lib/domain/contracts";
+import type { PersistTickInput } from "../../lib/paper/drizzle-repository";
 
 const ADDRESS = "0xfcad0b19bb29d4674531d6f115237e16afce377c" as const;
 const recipe: RecipeV1 = { version: 1, name: "Preview", templateId: "custom", underlyingSymbol: "AAPL", hookIds: [], parameters: {} };
@@ -20,6 +21,25 @@ function decision(agentId: string, tickId: string, reason: string): AgentDecisio
   return {
     id: `decision:${agentId}:${tickId}`, agentId, tickId, action: "skip", reason, hookResults: [],
     snapshotSource: snapshot.source, recipeHash: canonicalRecipeHash(recipe), createdAt: "2026-11-12T03:31:00.000Z",
+  };
+}
+
+function tickInput(ownerId: string, agentId: string, tickId: string, reason: string): PersistTickInput {
+  return {
+    ownerId,
+    agentId,
+    tickId,
+    occurredAt: "2026-11-12T03:31:00.000Z",
+    snapshot: null,
+    evaluate: ({ account, position }) => ({
+      decision: decision(agentId, tickId, reason),
+      orderIntents: [],
+      portfolio: {
+        account: account ?? { initialCapitalUsd: "0", cashUsd: "0", realizedPnlUsd: "0", peakEquityUsd: "0", dailyStartEquityUsd: "0", dailyStartDate: "2026-11-12" },
+        position,
+        positionAction: "unchanged",
+      },
+    }),
   };
 }
 
@@ -43,8 +63,8 @@ describe("paper ledger persistence", () => {
       });
 
       const results = await Promise.all([
-        repository.persistTick({ ownerId: owner.id, agentId: agent.id, snapshot, decision: decision(agent.id, "same-tick", "first result") }),
-        repository.persistTick({ ownerId: owner.id, agentId: agent.id, snapshot, decision: decision(agent.id, "same-tick", "different retry result") }),
+        repository.persistTick({ ...tickInput(owner.id, agent.id, "same-tick", "first result"), snapshot }),
+        repository.persistTick({ ...tickInput(owner.id, agent.id, "same-tick", "different retry result"), snapshot }),
       ]);
       const tape = await repository.listTape(owner.id, agent.id);
 
@@ -71,7 +91,7 @@ describe("paper ledger persistence", () => {
         recipeHash: canonicalRecipeHash(recipe), createdAt: new Date("2026-11-12T03:00:00.000Z"),
       });
 
-      await repository.persistTick({ ownerId: owner.id, agentId: agent.id, snapshot: null, decision: decision(agent.id, "owner-tick", "owner only") });
+      await repository.persistTick(tickInput(owner.id, agent.id, "owner-tick", "owner only"));
 
       await expect(repository.findAgent(other.id, agent.id)).resolves.toBeNull();
       await expect(repository.listTape(other.id, agent.id)).resolves.toEqual([]);

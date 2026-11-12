@@ -84,12 +84,12 @@ Both comparisons use the exact 720 decision candles after the 721-candle warmup.
 | `GET /api/agents/{agentId}` | Session + owner | `AgentDetail`, including the immutable recipe; missing and cross-owner IDs both return 404. |
 | `POST /api/agents/{agentId}/lifecycle` | Session + owner | `{ action: "pause" | "resume" | "stop" }`; resume requires the attached matching complete backtest. |
 | `POST /api/agents/{agentId}/fork` | Session + owner | `{}` or `{ name }`; creates a separate draft without copied backtest, Tape, orders, or positions. |
-| `POST /api/agents/{agentId}/tick` | Session + owner | Requires `Idempotency-Key` and a running agent. Normal ticks fetch current quote and verified history. Returns `PaperTickResponse` with persisted decision, order count, PAPER label, and duplicate flag. |
+| `POST /api/agents/{agentId}/tick` | Session + owner | Requires `Idempotency-Key` and a running agent. Normal ticks fetch current quote and verified history. Returns `PaperTickResponse` with persisted decision, order count, PAPER label, and duplicate flag. A new tick must not predate the newest persisted decision; this returns `409 CONFLICT`. |
 | `POST /api/agents/{agentId}/tick?asOf={closedCandleEndAt}` | Session + owner | Deterministic historical paper replay at an exact provider candle end time; requires 721 preceding candles. The canonical timestamp is the replay tick ID, so retries do not create duplicate fills. The `Idempotency-Key` header is still required. |
 | `GET /api/agents/{agentId}/tape` | Session + owner | `TapeResponse` with newest persisted decisions and associated paper orders (up to the requested limit, maximum 200). |
 | `GET /api/agents/{agentId}/positions` | Session + owner | `PaperPositionsResponse` with persisted modeled option positions. |
 
-Paper ticks persist the decision, full hook trace and model/history context, order(s), position mutation, and paper account cash/realized/peak state atomically. The unique `(agentId,tickId)` decision key plus per-tick order sequence provides idempotency. No API submits a wallet transaction.
+Paper ticks lock the owner-scoped agent row, recheck that it is running, load the latest account/position state, evaluate `runTick`, and persist the decision, full hook trace and model/history context, order(s), position mutation, and paper account cash/realized/peak state in one transaction. Distinct concurrent tick IDs are serialized before evaluation; a stale/backdated tick is rejected with `409 CONFLICT` rather than applying state from a later decision to an earlier candle. A retry of the same tick returns its original decision and order count. The unique `(agentId,tickId)` decision key and per-tick order sequence remain additional idempotency constraints. No API submits a wallet transaction.
 
 ## Public proof APIs
 

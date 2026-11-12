@@ -10,7 +10,7 @@ import {
   PaperOrderSchema,
 } from "../domain/contracts";
 import type { Agent, AgentDecision, MarketSnapshot, PaperOrder, PaperPosition, RecipeV1 } from "../domain/contracts";
-import type { PaperAccountState, PaperOptionPositionState, PaperOrderIntent, PaperPortfolioUpdate } from "../engine/run-tick";
+import type { PaperAccountState, PaperOptionPositionState, PaperPortfolioUpdate, RunTickResult } from "../engine/run-tick";
 import { agents, marketSnapshots, paperAccounts, paperDecisions, paperOrders, paperPositions } from "../../db/schema";
 
 export type StoredPaperAgent = Agent & { recipe: RecipeV1 };
@@ -18,11 +18,24 @@ export type StoredPaperAgent = Agent & { recipe: RecipeV1 };
 export type PersistTickInput = {
   ownerId: string;
   agentId: string;
+  tickId: string;
+  occurredAt: string;
   snapshot: MarketSnapshot | null;
-  decision: AgentDecision;
-  orders?: PaperOrderIntent[];
-  portfolio?: PaperPortfolioUpdate;
+  evaluate: (context: PaperTickContext) => RunTickResult;
 };
+
+export type PaperTickContext = {
+  agent: StoredPaperAgent;
+  account: PaperAccountState | null;
+  position: PaperOptionPositionState | null;
+};
+
+export class PaperTickStateError extends Error {
+  constructor(readonly code: "NOT_FOUND" | "CONFLICT", message: string) {
+    super(message);
+    this.name = "PaperTickStateError";
+  }
+}
 
 export type PersistTickResult = {
   decision: AgentDecision;
@@ -248,27 +261,54 @@ export class DrizzlePaperRepository {
   }
 
   async persistTick(input: PersistTickInput): Promise<PersistTickResult> {
-    if (input.decision.agentId !== input.agentId) throw new Error("Decision agent does not match tick owner scope.");
-    if (input.decision.tickId.length < 1 || input.decision.tickId.length > 128) throw new Error("Tick id must be 1–128 characters.");
-
-    const ordersToPersist = input.orders ?? [];
-    const zeroAccount: PaperAccountState = { initialCapitalUsd: "0", cashUsd: "0", realizedPnlUsd: "0", peakEquityUsd: "0", dailyStartEquityUsd: "0", dailyStartDate: input.decision.createdAt.slice(0, 10) };
-    const portfolio = input.portfolio ?? { account: zeroAccount, position: null, positionAction: "unchanged" as const };
+    if (input.tickId.length < 1 || input.tickId.length > 128) throw new Error("Tick id must be 1–128 characters.");
+    const occurredAtMs = Date.parse(input.occurredAt);
+    if (!Number.isFinite(occurredAtMs)) throw new Error("Paper tick time is invalid.");
     return this.db.transaction(async (tx) => {
-      const [agent] = await tx.select({ id: agents.id })
+      const [agentRow] = await tx.select()
         .from(agents)
         .where(and(eq(agents.id, input.agentId), eq(agents.ownerId, input.ownerId)))
+        .for("update")
         .limit(1);
-      if (!agent) throw new Error("Paper agent was not found for this owner.");
+      if (!agentRow) throw new PaperTickStateError("NOT_FOUND", "Paper agent was not found for this owner.");
+      if (agentRow.status !== "running") {
+        throw new PaperTickStateError("CONFLICT", `Agent is ${agentRow.status}; only running agents can be ticked.`);
+      }
 
       const [existing] = await tx.select().from(paperDecisions)
-        .where(and(eq(paperDecisions.agentId, input.agentId), eq(paperDecisions.tickId, input.decision.tickId)))
+        .where(and(eq(paperDecisions.agentId, input.agentId), eq(paperDecisions.tickId, input.tickId)))
         .limit(1);
       if (existing) {
         const orders = await tx.select({ id: paperOrders.id }).from(paperOrders)
-          .where(and(eq(paperOrders.agentId, input.agentId), eq(paperOrders.tickId, input.decision.tickId)));
+          .where(and(eq(paperOrders.agentId, input.agentId), eq(paperOrders.tickId, input.tickId)));
         return { decision: toDecision(existing), duplicate: true, orderCount: orders.length };
       }
+
+      const [latestDecision] = await tx.select({ createdAt: paperDecisions.createdAt }).from(paperDecisions)
+        .where(eq(paperDecisions.agentId, input.agentId))
+        .orderBy(desc(paperDecisions.createdAt))
+        .limit(1);
+      if (latestDecision && occurredAtMs < latestDecision.createdAt.getTime()) {
+        throw new PaperTickStateError("CONFLICT", "Paper tick time precedes the latest persisted decision.");
+      }
+
+      const [accountRow] = await tx.select().from(paperAccounts).where(eq(paperAccounts.agentId, input.agentId)).limit(1);
+      const [positionRow] = await tx.select().from(paperPositions)
+        .where(and(eq(paperPositions.agentId, input.agentId), eq(paperPositions.status, "open")))
+        .limit(1);
+      const execution = input.evaluate({
+        agent: toAgent(agentRow),
+        account: accountRow ? toAccountState(accountRow) : null,
+        position: positionRow ? toPositionState(positionRow) : null,
+      });
+      if (execution.decision.agentId !== input.agentId || execution.decision.tickId !== input.tickId) {
+        throw new Error("Paper tick evaluation does not match the locked agent and tick scope.");
+      }
+      if (Date.parse(execution.decision.createdAt) !== occurredAtMs) {
+        throw new Error("Paper tick decision time does not match its persisted time scope.");
+      }
+      const ordersToPersist = execution.orderIntents;
+      const portfolio: PaperPortfolioUpdate = execution.portfolio;
 
       let snapshotId: string | null = null;
       if (input.snapshot) {
@@ -298,29 +338,29 @@ export class DrizzlePaperRepository {
       }
 
       const [insertedDecision] = await tx.insert(paperDecisions).values({
-        id: input.decision.id,
+        id: execution.decision.id,
         agentId: input.agentId,
-        tickId: input.decision.tickId,
-        action: input.decision.action,
-        reason: input.decision.reason,
-        hookResults: input.decision.hookResults,
-        marketContext: input.decision.marketContext ?? null,
+        tickId: execution.decision.tickId,
+        action: execution.decision.action,
+        reason: execution.decision.reason,
+        hookResults: execution.decision.hookResults,
+        marketContext: execution.decision.marketContext ?? null,
         snapshotId,
-        snapshotSource: input.decision.snapshotSource,
-        recipeHash: input.decision.recipeHash,
-        createdAt: new Date(input.decision.createdAt),
+        snapshotSource: execution.decision.snapshotSource,
+        recipeHash: execution.decision.recipeHash,
+        createdAt: new Date(execution.decision.createdAt),
       }).onConflictDoNothing({ target: [paperDecisions.agentId, paperDecisions.tickId] }).returning();
       if (!insertedDecision) {
         const [storedDecision] = await tx.select().from(paperDecisions)
-          .where(and(eq(paperDecisions.agentId, input.agentId), eq(paperDecisions.tickId, input.decision.tickId)))
+          .where(and(eq(paperDecisions.agentId, input.agentId), eq(paperDecisions.tickId, input.tickId)))
           .limit(1);
         if (!storedDecision) throw new Error("Unable to load idempotent paper decision.");
         const orders = await tx.select({ id: paperOrders.id }).from(paperOrders)
-          .where(and(eq(paperOrders.agentId, input.agentId), eq(paperOrders.tickId, input.decision.tickId)));
+          .where(and(eq(paperOrders.agentId, input.agentId), eq(paperOrders.tickId, input.tickId)));
         return { decision: toDecision(storedDecision), duplicate: true, orderCount: orders.length };
       }
 
-      const createdAt = new Date(input.decision.createdAt);
+      const createdAt = new Date(execution.decision.createdAt);
       const beforeAccount = await tx.select().from(paperAccounts).where(eq(paperAccounts.agentId, input.agentId)).limit(1);
       let positionId = portfolio.position?.id;
       if (portfolio.positionAction === "open" && portfolio.position) {
@@ -384,7 +424,7 @@ export class DrizzlePaperRepository {
           decisionId: insertedDecision.id,
           orderSeq,
           positionId: positionId ?? null,
-          tickId: input.decision.tickId,
+          tickId: execution.decision.tickId,
           symbol: order.symbol,
           instrumentType: order.instrumentType,
           optionType: order.optionType,

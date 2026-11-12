@@ -10,7 +10,7 @@ import { ForgeDemo } from "./ForgeDemo";
 import { HookExplorer } from "./HookExplorer";
 import { TapeTimeline } from "./TapeTimeline";
 import type { ExplorerStage, ForgeDemoData, RiskRail } from "./section-data";
-import { AppPreview } from "./AppPreview";
+import { ProductPreview } from "./ProductPreview";
 import type { GraphData } from "./graph-data";
 import type { FlowScenario } from "./graph-flow";
 import { HeroStage } from "./HeroStage";
@@ -57,9 +57,9 @@ export function Hero({ facts }: { facts: Facts }) {
       </div>
 
       <HeroStage>
-        <AppPreview facts={facts} />
+        <ProductPreview facts={facts} />
       </HeroStage>
-      <p className="hero-caption">Read-only preview of the Agents screen inside the app. Availability and counts come from the live hook and template catalog.</p>
+      <p className="hero-caption">Interactive preview of the real app, read only. Nothing here connects a wallet or runs a backtest. Availability and counts come from the live hook and template catalog.</p>
     </section>
   );
 }

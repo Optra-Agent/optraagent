@@ -1,12 +1,16 @@
 "use client";
 
 import { useState } from "react";
+import { Activity, Crosshair, DoorOpen, Scaling, ShieldAlert, Timer } from "lucide-react";
+import type { ComponentType } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Chip } from "../app/ui";
 import type { ExplorerStage } from "./section-data";
 
 /* The registry as a workbench: one stage at a time, every hook in the catalog, implemented or locked.
    Deliberately not a network. The graph above shows how one agent uses hooks; this shows what exists. */
+
+const STAGE_ICON: Record<string, ComponentType<{ className?: string; "aria-hidden"?: boolean }>> = { gate: DoorOpen, strike: Crosshair, size: Scaling, pulse: Activity, expiry: Timer, breaker: ShieldAlert };
 
 function Cells({ live, total }: { live: number; total: number }) {
   return (
@@ -26,7 +30,9 @@ export function HookExplorer({ stages }: { stages: ExplorerStage[] }) {
       <TabsList variant="line" className="hx-ruler" aria-label="Hook stages">
         {stages.map((stage, index) => (
           <TabsTrigger key={stage.stage} value={stage.stage} className="hx-tab" data-risk={stage.stage === "breaker" ? "1" : "0"} style={{ "--i": index } as React.CSSProperties}>
+            {(() => { const Icon = STAGE_ICON[stage.stage] ?? Activity; return <span className="hx-tab-icon"><Icon aria-hidden /></span>; })()}
             <span className="hx-tab-name mono">{stage.label.toUpperCase()}</span>
+            {stage.stage === "breaker" ? null : <span className="hx-tab-ask">{stage.question}</span>}
             <Cells live={stage.live} total={stage.total} />
             <span className="hx-tab-count mono">{stage.live} of {stage.total}</span>
             {stage.stage === "breaker" ? <span className="hx-tab-note">Runs on every tick. Can stop new entries.</span> : null}

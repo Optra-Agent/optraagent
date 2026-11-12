@@ -1,4 +1,4 @@
-import { buildProtectivePutRecipe, getHookCatalog, PAPER_PROTECTIVE_PUT_HOOK_IDS } from "../../lib/hooks/catalog";
+import { buildProtectivePutRecipe, getHookCatalog, getHouseAgentTemplates, PAPER_PROTECTIVE_PUT_HOOK_IDS } from "../../lib/hooks/catalog";
 import { validateRecipe } from "../../lib/hooks/recipe-validator";
 import type { HookDefinition, HookStage } from "../../lib/domain/contracts";
 import { STAGE_ORDER, STAGE_QUESTION, stageLabel } from "./data";
@@ -57,6 +57,7 @@ export function getExplorerData(): ExplorerStage[] {
 /* ───────────── Forge demo ───────────── */
 
 export type ForgeDemoData = {
+  agents: { id: string; name: string; ready: boolean; reason: string }[];
   stages: { stage: HookStage; label: string; hooks: { id: string; name: string; live: boolean; reason: string }[] }[];
   required: string[];
   /** Real validator messages when a single required hook is removed from the Protective Put recipe. */
@@ -78,7 +79,13 @@ export function getForgeDemo(): ForgeDemoData {
     issuesIfRemoved[id] = result.issues.map((issue) => issue.message);
   }
 
+  const order = ["protective_put", "covered_call", "cash_secured_put", "earnings_straddle"];
+  const agents = [...getHouseAgentTemplates().templates]
+    .sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id))
+    .map((template) => ({ id: template.id, name: template.name, ready: template.availability === "paper_ready", reason: template.reason }));
+
   return {
+    agents,
     required,
     issuesIfRemoved,
     validHash: base.recipeHash,

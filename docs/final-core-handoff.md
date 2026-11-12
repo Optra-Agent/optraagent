@@ -1,12 +1,12 @@
 # Optra Paper Core — Claude Code UI Handoff
 
-Updated: 2026-11-12 (Asia/Jakarta); benchmark contract added 2026-11-12
+Updated: 2026-11-12 (Asia/Jakarta); benchmark contract and serialized paper-tick audit added 2026-11-12
 
 ## Delivery status
 
 **The constrained Protective Put paper core is ready for premium UI integration.** The broader product remains partial: one House Agent is paper-ready, 15 of 36 hook entries have deterministic evaluators, and option premiums are modeled rather than venue-recorded. The handoff does not claim listed option execution, exchange fills, or live trading.
 
-The verified path is: wallet challenge/session → create Protective Put draft → fetch verified market history → replay a 720-decision backtest after warmup → persist source snapshot/hash/provenance/model assumptions → launch the matching recipe → run a paper tick → persist order, position, account and full Optra Tape trace. A valid historical candle path creates one modeled PAPER order. A closed-session tick records `skip` with zero orders. Incomplete, gapped, stale, multiplier-uncertain, or no-entry inputs do not unlock metrics/launch.
+The verified path is: wallet challenge/session → create Protective Put draft → fetch verified market history → replay a 720-decision backtest after warmup → persist source snapshot/hash/provenance/model assumptions → launch the matching recipe → run a paper tick → persist order, position, account and full Optra Tape trace. A valid historical candle path creates one modeled PAPER order. Concurrent tick IDs are serialized and evaluated from the locked latest state; retries do not duplicate fills, and backdated ticks conflict. A closed-session tick records a blocked `skip` or `hold` with zero orders. Incomplete, gapped, stale, multiplier-uncertain, or no-entry inputs do not unlock metrics/launch.
 
 The premium application UI is documented in `docs/final-ui-handoff.md`; current marketing graph work is concurrent and still awaits the coordinated QA listed below. This handoff records core behavior and data boundaries. Preserve the single Next.js repository and backend/API contracts while working on presentation.
 
@@ -20,7 +20,7 @@ The premium application UI is documented in `docs/final-ui-handoff.md`; current 
 - Deterministic European Black–Scholes put premium using RV30 × 1.1. Every premium/order/position is marked `modeled`.
 - One shared `runTick` evaluator for backtest and paper ticks. A full run needs 721 warmup candles plus 720 decision candles (1,441 consecutive closed bars) and at least one modeled entry.
 - Persisted owner-scoped backtest history snapshots, normalized data hash, provider provenance, model assumptions, entry/exit counts, agent metrics, and new same-window benchmark metrics; launch verifies same recipe hash and stored history hash.
-- Persisted paper decisions, full hook/model context, PAPER orders, modeled positions, and account balances in one transaction; idempotent tick replay does not duplicate fills.
+- Persisted paper decisions, full hook/model context, PAPER orders, modeled positions, and account balances in one transaction. Each tick locks the owner-scoped agent row, rechecks lifecycle status, loads current account/position state, evaluates the deterministic engine, and writes the ledger atomically. Same-tick retries return the original record; a new tick earlier than the latest persisted decision returns `409 CONFLICT`.
 - Connected minimal screens at `/agents`, `/agents/{agentId}`, `/market`, `/lab`, `/forge`, `/hooks`, and `/tape`.
 - Public read-only capability endpoints with truthful hook/template/live-execution statuses. Public agent/Tape lists remain empty because no visibility model exists.
 - Live execution remains disabled (`LIVE_TRADING_ENABLED=false`, `V4_CLAIM_LEVEL=L0`); no transaction/order submission route exists.
@@ -37,7 +37,7 @@ The captured current quote is outside regular US trading hours. It is used in th
 
 ### Backtest comparisons
 
-New completed `BacktestRun.metrics` include optional `benchmarks` from `BacktestBenchmarksSchema` in `lib/domain/contracts.ts`. The buy-and-hold return invests the initial capital at the first decision candle's verified share-normalized close and values it at the final decision close across the same 720 decision samples; it is price-only and excludes dividends, fees, and slippage. Cash is a flat USD accounting balance with zero yield. No USDG/USD price path is present, so `vsCashPct` is **not** an observed USDG market return. Older persisted metrics may omit `benchmarks`; consumers must show unavailable in that case. Invalid or nonpositive benchmark endpoint closes fail the run with null metrics and keep launch blocked. The Lab UI currently retains its prior “comparison unavailable” message and still needs to render the new field; see `docs/ui-integration-requests.md`.
+New completed `BacktestRun.metrics` include optional `benchmarks` from `BacktestBenchmarksSchema` in `lib/domain/contracts.ts`; the exact response shape is in `docs/api-contracts.md`. Benchmark provenance is on the parent `BacktestRun`: `dataSource`, `historyDataHash`, `historyProvenance`, and `pricingAssumptions`. The buy-and-hold return invests the initial capital at the first decision candle's verified share-normalized close and values it at the final decision close across the same 720 decision samples; it is price-only and excludes dividends, fees, and slippage. Cash is a flat USD accounting balance with zero yield. No USDG/USD price path is present, so `vsCashPct` is **not** an observed USDG market return. Older persisted metrics may omit `benchmarks`; consumers must show unavailable in that case. Invalid or nonpositive benchmark endpoint closes fail the run with null metrics and keep launch blocked. Claude's current `components/app/lab/BenchmarkComparison.tsx` reads this server field and shows an unavailable state for legacy rows; this source integration is present, but browser/E2E verification remains pending. See `docs/ui-integration-requests.md`.
 
 ## Application routes and shared UI contracts
 
@@ -90,8 +90,8 @@ Preserve loading, signed-out, error, empty, stale, halted, insufficient-history,
 | `GET /api/backtests/coverage?symbol={symbol}` | `BacktestCoverage`; runtime source-backed history and 1,441-candle gate. |
 | `POST /api/backtests` | Session; `{ recipe }` → persisted `BacktestRun` with metrics only if complete and at least one modeled entry exists. New completed metrics include optional `benchmarks`; old JSONB rows remain valid without them. |
 | `POST /api/agents/{id}/launch` | Session + owner; `{ backtestRunId }`; requires complete matching recipe/hash, verified stored history, provenance, assumptions, >=720 samples, >=1 entry and metrics. |
-| `POST /api/agents/{id}/tick` | Session + owner; requires `Idempotency-Key`, running agent, server quote/history. Returns `PaperTickResponse`. |
-| `POST /api/agents/{id}/tick?asOf={exactCandleEndAt}` | Historical paper replay of an exact closed provider candle with 721 preceding bars. Idempotency key remains required; timestamp determines replay ID. |
+| `POST /api/agents/{id}/tick` | Session + owner; requires `Idempotency-Key`, running agent, server quote/history. Returns `PaperTickResponse`. Per-agent execution is serialized with the latest state read and deterministic evaluation inside the persistence transaction. A new tick earlier than the latest decision returns `409 CONFLICT`. |
+| `POST /api/agents/{id}/tick?asOf={exactCandleEndAt}` | Historical paper replay of an exact closed provider candle with 721 preceding bars. Idempotency key remains required; timestamp determines replay ID. Existing tick retries return the original decision; an older new replay conflicts instead of rewinding account state. |
 | `GET /api/agents/{id}/tape` | Session + owner; `TapeResponse` with newest decisions and persisted paper orders. |
 | `GET /api/agents/{id}/positions` | Session + owner; `PaperPositionsResponse`. |
 
@@ -125,7 +125,7 @@ Verified in this workspace on 2026-11-12:
 
 Browser Playwright cannot exercise the real extension signature prompt without an installed wallet extension. The integration test signs a genuine EVM challenge using a test account. E2E mocks only UI-level auth/market responses where required; the full paper order/performance path is verified with the captured source fixture in the database integration test.
 
-Continuation verification on 2026-11-12: `bun run test -- tests/backtest` passed 5 files / 17 tests; `bun run test -- tests/integration/paper-flow.test.ts` passed 1 test and asserts that benchmark metadata survives the API response and persisted JSONB row; `bun run test -- tests/domain/contracts.test.ts` passed 1 file / 6 tests and confirms old metrics remain valid; `bunx tsc --noEmit --incremental false` passed; `bun run lint` passed. The full suite, Playwright, and production build have not been rerun after the benchmark and concurrent landing graph changes. The browser attempt against an active dev server did not hydrate or issue API calls. Follow the coordination and port restrictions in `docs/nov13-nov14-completion-report.md` before final QA.
+Continuation verification on 2026-11-12: `bun run test -- tests/backtest` passed 5 files / 17 tests; `bun run test -- tests/integration/paper-flow.test.ts` passed 1 test and asserts benchmark metadata survives the API response and persisted JSONB row; `bun run test -- tests/domain/contracts.test.ts` passed 1 file / 6 tests and confirms old metrics remain valid. The paper-race audit first reproduced concurrent distinct ticks returning `[200, 500]` and a backdated new tick returning `200`; after the fix, the focused backend suite passed 31 files / 103 tests, including serialized concurrent ticks, a 409 backdated-tick conflict, same-tick idempotency, owner denial, and closed-session behavior. `bunx tsc --noEmit --incremental false` and `bun run lint` passed. Full E2E and production build remain unverified after the concurrent frontend work. The browser attempt against an active dev server did not hydrate or issue API calls. Follow the coordination and port restrictions in `docs/nov13-nov14-completion-report.md` before final QA.
 
 ## Claude Code file ownership
 

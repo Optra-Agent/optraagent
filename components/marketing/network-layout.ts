@@ -23,7 +23,7 @@ export type LayoutNode = {
   w: number;
   h: number;
   phase: Phase;
-  /** Where the node emerges from. A node starts at its parent's position and travels to its own. */
+  /** Where the node blooms. Always its own position: it appears at the tip of the branch that reaches it, so it stays attached. */
   from: { x: number; y: number };
   /** Stagger inside a phase, in milliseconds. */
   delay: number;
@@ -64,22 +64,24 @@ const STAGE_ANGLE: Record<string, number> = { gate: -126, strike: -54, size: 18,
 const HOOK_SPREAD: Record<number, number[]> = { 1: [0], 2: [-11, 11], 3: [-21, 0, 21] };
 /** Where each stage's dashed "locked" satellite sits, relative to the stage: tucked beside it, clear of its hooks. */
 const LOCK_OFFSET: Record<string, { x: number; y: number }> = { gate: { x: -95, y: 64 }, strike: { x: 95, y: 64 }, size: { x: -62, y: 80 }, pulse: { x: 118, y: 36 }, expiry: { x: 62, y: 80 } };
+/** Branch drawing time and the ring's drawing time, in ms. A node blooms when its branch reaches it. */
+export const BLOOM = 700;
+export const RING_DRAW = 1800;
 const RING_ANGLES = [-90, -18, 54, 126, 198];
 const STAGE_PHASE: Record<string, Phase> = { gate: 1, strike: 1, size: 1, pulse: 2, expiry: 2 };
 
 const rad = (deg: number) => (deg * Math.PI) / 180;
-const onEllipse = (e: { rx: number; ry: number }, deg: number) => ({ x: ROOT.x + e.rx * Math.cos(rad(deg)), y: ROOT.y + e.ry * Math.sin(rad(deg)) });
 const round = (n: number) => Math.round(n * 10) / 10;
+const onEllipse = (e: { rx: number; ry: number }, deg: number) => ({ x: round(ROOT.x + e.rx * Math.cos(rad(deg))), y: round(ROOT.y + e.ry * Math.sin(rad(deg))) });
 
-/** A gentle quadratic curve, bent sideways by a fraction of its length so branches read as organic, not ruled. */
+/** An S-shaped cubic curve: it leaves the parent along one side and arrives at the child along the other, so branches
+ *  read as organic growth rather than ruled lines. `bend` is a fraction of the length; its sign picks the side. */
 export function branchPath(a: { x: number; y: number }, b: { x: number; y: number }, bend: number): string {
-  const mx = (a.x + b.x) / 2;
-  const my = (a.y + b.y) / 2;
   const dx = b.x - a.x;
   const dy = b.y - a.y;
-  const cx = mx - dy * bend;
-  const cy = my + dx * bend;
-  return `M${round(a.x)} ${round(a.y)} Q${round(cx)} ${round(cy)} ${round(b.x)} ${round(b.y)}`;
+  const c1 = { x: a.x + dx * 0.36 - dy * bend, y: a.y + dy * 0.36 + dx * bend };
+  const c2 = { x: a.x + dx * 0.7 + dy * bend * 0.85, y: a.y + dy * 0.7 - dx * bend * 0.85 };
+  return `M${round(a.x)} ${round(a.y)} C${round(c1.x)} ${round(c1.y)} ${round(c2.x)} ${round(c2.y)} ${round(b.x)} ${round(b.y)}`;
 }
 
 export function buildLayout(data: GraphData): Layout {
@@ -96,36 +98,36 @@ export function buildLayout(data: GraphData): Layout {
     stagePos[stage.stage] = pos;
     const phase = STAGE_PHASE[stage.stage] ?? 1;
     const delay = (index % 3) * 140;
-    nodes.push({ id: `stage:${stage.stage}`, kind: "stage", x: pos.x, y: pos.y, w: 116, h: 50, phase, from: ROOT, delay: delay + 260, stage: stage.stage });
-    edges.push({ id: `e:root:${stage.stage}`, d: branchPath(ROOT, pos, index % 2 === 0 ? 0.1 : -0.1), from: "root", to: `stage:${stage.stage}`, kind: "branch", phase, delay, stage: stage.stage });
+    nodes.push({ id: `stage:${stage.stage}`, kind: "stage", x: pos.x, y: pos.y, w: 116, h: 50, phase, from: pos, delay: delay + BLOOM, stage: stage.stage });
+    edges.push({ id: `e:root:${stage.stage}`, d: branchPath(ROOT, pos, index % 2 === 0 ? 0.17 : -0.17), from: "root", to: `stage:${stage.stage}`, kind: "branch", phase, delay, stage: stage.stage });
 
     const spread = HOOK_SPREAD[stage.hooks.length] ?? [0];
     stage.hooks.forEach((hook, hi) => {
       const hp = onEllipse(HOOK_ELLIPSE, angle + (spread[hi] ?? 0));
       const hd = hi * 90;
-      nodes.push({ id: `hook:${hook.id}`, kind: "hook", x: round(hp.x), y: round(hp.y), w: 116, h: 32, phase: 3, from: pos, delay: hd + 220, stage: stage.stage });
-      edges.push({ id: `e:${stage.stage}:${hook.id}`, d: branchPath(pos, hp, hi % 2 === 0 ? 0.12 : -0.12), from: `stage:${stage.stage}`, to: `hook:${hook.id}`, kind: "hook", phase: 3, delay: hd, stage: stage.stage });
+      nodes.push({ id: `hook:${hook.id}`, kind: "hook", x: round(hp.x), y: round(hp.y), w: 116, h: 32, phase: 3, from: hp, delay: hd + BLOOM, stage: stage.stage });
+      edges.push({ id: `e:${stage.stage}:${hook.id}`, d: branchPath(pos, hp, hi % 2 === 0 ? 0.2 : -0.2), from: `stage:${stage.stage}`, to: `hook:${hook.id}`, kind: "hook", phase: 3, delay: hd, stage: stage.stage });
     });
 
     if (stage.locked.length > 0) {
       // Locked hooks stay one dashed satellite per stage.
       const off = LOCK_OFFSET[stage.stage] ?? { x: 0, y: 70 };
-      const lp = { x: pos.x + off.x, y: pos.y + off.y };
-      nodes.push({ id: `locked:${stage.stage}`, kind: "locked", x: round(lp.x), y: round(lp.y), w: 92, h: 28, phase: 3, from: pos, delay: 520, stage: stage.stage });
-      edges.push({ id: `e:${stage.stage}:locked`, d: branchPath(pos, lp, 0.08), from: `stage:${stage.stage}`, to: `locked:${stage.stage}`, kind: "lock", phase: 3, delay: 420, stage: stage.stage });
+      const lp = { x: round(pos.x + off.x), y: round(pos.y + off.y) };
+      nodes.push({ id: `locked:${stage.stage}`, kind: "locked", x: round(lp.x), y: round(lp.y), w: 92, h: 28, phase: 3, from: lp, delay: 420 + BLOOM, stage: stage.stage });
+      edges.push({ id: `e:${stage.stage}:locked`, d: branchPath(pos, lp, 0.14), from: `stage:${stage.stage}`, to: `locked:${stage.stage}`, kind: "lock", phase: 3, delay: 420, stage: stage.stage });
     }
   });
 
   data.breaker.hooks.forEach((hook, index) => {
     const pos = onEllipse(RING, RING_ANGLES[index] ?? 0);
-    nodes.push({ id: `hook:${hook.id}`, kind: "risk", x: round(pos.x), y: round(pos.y), w: 116, h: 32, phase: 3, from: { x: pos.x, y: pos.y }, delay: 700 + index * 90, stage: "breaker" });
+    nodes.push({ id: `hook:${hook.id}`, kind: "risk", x: round(pos.x), y: round(pos.y), w: 116, h: 32, phase: 3, from: { x: pos.x, y: pos.y }, delay: 500 + Math.round(((((RING_ANGLES[index] ?? 0) + 90 + 360) % 360) / 360) * RING_DRAW), stage: "breaker" });
   });
 
   const bottom = { x: ROOT.x, y: ROOT.y + RING.ry };
   const decision = { x: ROOT.x, y: 752 };
   const tape = { x: ROOT.x + 270, y: 752 };
-  nodes.push({ id: "decision", kind: "decision", x: decision.x, y: decision.y, w: 190, h: 70, phase: 4, from: bottom, delay: 200 });
-  nodes.push({ id: "tape", kind: "tape", x: tape.x, y: tape.y, w: 170, h: 56, phase: 4, from: decision, delay: 560 });
+  nodes.push({ id: "decision", kind: "decision", x: decision.x, y: decision.y, w: 190, h: 70, phase: 4, from: decision, delay: BLOOM });
+  nodes.push({ id: "tape", kind: "tape", x: tape.x, y: tape.y, w: 170, h: 56, phase: 4, from: tape, delay: 420 + BLOOM });
   edges.push({ id: "e:ring:decision", d: `M${bottom.x} ${bottom.y} L${decision.x} ${decision.y - 35}`, from: "ring", to: "decision", kind: "flow", phase: 4, delay: 0 });
   edges.push({ id: "e:decision:tape", d: `M${decision.x + 95} ${decision.y} L${tape.x - 85} ${tape.y}`, from: "decision", to: "tape", kind: "flow", phase: 4, delay: 420 });
 

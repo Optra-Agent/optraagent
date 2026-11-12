@@ -23,17 +23,19 @@ test.describe("Optra Agent Network (desktop)", () => {
     await expect(net(page).getByRole("button", { name: "Explore agent" }).first()).toBeAttached();
   });
 
-  test("grows outward through five states and children start at their parent", async ({ page }) => {
+  test("grows outward through five states and every branch ends on its node", async ({ page }) => {
     await page.goto("/");
-    // Before it grows, a hook sits on top of its stage, not at its final place.
-    const origin = await page.evaluate(() => {
-      const get = (el: Element | null, name: string) => (el as SVGGElement).style.getPropertyValue(name);
+    // A node blooms at the end of the branch that reaches it, so it is always attached: the Calmo branch ends exactly on Calmo.
+    const attached = await page.evaluate(() => {
+      const get = (el: Element | null, name: string) => parseFloat((el as SVGGElement).style.getPropertyValue(name));
       const hook = [...document.querySelectorAll('.pn-svg .pn-n[data-kind="hook"]')].find((el) => el.getAttribute("aria-label")?.startsWith("Calmo"))!;
-      const stage = [...document.querySelectorAll('.pn-svg .pn-n[data-kind="stage"]')].find((el) => el.getAttribute("aria-label")?.startsWith("Gate"))!;
-      return { hookFrom: [get(hook, "--cx"), get(hook, "--cy")], stageOwn: [get(stage, "--ox"), get(stage, "--oy")], hookOwn: [get(hook, "--ox"), get(hook, "--oy")] };
+      const own = [get(hook, "--ox"), get(hook, "--oy")];
+      const current = [get(hook, "--cx"), get(hook, "--cy")];
+      const ends = [...document.querySelectorAll('.pn-svg .pn-edge[data-kind="hook"] .pn-line')].map((path) => (path.getAttribute("d") ?? "").trim().split(/[\s,]+/).slice(-2).map(Number));
+      return { own, current, hasBranch: ends.some((end) => Math.abs(end[0]! - own[0]!) < 0.2 && Math.abs(end[1]! - own[1]!) < 0.2) };
     });
-    expect(origin.hookFrom).toEqual(origin.stageOwn);
-    expect(origin.hookFrom).not.toEqual(origin.hookOwn);
+    expect(attached.current).toEqual(attached.own);
+    expect(attached.hasBranch).toBe(true);
 
     await state(page, 2).click();
     await expect(shown(page, "stage")).toHaveCount(3);
@@ -121,7 +123,7 @@ test.describe("Optra Agent Network (desktop)", () => {
   test("the network grows by itself once, Pause stops it, Back to start returns to one agent, Explore agent plays it again", async ({ page }) => {
     await page.goto("/");
     const controls = net(page).locator(".pn-head .pn-controls");
-    await controls.scrollIntoViewIfNeeded();
+    await page.evaluate(() => document.querySelector("#agents .pn")!.scrollIntoView({ block: "start" }));
     // Scrolling the network into view starts one automatic growth.
     await expect(net(page)).toHaveAttribute("data-playing", "1");
     await expect.poll(async () => Number(await net(page).getAttribute("data-phase")), { timeout: 10_000 }).toBeGreaterThanOrEqual(2);

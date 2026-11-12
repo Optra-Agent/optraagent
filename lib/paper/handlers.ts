@@ -9,10 +9,11 @@ import {
 import type { MarketCandle, MarketSnapshot, Session } from "../domain/contracts";
 import type { MarketHistoryResult } from "../market/crius-history";
 import { runTick } from "../engine/run-tick";
+import { PaperTickStateError } from "./drizzle-repository";
 import type { PersistTickResult, DrizzlePaperRepository } from "./drizzle-repository";
 
 type PaperRepository = Pick<DrizzlePaperRepository, "getDecision" | "findAgent" | "persistTick" | "listTape" | "listPositions"> &
-  Partial<Pick<DrizzlePaperRepository, "getOrderCount" | "getPaperState" | "listOrders">>;
+  Partial<Pick<DrizzlePaperRepository, "getOrderCount" | "listOrders">>;
 type SessionReader = (request: Request) => Promise<Session | Response>;
 type SnapshotReader = (symbol: string) => Promise<MarketSnapshot>;
 
@@ -89,25 +90,32 @@ export function createPaperHandlers(options: PaperHandlerOptions) {
           if (index < 721) return error("DATA_MISSING", "The requested historical candle is absent or lacks the 721 preceding bars required for RV30.", 409);
           currentCandle = history.candles[index]!;
         }
-        const paperState = await options.repository.getPaperState?.(ownerId, agent.id) ?? { account: null, position: null };
-
-        const execution = runTick({
+        const persisted = await options.repository.persistTick({
+          ownerId,
           agentId: agent.id,
           tickId,
           occurredAt,
-          recipe: agent.recipe,
-          recipeHash: agent.recipeHash,
           snapshot,
-          currentCandle,
-          history: history?.candles.filter((candle) => new Date(candle.endAt).getTime() <= new Date(occurredAt).getTime() && candle.endAt !== occurredAt),
-          corporateActionDates: history?.corporateActionDates,
-          account: paperState.account,
-          position: paperState.position,
-          state: { status: agent.status },
+          evaluate: (context) => runTick({
+            agentId: context.agent.id,
+            tickId,
+            occurredAt,
+            recipe: context.agent.recipe,
+            recipeHash: context.agent.recipeHash,
+            snapshot,
+            currentCandle,
+            history: history?.candles.filter((candle) => new Date(candle.endAt).getTime() <= new Date(occurredAt).getTime() && candle.endAt !== occurredAt),
+            corporateActionDates: history?.corporateActionDates,
+            account: context.account,
+            position: context.position,
+            state: { status: context.agent.status },
+          }),
         });
-        const persisted = await options.repository.persistTick({ ownerId, agentId: agent.id, snapshot, decision: execution.decision, orders: execution.orderIntents, portfolio: execution.portfolio });
         return tickResponse(persisted);
-      } catch {
+      } catch (cause) {
+        if (cause instanceof PaperTickStateError) {
+          return error(cause.code, cause.message, cause.code === "NOT_FOUND" ? 404 : 409);
+        }
         return error("INTERNAL_ERROR", "Unable to persist this paper tick.", 500);
       }
     },

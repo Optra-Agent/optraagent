@@ -89,7 +89,7 @@ All commands run in the current workspace on 2026-11-12:
 
 ### Original ten-step status reconciliation
 
-See the detailed status/evidence matrix in `docs/tasks/optra-fullstack-progress.md`. Current statuses: Step 01 DONE; 02 PARTIAL; 03 PARTIAL; 04 DONE; 05 PARTIAL (benchmark API implemented, Lab display pending); 06 PARTIAL (manual ticks, no scheduler); 07 DONE for click-builder scope (AI is Planned); 08 PARTIAL; 09 PARTIAL; 10 PARTIAL pending coordinated final E2E/build QA.
+See the detailed status/evidence matrix in `docs/tasks/optra-fullstack-progress.md`. Current statuses: Step 01 DONE; 02 PARTIAL; 03 PARTIAL; 04 DONE; 05 PARTIAL (benchmark API and current Lab component implemented, browser QA pending); 06 PARTIAL (manual ticks, no scheduler); 07 DONE for click-builder scope (AI is Planned); 08 PARTIAL; 09 PARTIAL; 10 PARTIAL pending coordinated final E2E/build QA.
 
 ### Verification and coordination record
 
@@ -103,6 +103,21 @@ See the detailed status/evidence matrix in `docs/tasks/optra-fullstack-progress.
 - Removed only this pass's temporary files under `/tmp`: `optra-lab-e2e.config.mjs`, `optra-lab-response.html`, and the `optra-lab-e2e-results` directory. No repository screenshots, fixtures, or Claude-owned artifacts were deleted.
 - Do not run Playwright with the repository's default config: it reuses port 3000, which is currently owned by SENTERA (confirmed by the process working directory). Do not stop SENTERA. One OPTRA dev server is active on port 3001 and uses the repository `.next` directory; coordinate full Playwright/build verification after the concurrent landing edits settle.
 - No commit, push, deployment, or repository cleanup was performed.
+
+### 2026-11-12 continuation — serialized tick and focused security audit
+
+**RED evidence:** The captured-provider integration regression synchronized two distinct historical tick requests after both had read the same flat portfolio. Before the fix, one request returned `200` and the other `500` when the partial unique index rejected a second open position. The same flow showed that a distinct historical tick earlier than the latest decision was accepted with `200`, allowing state to be evaluated backwards.
+
+**Fix:** Paper persistence now locks the owner-scoped agent row with `FOR UPDATE`, rechecks the running state, checks existing tick identity while locked, compares the new event time with the latest persisted decision, loads current account/position state, and evaluates `runTick` before writing. The decision, trace, orders, position change, and account mutation remain atomic. A late/backdated new tick returns `409 CONFLICT`; same-tick retries still return the original decision/order count. Agent lifecycle updates take a conflicting lock on the same row.
+
+**Verification:**
+
+- `bun run test -- tests/agents tests/auth tests/backtest tests/db tests/domain tests/engine tests/forge tests/hooks tests/integration tests/market tests/options tests/paper tests/public-api` — passed 31 files / 103 tests.
+- Included assertions cover the successful open + subsequent hold under concurrent distinct IDs, no duplicate order, a blocked off-session tick, same-key replay, 409 for a new backdated event, stop-state recheck, wallet signature/session, cross-owner 404, and public APIs returning no private agents/Tape.
+- `bunx tsc --noEmit --incremental false` — passed. `bun run lint` — passed.
+- Source inspection confirms Claude's current `BenchmarkComparison` consumes only server-returned `metrics.benchmarks`, labels the flat USD baseline without yield/USDG path, and renders old records without the optional field as unavailable. Browser behavior remains unverified.
+- Full E2E/build remain coordinated final-QA work. Default Playwright port 3000 belongs to SENTERA; OPTRA shares `.next` with its active dev process. Neither was stopped or overwritten.
+- Security findings and test scope are summarized in `docs/security-review-2026-11-12.md`.
 
 ## Remaining scope
 

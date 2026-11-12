@@ -153,6 +153,7 @@ describe("wallet-to-paper API integration with captured provider data and databa
 
       const replayRecipeHash = canonicalRecipeHash(recipe);
       let replayAt: string | null = null;
+      let secondReplayAt: string | null = null;
       for (let index = 721; index < history.candles.length; index += 1) {
         const candle = history.candles[index]!;
         const probe = runTick({
@@ -162,9 +163,13 @@ describe("wallet-to-paper API integration with captured provider data and databa
           account: { initialCapitalUsd: "100000.00", cashUsd: "100000.00", realizedPnlUsd: "0", peakEquityUsd: "100000.00", dailyStartEquityUsd: "100000.00", dailyStartDate: candle.endAt.slice(0, 10) },
           state: { status: "running" },
         });
-        if (probe.decision.action === "open") { replayAt = candle.endAt; break; }
+        if (probe.decision.action === "open") {
+          if (replayAt === null) replayAt = candle.endAt;
+          else { secondReplayAt = candle.endAt; break; }
+        }
       }
       expect(replayAt).not.toBeNull();
+      expect(secondReplayAt).not.toBeNull();
 
       const paper = createPaperHandlers({
         repository: paperRepository,
@@ -173,27 +178,82 @@ describe("wallet-to-paper API integration with captured provider data and databa
         getHistory: async () => history,
         now: () => NOW,
       });
-      const blockedTick = await paper.tick(new Request(`${APP_ORIGIN}/api/agents/${draft.id}/tick`, {
+      const blockedAt = history.candles[721]!.endAt;
+      const blockedTick = await paper.tick(new Request(`${APP_ORIGIN}/api/agents/${draft.id}/tick?asOf=${encodeURIComponent(blockedAt)}`, {
         method: "POST", headers: { cookie: cookie!, "idempotency-key": "closed-session-tick" },
       }), draft.id);
       expect(blockedTick.status).toBe(200);
       await expect(blockedTick.json()).resolves.toMatchObject({ executionMode: "PAPER", orderCount: 0, decision: { action: "skip", hookResults: expect.arrayContaining([expect.objectContaining({ hookId: "sessia", status: "block" })]) } });
 
-      const replayRequest = () => new Request(`${APP_ORIGIN}/api/agents/${draft.id}/tick?asOf=${encodeURIComponent(replayAt!)}`, {
-        method: "POST", headers: { cookie: cookie!, "idempotency-key": "historical-paper-replay" },
+      let stateReadCount = 0;
+      let releaseStateReads!: () => void;
+      const bothStateReads = new Promise<void>((resolve) => { releaseStateReads = resolve; });
+      const getPaperState = paperRepository.getPaperState.bind(paperRepository);
+      // If an unlocked portfolio read returns, release two callers only after they hold the same pre-tick state.
+      const raceRepository = new Proxy(paperRepository, {
+        get(target, property, receiver) {
+          if (property === "getPaperState") {
+            return async (...args: Parameters<typeof paperRepository.getPaperState>) => {
+              const state = await getPaperState(...args);
+              stateReadCount += 1;
+              if (stateReadCount === 2) releaseStateReads();
+              await bothStateReads;
+              return state;
+            };
+          }
+          const value = Reflect.get(target, property, receiver) as unknown;
+          return typeof value === "function" ? value.bind(target) : value;
+        },
       });
-      const successfulTick = await paper.tick(replayRequest(), draft.id);
-      const replayRetry = await paper.tick(replayRequest(), draft.id);
-      expect(successfulTick.status).toBe(200);
-      await expect(successfulTick.json()).resolves.toMatchObject({ executionMode: "PAPER", orderCount: 1, idempotentReplay: false, decision: { action: "open", snapshotSource: "crius_robinhood_chain_candles" } });
+      const racePaper = createPaperHandlers({
+        repository: raceRepository,
+        readSession,
+        getSnapshot: async () => SNAPSHOT,
+        getHistory: async () => history,
+        now: () => NOW,
+      });
+      const replayRequest = (at: string) => new Request(`${APP_ORIGIN}/api/agents/${draft.id}/tick?asOf=${encodeURIComponent(at)}`, {
+        method: "POST", headers: { cookie: cookie!, "idempotency-key": `historical-paper-replay-${Date.parse(at)}` },
+      });
+      const concurrentResponses = await Promise.all([
+        racePaper.tick(replayRequest(replayAt!), draft.id),
+        racePaper.tick(replayRequest(secondReplayAt!), draft.id),
+      ]);
+      expect(stateReadCount).toBe(0);
+      expect(concurrentResponses.map((response) => response.status)).toEqual([200, 200]);
+      const concurrentPayloads = await Promise.all(concurrentResponses.map((response) => response.json())) as Array<{
+        decision: { action: string; tickId: string; snapshotSource: string };
+        orderCount: number;
+        idempotentReplay: boolean;
+      }>;
+      expect(concurrentPayloads.map((payload) => payload.decision.action).sort()).toEqual(["hold", "open"]);
+      expect(concurrentPayloads.find((payload) => payload.decision.action === "open")).toMatchObject({
+        orderCount: 1, idempotentReplay: false, decision: { snapshotSource: "crius_robinhood_chain_candles" },
+      });
+      expect(concurrentPayloads.find((payload) => payload.decision.action === "hold")).toMatchObject({ orderCount: 0, idempotentReplay: false });
+      const openedTickId = concurrentPayloads.find((payload) => payload.decision.action === "open")!.decision.tickId;
+      const openedAt = [replayAt!, secondReplayAt!].find((at) => `replay-${Date.parse(at)}` === openedTickId)!;
+      const replayRetry = await paper.tick(replayRequest(openedAt), draft.id);
       await expect(replayRetry.json()).resolves.toMatchObject({ executionMode: "PAPER", orderCount: 1, idempotentReplay: true });
+      const closedSessionLiveTick = await paper.tick(new Request(`${APP_ORIGIN}/api/agents/${draft.id}/tick`, {
+        method: "POST", headers: { cookie: cookie!, "idempotency-key": "closed-session-live-tick" },
+      }), draft.id);
+      expect(closedSessionLiveTick.status).toBe(200);
+      await expect(closedSessionLiveTick.json()).resolves.toMatchObject({
+        executionMode: "PAPER", orderCount: 0,
+        decision: { action: "hold", hookResults: expect.arrayContaining([expect.objectContaining({ hookId: "sessia", status: "block" })]) },
+      });
+      const backdatedTick = await paper.tick(replayRequest(history.candles[759]!.endAt), draft.id);
+      expect(backdatedTick.status).toBe(409);
+      await expect(backdatedTick.json()).resolves.toMatchObject({ error: { code: "CONFLICT" } });
 
       const tape = await paper.tape(new Request(`${APP_ORIGIN}/api/agents/${draft.id}/tape`, { headers: { cookie: cookie! } }), draft.id);
       const positions = await paper.positions(new Request(`${APP_ORIGIN}/api/agents/${draft.id}/positions`, { headers: { cookie: cookie! } }), draft.id);
       const tapePayload = await tape.json() as { decisions: Array<{ action: string; hookResults: unknown[]; marketContext?: Record<string, unknown> }>; orders: Array<Record<string, unknown>> };
-      expect(tapePayload.decisions).toHaveLength(2);
+      expect(tapePayload.decisions).toHaveLength(4);
       expect(tapePayload.decisions.map((decision) => decision.action)).toContain("skip");
       expect(tapePayload.decisions.map((decision) => decision.action)).toContain("open");
+      expect(tapePayload.decisions.map((decision) => decision.action)).toContain("hold");
       expect(tapePayload.decisions.find((decision) => decision.action === "open")?.hookResults).toHaveLength(16);
       expect(tapePayload.decisions.find((decision) => decision.action === "open")?.marketContext?.historyDataHash).toMatch(/^sha256:/);
       expect(tapePayload.orders).toHaveLength(1);
@@ -209,7 +269,7 @@ describe("wallet-to-paper API integration with captured provider data and databa
         2,
       );
       await expect(positions.json()).resolves.toMatchObject({ executionMode: "PAPER", positions: [expect.objectContaining({ status: "open", instrumentType: "modeled_option", optionType: "put", premiumSource: "modeled" })] });
-      expect(await paperRepository.getOrderCount(session.user.id, draft.id, `replay-${new Date(replayAt!).getTime()}`)).toBe(1);
+      expect(await paperRepository.getOrderCount(session.user.id, draft.id, openedTickId)).toBe(1);
 
       const otherOwner = await authRepository.findOrCreateUser("0x0000000000000000000000000000000000000002");
       const privatePaper = createPaperHandlers({
@@ -225,5 +285,5 @@ describe("wallet-to-paper API integration with captured provider data and databa
     } finally {
       await connection.close();
     }
-  }, 15_000);
+  }, 30_000);
 });

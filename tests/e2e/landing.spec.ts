@@ -10,8 +10,8 @@ test("landing states the product within the first viewport and keeps the paper-f
   await expect(page.getByRole("link", { name: "Read the Tape" })).toHaveAttribute("href", "#tape");
   // The hero preview is the real Agents screen: same sidebar, journey rail and template cards, read-only.
   const preview = page.locator(".hero-card .preview-shell");
-  await expect(preview).toHaveAttribute("aria-hidden", "true");
-  await expect(preview).toHaveJSProperty("inert", true);
+  await expect(preview).toHaveAttribute("role", "group");
+  await expect(preview.getByRole("link", { name: /Open app/ })).toHaveAttribute("href", "/agents");
   await expect(preview.locator(".sidebar-link", { hasText: "Agents" })).toHaveAttribute("aria-current", "page");
   await expect(preview.getByText("Protective Put", { exact: true }).first()).toBeVisible();
   await expect(preview.getByText("Paper ready", { exact: true }).first()).toBeVisible();
