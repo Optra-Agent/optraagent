@@ -5,6 +5,8 @@ import { useEffect, useState } from "react";
 import { ApiErrorSchema, AgentListResponseSchema } from "../../../lib/domain/contracts";
 import type { Agent } from "../../../lib/domain/contracts";
 import { useAuthSession } from "../AuthSessionProvider";
+import { formatUtc, shortHash, titleCase, errorText } from "../format";
+import { JourneyRail, PageHeader, Skeleton, StateBlock } from "../ui";
 import { TemplateCatalog } from "./TemplateCatalog";
 import { HouseAgentCreator } from "./HouseAgentCreator";
 
@@ -18,8 +20,15 @@ async function responseMessage(response: Response): Promise<string> {
   }
 }
 
+const nextAction: Record<Agent["status"], string> = {
+  draft: "Backtest it in Lab, then launch on paper.",
+  running: "Run a paper tick or read its Tape.",
+  paused: "Resume it from the agent page.",
+  stopped: "Stopped. Fork it to start a new draft.",
+};
+
 export function AgentListScreen() {
-  const { session, status } = useAuthSession();
+  const { session, status, setWalletMenuOpen } = useAuthSession();
   const [result, setResult] = useState<{ key: string; status: "ready" | "error"; agents: Agent[]; error: string }>({ key: "", status: "ready", agents: [], error: "" });
   const [reload, setReload] = useState(0);
   const requestKey = `${session?.user.id ?? ""}:${reload}`;
@@ -40,55 +49,83 @@ export function AgentListScreen() {
       })
       .catch((reason: unknown) => {
         if (controller.signal.aborted) return;
-        setResult({ key: requestKey, status: "error", agents: [], error: reason instanceof Error ? reason.message : "Your agent list is temporarily unavailable." });
+        setResult({ key: requestKey, status: "error", agents: [], error: errorText(reason, "Your agent list is temporarily unavailable.") });
       });
     return () => controller.abort();
   }, [requestKey, status]);
 
+  const journeyStep = status !== "signed_in" ? 1 : agents.some((agent) => agent.status !== "draft") ? 5 : agents.length > 0 ? 3 : 2;
+
   return (
     <main className="page-container">
-      <div className="page-heading-row">
-        <div>
-          <p className="eyebrow">PAPER ONLY</p>
-          <h1>Agents</h1>
-          <p className="page-description">Rule-driven strategies with recorded inputs and explainable decisions.</p>
-        </div>
-        {status === "signed_in" ? <button className="button button-secondary" type="button" disabled={loadStatus === "loading"} onClick={() => setReload((value) => value + 1)}>Refresh</button> : null}
-      </div>
+      <PageHeader
+        eyebrow="PAPER ONLY"
+        title="Agents"
+        description="Rule-driven strategies with recorded inputs and explainable decisions. Start from a House Agent, backtest it, then run it on paper."
+        actions={status === "signed_in" ? <button className="button button-secondary" type="button" disabled={loadStatus === "loading"} onClick={() => setReload((value) => value + 1)}>Refresh</button> : null}
+      />
+      <JourneyRail step={journeyStep} />
 
-      {status === "loading" ? <section className="state-panel" role="status">Checking wallet session…</section> : null}
-      {status === "error" ? <section className="state-panel" role="alert">Wallet session could not be checked. Retry from the wallet control above.</section> : null}
+      {status === "loading" ? <StateBlock kind="loading" title="Checking wallet session…" /> : null}
+      {status === "error" ? <StateBlock kind="error" title="Wallet session could not be checked">Retry from the wallet control in the header.</StateBlock> : null}
       {status === "signed_out" ? (
-        <section className="state-panel">
-          <h2>No agent session</h2>
+        <StateBlock
+          kind="info"
+          title="No agent session"
+          action={<button className="button button-secondary" type="button" onClick={() => { setWalletMenuOpen(true); window.scrollTo({ top: 0, behavior: "smooth" }); }}>Choose a wallet</button>}
+        >
           <p>Connect a wallet to view your agents.</p>
+          <p className="subtle">Supported: MetaMask and Phantom EVM on Robinhood Chain. Signing in proves wallet ownership only and never sends a transaction.</p>
+        </StateBlock>
+      ) : null}
+
+      {status === "signed_in" ? (
+        <section className="agents-owned" aria-label="Your agents">
+          <div className="section-heading">
+            <div><p className="eyebrow">YOUR DESK</p><h2>Your agents</h2></div>
+            {loadStatus === "ready" && agents.length > 0 ? <span>{agents.length} saved</span> : null}
+          </div>
+          {loadStatus === "loading" ? <div className="state-panel" role="status"><Skeleton lines={3} /></div> : null}
+          {loadStatus === "error" ? <StateBlock kind="error" title="Agents could not be loaded" action={<button className="button button-secondary" type="button" onClick={() => setReload((value) => value + 1)}>Retry</button>}>{error}</StateBlock> : null}
+          {loadStatus === "ready" && agents.length === 0 ? (
+            <StateBlock kind="empty" title="No saved agents">
+              <p>Create the paper-ready Protective Put draft below, then run its verified backtest in Lab before launch.</p>
+              <p className="subtle mono">Signed in as {session?.user.address}</p>
+            </StateBlock>
+          ) : null}
+          {loadStatus === "ready" && agents.length > 0 ? (
+            <div className="agent-grid">
+              {agents.map((agent) => (
+                <article className="agent-card" key={agent.id}>
+                  <div className="agent-card-head">
+                    <div><p className="eyebrow">{titleCase(agent.templateId)}</p><h2>{agent.name}</h2></div>
+                    <span className={`agent-status agent-status-${agent.status}`}>{agent.status}</span>
+                  </div>
+                  <p className="agent-next">{nextAction[agent.status]}</p>
+                  <dl className="kv kv-tight">
+                    <div><dt>Recipe</dt><dd className="mono" title={agent.recipeHash}>{shortHash(agent.recipeHash)}</dd></div>
+                    <div><dt>Updated</dt><dd className="mono"><time dateTime={agent.updatedAt}>{formatUtc(agent.updatedAt)}</time></dd></div>
+                  </dl>
+                  <div className="agent-card-actions">
+                    <Link className="button button-secondary" href={`/agents/${encodeURIComponent(agent.id)}`}>Open agent</Link>
+                    {agent.status === "draft" ? <Link className="button button-primary" href={`/lab?agent=${encodeURIComponent(agent.id)}`}>Backtest in Lab</Link> : null}
+                  </div>
+                </article>
+              ))}
+            </div>
+          ) : null}
         </section>
       ) : null}
-      {status === "signed_in" ? <HouseAgentCreator /> : null}
-      {status === "signed_in" && loadStatus === "loading" ? <section className="state-panel" role="status">Loading your agents…</section> : null}
-      {status === "signed_in" && loadStatus === "error" ? <section className="state-panel" role="alert">{error}</section> : null}
-      {status === "signed_in" && loadStatus === "ready" && agents.length === 0 ? (
-        <section className="state-panel">
-          <h2>No saved agents</h2>
-          <p>Create the paper-ready Protective Put draft, then run its verified backtest in Lab before launch.</p>
-          <p className="subtle">Signed in as {session?.user.address}</p>
-        </section>
-      ) : null}
-      {status === "signed_in" && loadStatus === "ready" && agents.length > 0 ? (
-        <div className="agent-grid" aria-label="Your agents">
-          {agents.map((agent) => (
-            <article className="state-panel agent-card" key={agent.id}>
-              <div className="market-status-row">
-                <div><p className="eyebrow">{agent.templateId.replaceAll("_", " ")}</p><h2>{agent.name}</h2></div>
-                <span className={`agent-status agent-status-${agent.status}`}>{agent.status}</span>
-              </div>
-              <p className="market-note">Recipe {agent.recipeHash}</p>
-              <Link className="button button-secondary agent-detail-link" href={`/agents/${encodeURIComponent(agent.id)}`}>Open agent</Link>
-            </article>
-          ))}
-        </div>
-      ) : null}
-      <TemplateCatalog />
+
+      <div className="agents-layout">
+        <TemplateCatalog />
+        {status === "signed_in" ? <HouseAgentCreator /> : (
+          <section className="panel creator creator-locked" id="configure" aria-label="Configure Protective Put draft">
+            <div className="panel-head"><div><p className="eyebrow">STEP 2 · CONFIGURE</p><h2>Protective Put draft</h2></div></div>
+            <p className="panel-lede">Sign in with a wallet to set the underlying, virtual reference shares and paper capital. Your draft is saved to your account only.</p>
+          </section>
+        )}
+      </div>
     </main>
   );
 }

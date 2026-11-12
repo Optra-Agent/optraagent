@@ -15,6 +15,8 @@ type AuthSessionContextValue = {
   switchToRobinhoodChain: () => Promise<void>;
   logout: () => Promise<void>;
   refresh: () => Promise<void>;
+  walletMenuOpen: boolean;
+  setWalletMenuOpen: (open: boolean) => void;
 };
 
 const AuthSessionContext = createContext<AuthSessionContextValue | null>(null);
@@ -33,6 +35,7 @@ export function AuthSessionProvider({ children }: Readonly<{ children: React.Rea
   const [status, setStatus] = useState<SessionStatus>("loading");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [walletMenuOpen, setWalletMenuOpen] = useState(false);
   const { address, chainId, status: walletStatus } = useAccount();
   const { connectAsync, connectors } = useConnect();
   const { disconnectAsync } = useDisconnect();
@@ -174,7 +177,9 @@ export function AuthSessionProvider({ children }: Readonly<{ children: React.Rea
     switchToRobinhoodChain,
     logout,
     refresh,
-  }), [session, status, error, busy, connectWallet, switchToRobinhoodChain, logout, refresh]);
+    walletMenuOpen,
+    setWalletMenuOpen,
+  }), [session, status, error, busy, connectWallet, switchToRobinhoodChain, logout, refresh, walletMenuOpen]);
 
   return <AuthSessionContext.Provider value={value}>{children}</AuthSessionContext.Provider>;
 }

@@ -10,11 +10,14 @@ import {
   PaperPositionsResponseSchema,
   TapeResponseSchema,
 } from "../../../lib/domain/contracts";
-import type { AgentDecision, AgentDetail, PaperOrder, PaperPosition } from "../../../lib/domain/contracts";
+import type { AgentDecision, AgentDetail, PaperOrder, PaperPosition, PaperTickResponse } from "../../../lib/domain/contracts";
 import { useAuthSession } from "../AuthSessionProvider";
+import { formatUsd, formatUtc, shortHash, titleCase, errorText } from "../format";
+import { OrdersTable, PositionGrid, TapeList } from "../paper";
+import { actionTone, Chip, JourneyRail, StateBlock } from "../ui";
 
-type DetailState = "idle" | "loading" | "ready" | "error";
 type DetailData = { agent: AgentDetail; decisions: AgentDecision[]; orders: PaperOrder[]; positions: PaperPosition[] };
+type DetailResult = { key: string; base: string; status: "ready" | "error"; data: DetailData | null; error: string };
 
 async function responseMessage(response: Response): Promise<string> {
   try {
@@ -26,17 +29,27 @@ async function responseMessage(response: Response): Promise<string> {
   }
 }
 
+function recipeParam(agent: AgentDetail, key: string): string | null {
+  const value = agent.recipe.parameters[key];
+  return typeof value === "string" || typeof value === "number" ? String(value) : null;
+}
+
 export function AgentDetailScreen({ agentId }: { agentId: string }) {
   const router = useRouter();
   const { session, status } = useAuthSession();
-  const [result, setResult] = useState<{ key: string; status: "ready" | "error"; data: DetailData | null; error: string }>({ key: "", status: "ready", data: null, error: "" });
+  const [result, setResult] = useState<DetailResult>({ key: "", base: "", status: "ready", data: null, error: "" });
   const [busy, setBusy] = useState(false);
-  const [tickMessage, setTickMessage] = useState("");
+  const [tick, setTick] = useState<PaperTickResponse | null>(null);
+  const [tickError, setTickError] = useState("");
   const [reload, setReload] = useState(0);
-  const requestKey = `${status}:${session?.user.id ?? ""}:${agentId}:${reload}`;
-  const state: DetailState = status !== "signed_in" ? "idle" : result.key === requestKey ? result.status : "loading";
-  const data = result.key === requestKey ? result.data : null;
+  const base = `${status}:${session?.user.id ?? ""}:${agentId}`;
+  const requestKey = `${base}:${reload}`;
+  const data = result.base === base ? result.data : null;
   const error = result.key === requestKey ? result.error : "";
+  const state: "idle" | "loading" | "ready" | "error" = status !== "signed_in"
+    ? "idle"
+    : result.key === requestKey ? result.status : data ? "ready" : "loading";
+  const refreshing = status === "signed_in" && result.key !== requestKey && Boolean(data);
 
   useEffect(() => {
     if (status !== "signed_in") return;
@@ -56,18 +69,22 @@ export function AgentDetailScreen({ agentId }: { agentId: string }) {
         return PaperPositionsResponseSchema.parse(await response.json());
       }),
     ]).then(([agent, tape, positions]) => {
-      setResult({ key: requestKey, status: "ready", data: { agent, decisions: tape.decisions, orders: tape.orders, positions: positions.positions }, error: "" });
+      setResult({ key: requestKey, base, status: "ready", data: { agent, decisions: tape.decisions, orders: tape.orders, positions: positions.positions }, error: "" });
     }).catch((reason: unknown) => {
       if (controller.signal.aborted) return;
-      setResult({ key: requestKey, status: "error", data: null, error: reason instanceof Error ? reason.message : "The agent could not be loaded." });
+      setResult({ key: requestKey, base, status: "error", data: null, error: errorText(reason, "The agent could not be loaded.") });
     });
     return () => controller.abort();
-  }, [agentId, requestKey, status]);
+  }, [agentId, base, requestKey, status]);
+
+  function patchError(message: string) {
+    setResult((current) => current.key === requestKey ? { ...current, error: message } : current);
+  }
 
   async function lifecycle(action: "pause" | "resume" | "stop") {
     if (!data) return;
     setBusy(true);
-    setResult((current) => current.key === requestKey ? { ...current, error: "" } : current);
+    patchError("");
     try {
       const response = await fetch(`/api/agents/${encodeURIComponent(agentId)}/lifecycle`, {
         method: "POST", credentials: "include", headers: { "content-type": "application/json" }, body: JSON.stringify({ action }),
@@ -78,8 +95,7 @@ export function AgentDetailScreen({ agentId }: { agentId: string }) {
         ? { ...current, data: { ...current.data, agent: updated } }
         : current);
     } catch (reason) {
-      const message = reason instanceof Error ? reason.message : "The agent state could not be updated.";
-      setResult((current) => current.key === requestKey ? { ...current, error: message } : current);
+      patchError(errorText(reason, "The agent state could not be updated."));
     } finally {
       setBusy(false);
     }
@@ -87,7 +103,7 @@ export function AgentDetailScreen({ agentId }: { agentId: string }) {
 
   async function forkAgent() {
     setBusy(true);
-    setResult((current) => current.key === requestKey ? { ...current, error: "" } : current);
+    patchError("");
     try {
       const response = await fetch(`/api/agents/${encodeURIComponent(agentId)}/fork`, {
         method: "POST", credentials: "include", headers: { "content-type": "application/json" }, body: JSON.stringify({}),
@@ -96,8 +112,7 @@ export function AgentDetailScreen({ agentId }: { agentId: string }) {
       const forked = AgentDetailSchema.parse(await response.json());
       router.push(`/agents/${encodeURIComponent(forked.id)}`);
     } catch (reason) {
-      const message = reason instanceof Error ? reason.message : "The agent could not be forked.";
-      setResult((current) => current.key === requestKey ? { ...current, error: message } : current);
+      patchError(errorText(reason, "The agent could not be forked."));
     } finally {
       setBusy(false);
     }
@@ -106,85 +121,157 @@ export function AgentDetailScreen({ agentId }: { agentId: string }) {
   async function runPaperTick() {
     if (!data) return;
     setBusy(true);
-    setTickMessage("");
-    setResult((current) => current.key === requestKey ? { ...current, error: "" } : current);
+    setTick(null);
+    setTickError("");
+    patchError("");
     try {
       const response = await fetch(`/api/agents/${encodeURIComponent(agentId)}/tick`, {
         method: "POST", credentials: "include", headers: { "idempotency-key": `ui-${crypto.randomUUID()}` },
       });
       if (!response.ok) throw new Error(await responseMessage(response));
-      const result = PaperTickResponseSchema.parse(await response.json());
-      setTickMessage(`${result.decision.action.toUpperCase()} · ${result.orderCount} paper order(s) · ${result.decision.reason}`);
+      setTick(PaperTickResponseSchema.parse(await response.json()));
       setReload((value) => value + 1);
     } catch (reason) {
-      setTickMessage(reason instanceof Error ? reason.message : "Paper tick could not be completed.");
+      setTickError(errorText(reason, "Paper tick could not be completed."));
     } finally {
       setBusy(false);
     }
   }
 
+  const agent = data?.agent;
+  const journeyStep = !agent ? 3 : agent.status === "draft" ? 3 : (data?.decisions.length ?? 0) > 0 ? 6 : 5;
+  const holdings = agent ? recipeParam(agent, "protectedShares") : null;
+  const capital = agent ? recipeParam(agent, "initialCapitalUsd") : null;
+
   return (
     <main className="page-container">
-      {status === "signed_out" ? <section className="state-panel"><h1>Connect a wallet</h1><p>Sign in to view this agent.</p></section> : null}
-      {status === "error" ? <section className="state-panel" role="alert">Wallet session could not be checked. Retry from the wallet control above.</section> : null}
-      {status === "loading" || state === "loading" ? <section className="state-panel" role="status">Loading agent and paper history…</section> : null}
-      {status === "signed_in" && state === "error" ? (
-        <section className="state-panel" role="alert"><h1>Agent unavailable</h1><p>{error}</p><button className="button button-secondary" type="button" onClick={() => setReload((value) => value + 1)}>Retry</button></section>
+      {status === "signed_out" ? (
+        <StateBlock kind="info" title="Connect a wallet">
+          <p>Sign in to view this agent. Agents are visible only to the wallet that created them.</p>
+        </StateBlock>
       ) : null}
-      {status === "signed_in" && state === "ready" && data ? (
+      {status === "error" ? <StateBlock kind="error" title="Wallet session could not be checked">Retry from the wallet control in the header.</StateBlock> : null}
+      {status === "loading" || state === "loading" ? <StateBlock kind="loading" title="Loading agent and paper history…" /> : null}
+      {status === "signed_in" && state === "error" ? (
+        <StateBlock kind="error" title="Agent unavailable" action={<><button className="button button-secondary" type="button" onClick={() => setReload((value) => value + 1)}>Retry</button><Link className="button button-secondary" href="/agents">Back to agents</Link></>}>
+          <p>{error}</p>
+        </StateBlock>
+      ) : null}
+
+      {status === "signed_in" && state !== "error" && agent && data ? (
         <>
-          <div className="page-heading-row">
+          <div className="page-heading-row detail-head">
             <div>
               <Link className="back-link" href="/agents">← Agents</Link>
-              <p className="eyebrow">{data.agent.templateId.replaceAll("_", " ")} · PAPER ONLY</p>
-              <h1>{data.agent.name}</h1>
-              <p className="page-description">Recipe {data.agent.recipeHash}</p>
+              <p className="eyebrow">{titleCase(agent.templateId)} · PAPER ONLY</p>
+              <h1>{agent.name}</h1>
+              <p className="page-description mono" title={agent.recipeHash}>Recipe {shortHash(agent.recipeHash, 18, 8)}</p>
             </div>
-            <div className="lifecycle-controls" aria-label="Agent controls">
-              {data.agent.status === "running" ? <button className="button button-secondary" type="button" disabled={busy} onClick={() => void lifecycle("pause")}>Pause</button> : null}
-              {data.agent.status === "paused" ? <button className="button button-secondary" type="button" disabled={busy} onClick={() => void lifecycle("resume")}>Resume</button> : null}
-              {data.agent.status === "running" ? <button className="button button-primary" type="button" disabled={busy} onClick={() => void runPaperTick()}>{busy ? "Running…" : "Run paper tick"}</button> : null}
-              {data.agent.status !== "stopped" ? <button className="button button-secondary" type="button" disabled={busy} onClick={() => void lifecycle("stop")}>Stop</button> : null}
-              <button className="button button-primary" type="button" disabled={busy} onClick={() => void forkAgent()}>Fork draft</button>
+            <div className="detail-status">
+              <span className={`agent-status agent-status-${agent.status}`}>{agent.status}</span>
+              {refreshing ? <span className="refreshing" role="status">Refreshing…</span> : null}
             </div>
           </div>
-          {error ? <section className="state-panel lifecycle-error" role="alert">{error}</section> : null}
-          {tickMessage ? <section className="state-panel" role="status">{tickMessage}</section> : null}
+          <JourneyRail step={journeyStep} />
+
+          <section className="panel next-step" aria-label="Next step">
+            {agent.status === "draft" ? (
+              <>
+                <div>
+                  <p className="eyebrow">NEXT · BACKTEST</p>
+                  <h2>Backtest this draft before it can launch</h2>
+                  <p>A launch needs a complete backtest on 1,441 consecutive closed hourly candles with at least one modeled entry. Open Lab to check coverage and run it.</p>
+                </div>
+                <Link className="button button-primary" href={`/lab?agent=${encodeURIComponent(agent.id)}`}>Backtest in Lab</Link>
+              </>
+            ) : null}
+            {agent.status === "running" ? (
+              <>
+                <div>
+                  <p className="eyebrow">NEXT · PAPER TICK</p>
+                  <h2>Evaluate the recipe on the latest closed candle</h2>
+                  <p>A paper tick runs every rule against current data. A modeled paper order is created only if all rules pass; otherwise the Tape records why it held or skipped.</p>
+                </div>
+                <button className="button button-primary" type="button" disabled={busy} onClick={() => void runPaperTick()}>{busy ? "Running…" : "Run paper tick"}</button>
+              </>
+            ) : null}
+            {agent.status === "paused" ? (
+              <>
+                <div>
+                  <p className="eyebrow">PAUSED</p>
+                  <h2>This agent is not evaluating</h2>
+                  <p>Resume it to run paper ticks again. Resuming requires its matching complete backtest.</p>
+                </div>
+                <button className="button button-primary" type="button" disabled={busy} onClick={() => void lifecycle("resume")}>Resume</button>
+              </>
+            ) : null}
+            {agent.status === "stopped" ? (
+              <>
+                <div>
+                  <p className="eyebrow">STOPPED</p>
+                  <h2>This agent has ended</h2>
+                  <p>Its Tape and positions stay readable. Fork it to start a new draft with the same recipe and no copied paper state.</p>
+                </div>
+                <button className="button button-primary" type="button" disabled={busy} onClick={() => void forkAgent()}>Fork draft</button>
+              </>
+            ) : null}
+          </section>
+
+          {tick ? (
+            <section className="tick-result" role="status" aria-label="Paper tick result">
+              <div className="tick-result-head">
+                <Chip tone={actionTone(tick.decision.action)}>{tick.decision.action}</Chip>
+                <strong>{tick.orderCount} paper order{tick.orderCount === 1 ? "" : "s"}</strong>
+                {tick.idempotentReplay ? <Chip>Replay of an earlier tick</Chip> : null}
+                <a className="text-button" href="#tape">Read the trace</a>
+              </div>
+              <p>{tick.decision.reason}</p>
+            </section>
+          ) : null}
+          {tickError ? <StateBlock kind="error" title="Paper tick failed"><p>{tickError}</p></StateBlock> : null}
+          {error ? <StateBlock kind="error" className="lifecycle-error"><p>{error}</p></StateBlock> : null}
+
+          {agent.status !== "stopped" ? (
+            <div className="lifecycle-controls" aria-label="Agent controls">
+              {agent.status === "running" ? <button className="button button-secondary" type="button" disabled={busy} onClick={() => void lifecycle("pause")}>Pause</button> : null}
+              <button className="button button-secondary" type="button" disabled={busy} onClick={() => void lifecycle("stop")}>Stop</button>
+              <button className="button button-secondary" type="button" disabled={busy} onClick={() => void forkAgent()}>Fork draft</button>
+            </div>
+          ) : null}
+
           <nav className="agent-tabs" aria-label="Agent sections">
-            <a href="#overview">Overview</a><a href="#positions">Positions</a><a href="#tape">Tape</a>
+            <a href="#overview">Overview</a><a href="#positions">Positions</a><a href="#orders">Orders</a><a href="#tape">Tape</a>
           </nav>
-          <section id="overview" className="state-panel agent-overview">
-            <div className="market-status-row"><h2>Agent status</h2><span className={`agent-status agent-status-${data.agent.status}`}>{data.agent.status}</span></div>
-            <dl className="agent-metadata">
-              <div><dt>Underlying</dt><dd>{data.agent.recipe.underlyingSymbol}</dd></div>
-              <div><dt>Backtest</dt><dd>{data.agent.backtestRunId ?? "Not attached"}</dd></div>
-              <div><dt>Hook rules</dt><dd>{data.agent.recipe.hookIds.length ? data.agent.recipe.hookIds.join(", ") : "No rules configured"}</dd></div>
-              <div><dt>Updated</dt><dd><time dateTime={data.agent.updatedAt}>{data.agent.updatedAt}</time></dd></div>
+
+          <section id="overview" className="panel agent-overview">
+            <div className="panel-head"><h2>Recipe overview</h2><Chip tone="ember">Modeled premiums</Chip></div>
+            <dl className="kv">
+              <div><dt>Underlying</dt><dd className="mono">{agent.recipe.underlyingSymbol}</dd></div>
+              <div><dt>Backtest</dt><dd className="mono" title={agent.backtestRunId ?? undefined}>{agent.backtestRunId ? shortHash(agent.backtestRunId, 8, 4) : "Not attached"}</dd></div>
+              {holdings ? <div><dt>Virtual reference shares</dt><dd className="mono">{holdings}</dd></div> : null}
+              {capital ? <div><dt>Paper capital</dt><dd className="mono">{formatUsd(capital, 0)}</dd></div> : null}
+              <div><dt>Updated</dt><dd className="mono"><time dateTime={agent.updatedAt}>{formatUtc(agent.updatedAt)}</time></dd></div>
+              <div className="kv-wide">
+                <dt>Hook rules ({agent.recipe.hookIds.length})</dt>
+                <dd>{agent.recipe.hookIds.length ? <span className="hook-chips">{agent.recipe.hookIds.map((id) => <span className="hook-chip" key={id}>{id}</span>)}</span> : "No rules configured"}</dd>
+              </div>
             </dl>
-            <p className="market-note">Paper premiums use a disclosed Black–Scholes model with RV30 × 1.1. No venue option quote, fee schedule, wallet collateral, or live execution is represented.</p>
+            <p className="panel-note">Paper premiums use a disclosed Black–Scholes model with RV30 × 1.1 and 50 bp slippage. No venue option quote, fee schedule, wallet collateral or live execution is represented.</p>
           </section>
-          <section id="positions" className="state-panel tape-panel">
-            <h2>Paper positions</h2>
-            {data.positions.length === 0 ? <p>No paper positions.</p> : (
-              <div className="tape-list">{data.positions.map((position) => <article className="tape-row" key={position.id}><strong>{position.symbol} {position.optionType.toUpperCase()} · ${position.strikeUsd}</strong><span>{position.quantity} one-share model unit(s) · {position.status}</span><span>Expiry {position.expiryAt} · mark ${position.markPriceUsd}</span><span>Unrealized P/L ${position.unrealizedPnlUsd}</span></article>)}</div>
-            )}
+
+          <section id="positions" className="panel">
+            <div className="panel-head"><h2>Paper positions</h2><Chip>Paper</Chip></div>
+            <PositionGrid positions={data.positions} />
           </section>
-          <section id="orders" className="state-panel tape-panel">
-            <div className="market-status-row"><h2>Paper orders</h2><span>PAPER</span></div>
-            {data.orders.length === 0 ? <p>No paper orders.</p> : <div className="tape-list">{data.orders.map((order) => <article className="tape-row" key={order.id}><strong>{order.side.toUpperCase()} {order.quantity} modeled put unit(s)</strong><span>{order.symbol} ${order.strikeUsd} · {order.expiryAt}</span><span>Model ${order.modelPremiumUsd} · paper fill ${order.priceUsd} · {order.slippageBps} bp slippage</span></article>)}</div>}
+
+          <section id="orders" className="panel">
+            <div className="panel-head"><h2>Paper orders</h2><Chip>Paper</Chip></div>
+            <OrdersTable orders={data.orders} />
           </section>
-          <section id="tape" className="state-panel tape-panel">
-            <div className="market-status-row"><h2>Decision Tape</h2><span>PAPER</span></div>
-            {data.decisions.length === 0 ? <p>No persisted decisions.</p> : (
-              <div className="tape-list">{data.decisions.map((decision) => (
-                <article className="tape-row" key={decision.id}>
-                  <div className="market-status-row"><strong>{decision.action.toUpperCase()}</strong><time dateTime={decision.createdAt}>{decision.createdAt}</time></div>
-                  <p>{decision.reason}</p>
-                  <p className="market-note">Source: {decision.snapshotSource} · Recipe {decision.recipeHash}</p>
-                  {decision.hookResults.length ? <details><summary>Decision trace ({decision.hookResults.length})</summary><ul>{decision.hookResults.map((result, index) => <li key={`${result.hookId}:${index}`}>{result.hookId} · {result.status}: {result.reason}</li>)}</ul></details> : null}
-                </article>
-              ))}</div>
-            )}
+
+          <section id="tape" className="panel">
+            <div className="panel-head"><h2>Decision Tape</h2><Link className="text-button" href={`/tape?agentId=${encodeURIComponent(agent.id)}`}>Open full Tape</Link></div>
+            <TapeList decisions={data.decisions} />
           </section>
         </>
       ) : null}

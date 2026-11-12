@@ -5,15 +5,27 @@ import type { FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { AgentDetailSchema, ApiErrorSchema, MarketListSchema } from "../../../lib/domain/contracts";
 import { buildProtectivePutRecipe } from "../../../lib/hooks/catalog";
+import { Chip } from "../ui";
+import { errorText } from "../format";
 
 function responseError(body: unknown, fallback: string): string {
   const parsed = ApiErrorSchema.safeParse(body);
   return parsed.success ? parsed.data.error.message : fallback;
 }
 
+const stageSummary = [
+  ["Gate", "Calmo, Corpax, Sessia", "Enter only in calm volatility, outside corporate actions, in regular hours."],
+  ["Strike", "Percy, Tenora", "Buy a put 7% out of the money, about 30 calendar days out."],
+  ["Size", "Coverix, Capra", "Cover the reference shares; spend at most 2% of their value on premium."],
+  ["Pulse", "Trailo", "Arm a trailing exit once the modeled put doubles."],
+  ["Expiry", "Lastra, Nextra", "Close 24 hours before expiry, then open the next cycle."],
+  ["Breaker", "Haltr, Daylo, Drawra, Exposa, Venux", "Block new entries on bad data, daily loss, drawdown or exposure."],
+] as const;
+
 export function HouseAgentCreator() {
   const router = useRouter();
   const [symbols, setSymbols] = useState<string[]>([]);
+  const [marketsLoading, setMarketsLoading] = useState(true);
   const [symbol, setSymbol] = useState("AAPL");
   const [shares, setShares] = useState("10");
   const [capital, setCapital] = useState("100000");
@@ -31,10 +43,13 @@ export function HouseAgentCreator() {
       .then(({ markets }) => {
         const nextSymbols = markets.map((market) => market.symbol);
         setSymbols(nextSymbols);
+        setMarketsLoading(false);
         if (nextSymbols.length) setSymbol((current) => nextSymbols.includes(current) ? current : nextSymbols.includes("AAPL") ? "AAPL" : nextSymbols[0]!);
       })
       .catch((reason: unknown) => {
-        if (!controller.signal.aborted) setError(reason instanceof Error ? reason.message : "Market list is temporarily unavailable.");
+        if (controller.signal.aborted) return;
+        setMarketsLoading(false);
+        setError(errorText(reason, "Market list is temporarily unavailable."));
       });
     return () => controller.abort();
   }, []);
@@ -56,28 +71,52 @@ export function HouseAgentCreator() {
       const agent = AgentDetailSchema.parse(body);
       router.push(`/agents/${encodeURIComponent(agent.id)}`);
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Paper agent could not be created.");
-    } finally {
+      setError(errorText(reason, "Paper agent could not be created."));
       setBusy(false);
     }
   }
 
   return (
-    <section className="state-panel" aria-label="Create Protective Put House Agent">
-      <div className="market-status-row"><div><p className="eyebrow">HOUSE AGENT · PAPER</p><h2>Protective Put</h2></div><span className="template-badge template-badge-paper_ready">Paper ready</span></div>
-      <p>Creates one deterministic model recipe. Reference shares are virtual simulation inputs and are not read from or locked in your wallet.</p>
-      <form className="market-controls" onSubmit={(event) => void createDraft(event)}>
-        <label htmlFor="house-agent-symbol">Underlying</label>
-        <select id="house-agent-symbol" value={symbol} onChange={(event) => setSymbol(event.target.value)} disabled={busy || symbols.length === 0}>
-          {symbols.map((item) => <option key={item} value={item}>{item}</option>)}
-        </select>
-        <label htmlFor="house-agent-shares">Virtual reference shares</label>
-        <input id="house-agent-shares" type="number" min="1" step="1" value={shares} onChange={(event) => setShares(event.target.value)} required />
-        <label htmlFor="house-agent-capital">Paper capital (USD)</label>
-        <input id="house-agent-capital" type="number" min="100" step="100" value={capital} onChange={(event) => setCapital(event.target.value)} required />
-        <button className="button button-primary" type="submit" disabled={busy || symbols.length === 0}>{busy ? "Creating…" : "Create paper draft"}</button>
+    <section className="panel creator" id="configure" aria-label="Create Protective Put House Agent">
+      <div className="panel-head">
+        <div><p className="eyebrow">STEP 2 · CONFIGURE</p><h2>Protective Put draft</h2></div>
+        <Chip tone="azure">Paper ready</Chip>
+      </div>
+      <p className="panel-lede">Creates one deterministic recipe. Reference shares and capital are virtual simulation inputs: nothing is read from, or locked in, your wallet.</p>
+      <form className="creator-form" onSubmit={(event) => void createDraft(event)}>
+        <div className="field">
+          <label htmlFor="house-agent-symbol">Underlying</label>
+          <select id="house-agent-symbol" value={symbol} onChange={(event) => setSymbol(event.target.value)} disabled={busy || symbols.length === 0}>
+            {marketsLoading ? <option value="">Loading markets…</option> : null}
+            {symbols.map((item) => <option key={item} value={item}>{item}</option>)}
+          </select>
+        </div>
+        <div className="field">
+          <label htmlFor="house-agent-shares">Virtual reference shares</label>
+          <input id="house-agent-shares" type="number" min="1" step="1" inputMode="numeric" value={shares} onChange={(event) => setShares(event.target.value)} required />
+          <span className="field-hint">Shares the put is sized to protect.</span>
+        </div>
+        <div className="field">
+          <label htmlFor="house-agent-capital">Paper capital (USD)</label>
+          <input id="house-agent-capital" type="number" min="100" step="100" inputMode="numeric" value={capital} onChange={(event) => setCapital(event.target.value)} required />
+          <span className="field-hint">Virtual cash that pays premiums.</span>
+        </div>
+        <button className="button button-primary creator-submit" type="submit" disabled={busy || marketsLoading || symbols.length === 0}>{busy ? "Creating…" : "Create paper draft"}</button>
       </form>
-      {error ? <p role="alert">{error}</p> : null}
+      {error ? <p role="alert" className="form-error">{error}</p> : null}
+      {!marketsLoading && symbols.length === 0 && !error ? <p className="form-hint">No active markets were returned, so a draft cannot be created right now.</p> : null}
+
+      <div className="recipe-outline">
+        <h3>What this recipe will run</h3>
+        <ol>
+          {stageSummary.map(([stage, hooks, text]) => (
+            <li key={stage}>
+              <span className="recipe-stage">{stage}</span>
+              <span className="recipe-body"><span className="recipe-hooks">{hooks}</span>{text}</span>
+            </li>
+          ))}
+        </ol>
+      </div>
     </section>
   );
 }

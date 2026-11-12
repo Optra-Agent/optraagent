@@ -538,6 +538,8 @@ export const LaserFlow = ({
     dpr
   };
   const settingsRef = useRef(settings);
+  // Upstream pattern: keep the render loop reading the latest props without re-creating the WebGL context.
+  // eslint-disable-next-line react-hooks/refs
   settingsRef.current = settings;
 
   useEffect(() => {
