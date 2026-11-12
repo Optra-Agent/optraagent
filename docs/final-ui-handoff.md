@@ -1,5 +1,7 @@
 # Optra Agent: Final UI Handoff
 
+> The landing hero, app shell and control library described below were refined in a second pass. See `docs/ui-consistency-handoff.md` for the current state; this document remains accurate for the data contracts, honesty labels and first-pass verification.
+
 Updated: 2026-11-12. Scope: premium landing page and application UI on top of the verified Codex Protective Put paper core. No API, schema, migration, engine, backtest, paper-execution or auth code was changed.
 
 ## UI STATUS
@@ -101,11 +103,11 @@ Final run, 2026-11-12:
 | `bun run test:e2e` | 19 passed (11 existing, unchanged; 8 new in `landing.spec.ts` and `verify.spec.ts`) |
 | `bun run build` | passed; `/`, `/agents`, `/forge`, `/hooks`, `/market`, `/verify` prerendered, `/agents/[agentId]`, `/lab`, `/tape` dynamic |
 
-Environment note: a `next start` process (PID 72815, started before this session) was holding port 3000 on IPv6 and returned 404 for app routes. Playwright's `reuseExistingServer` picks up whatever answers on `127.0.0.1:3000`, so `bun run test:e2e` fails whenever that stale process is the only listener. Stop it, or let Playwright start its own server, before running e2e. I did not kill it.
+Environment note (corrected): port 3000 on this machine was held by a `next start` process whose working directory is the separate **SENTERA** project, not OPTRA. It answers 404 for OPTRA routes. Playwright's `reuseExistingServer` accepts whatever answers on `127.0.0.1:3000`, so `bun run test:e2e` cannot run cleanly while that process is the only listener. An earlier version of this note called it a stale OPTRA process; that was wrong. It was not touched. See `docs/ui-consistency-handoff.md` for how the suite was run.
 
 ## FILES CHANGED
 
-Added: `app/(marketing)/` (layout, page, `marketing.css`), `app/(app)/verify/page.tsx`, `components/marketing/` (`HeroStage`, `MarketingNav`, `sections`, `data`), `components/app/ui.tsx`, `components/app/paper.tsx`, `components/app/format.ts`, `components/app/verify/VerifyScreen.tsx`, `components/LaserFlow.tsx`, `components/LaserFlow.css`, `components.json`, `tests/e2e/landing.spec.ts`, `tests/e2e/verify.spec.ts`, `docs/final-ui-handoff.md`, `docs/ui-integration-requests.md`, `docs/ui-screenshots/` (7 evidence images).
+Added: `app/(marketing)/` (layout, page, `marketing.css`), `app/(app)/verify/page.tsx`, `components/marketing/` (`HeroStage`, `MarketingNav`, `sections`, `data`), `components/app/ui.tsx`, `components/app/paper.tsx`, `components/app/format.ts`, `components/app/verify/VerifyScreen.tsx`, `components/LaserFlow.tsx`, `components/LaserFlow.css`, `components.json`, `tests/e2e/landing.spec.ts`, `tests/e2e/verify.spec.ts`, `docs/final-ui-handoff.md`, `docs/ui-integration-requests.md`, `docs/ui-screenshots/`.
 
 Rewritten or restyled: `app/globals.css`, `app/layout.tsx` (fonts, metadata), `app/(app)/layout.tsx`, every `app/(app)/*/page.tsx` (titles; `/lab` reads `?agent=`), `components/app/AppNav.tsx`, `WalletSession.tsx`, `AuthSessionProvider.tsx` (menu state only), and the agents, forge, hooks, lab, market and tape screens. `docs/landing-content-contract.md` updated to the shipped copy.
 
