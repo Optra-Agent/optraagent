@@ -1,11 +1,17 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { ApiErrorSchema, PaperPositionsResponseSchema, TapeResponseSchema } from "../../../lib/domain/contracts";
-import type { AgentDecision, PaperOrder, PaperPosition } from "../../../lib/domain/contracts";
+import Link from "next/link";
+import { useEffect, useMemo, useState } from "react";
+import { AgentListResponseSchema, ApiErrorSchema, PaperPositionsResponseSchema, TapeResponseSchema } from "../../../lib/domain/contracts";
+import type { Agent, AgentDecision, PaperOrder, PaperPosition } from "../../../lib/domain/contracts";
+import { useAuthSession } from "../AuthSessionProvider";
+import { formatUtc, shortHash, titleCase, errorText } from "../format";
+import { OrdersTable, PositionGrid, TapeList } from "../paper";
+import { Chip, JourneyRail, PageHeader, Skeleton, StateBlock } from "../ui";
 
 type TapeData = { decisions: AgentDecision[]; orders: PaperOrder[]; positions: PaperPosition[] };
 type LoadState = "idle" | "loading" | "ready" | "error";
+type ActionFilter = "all" | AgentDecision["action"];
 
 async function parseResponse(response: Response): Promise<unknown> {
   try { return await response.json(); } catch { return null; }
@@ -16,11 +22,69 @@ function getErrorMessage(body: unknown): string {
   return parsed.success ? parsed.data.error.message : "Paper history is temporarily unavailable.";
 }
 
+function AgentPicker() {
+  const { status, setWalletMenuOpen } = useAuthSession();
+  const [agents, setAgents] = useState<Agent[] | null>(null);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    if (status !== "signed_in") return;
+    const controller = new AbortController();
+    void fetch("/api/agents", { credentials: "include", cache: "no-store", signal: controller.signal })
+      .then(async (response) => {
+        const body = await parseResponse(response);
+        if (!response.ok) throw new Error(getErrorMessage(body));
+        return AgentListResponseSchema.parse(body);
+      })
+      .then((result) => setAgents(result.agents))
+      .catch((reason: unknown) => {
+        if (!controller.signal.aborted) setError(errorText(reason, "Your agents could not be loaded."));
+      });
+    return () => controller.abort();
+  }, [status]);
+
+  if (status === "loading") return <StateBlock kind="loading" title="Checking wallet session…" />;
+  if (status === "signed_out") {
+    return (
+      <StateBlock kind="info" title="No agent selected" action={<button className="button button-secondary" type="button" onClick={() => { setWalletMenuOpen(true); window.scrollTo({ top: 0, behavior: "smooth" }); }}>Choose a wallet</button>}>
+        <p>Open Tape from an agent detail page to inspect its persisted decisions.</p>
+        <p className="subtle">Tape is private to the wallet that owns the agent. Connect to pick one of yours.</p>
+      </StateBlock>
+    );
+  }
+  if (error) return <StateBlock kind="error" title="Agents could not be loaded"><p>{error}</p></StateBlock>;
+  if (!agents) return <div className="state-panel" role="status"><Skeleton lines={3} /></div>;
+  if (agents.length === 0) {
+    return (
+      <StateBlock kind="empty" title="No agents yet" action={<Link className="button button-primary" href="/agents#configure">Create a Protective Put draft</Link>}>
+        <p>Tape fills after a paper agent runs its first tick.</p>
+      </StateBlock>
+    );
+  }
+  return (
+    <section className="panel" aria-label="Choose an agent">
+      <div className="panel-head"><h2>Choose an agent</h2><span className="coverage-sub">{agents.length} saved</span></div>
+      <ul className="picker-list">
+        {agents.map((agent) => (
+          <li key={agent.id}>
+            <Link href={`/tape?agentId=${encodeURIComponent(agent.id)}`}>
+              <span className="picker-name">{agent.name}</span>
+              <span className="picker-meta mono">{titleCase(agent.templateId)} · {shortHash(agent.recipeHash, 14, 6)} · {formatUtc(agent.updatedAt)}</span>
+              <span className={`agent-status agent-status-${agent.status}`}>{agent.status}</span>
+            </Link>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
 export function TapeScreen({ agentId }: { agentId: string }) {
   const [data, setData] = useState<TapeData>({ decisions: [], orders: [], positions: [] });
   const [state, setState] = useState<LoadState>(agentId ? "loading" : "idle");
   const [error, setError] = useState("");
   const [refreshCount, setRefreshCount] = useState(0);
+  const [filter, setFilter] = useState<ActionFilter>("all");
 
   function refresh() {
     setData({ decisions: [], orders: [], positions: [] });
@@ -49,88 +113,74 @@ export function TapeScreen({ agentId }: { agentId: string }) {
       setState("ready");
     }).catch((reason: unknown) => {
       if (controller.signal.aborted) return;
-      setError(reason instanceof Error ? reason.message : "Paper history is temporarily unavailable.");
+      setError(errorText(reason, "Paper history is temporarily unavailable."));
       setState("error");
     });
     return () => controller.abort();
   }, [agentId, refreshCount]);
 
+  const counts = useMemo(() => {
+    const tally = { open: 0, hold: 0, close: 0, skip: 0 };
+    for (const decision of data.decisions) tally[decision.action] += 1;
+    return tally;
+  }, [data.decisions]);
+  const visible = filter === "all" ? data.decisions : data.decisions.filter((decision) => decision.action === filter);
+
   return (
     <main className="page-container">
-      <div className="page-heading-row">
-        <div>
-          <p className="eyebrow">APPEND-ONLY · PAPER</p>
-          <h1>Optra Tape</h1>
-          <p className="page-description">Persisted agent decisions, source provenance, rule traces, and open paper positions.</p>
-        </div>
-        {agentId ? <button className="button button-secondary" type="button" disabled={state === "loading"} onClick={refresh}>Refresh Tape</button> : null}
-      </div>
+      <PageHeader
+        eyebrow="APPEND-ONLY · PAPER"
+        title="Optra Tape"
+        description="Persisted agent decisions, source provenance, rule traces, and open paper positions. Holds and skips are first-class entries, not gaps."
+        actions={agentId ? <button className="button button-secondary" type="button" disabled={state === "loading"} onClick={refresh}>Refresh Tape</button> : null}
+      />
+      {agentId ? <JourneyRail step={6} /> : null}
 
-      {!agentId ? (
-        <section className="state-panel">
-          <h2>No agent selected</h2>
-          <p>Open Tape from an agent detail page to inspect its persisted decisions.</p>
-        </section>
+      {!agentId ? <AgentPicker /> : null}
+      {state === "loading" ? <div className="state-panel" role="status"><Skeleton lines={4} /><span className="sr-only">Loading persisted paper history…</span></div> : null}
+      {state === "error" ? (
+        <StateBlock kind="error" title="Tape could not be loaded" action={<><button className="button button-secondary" type="button" onClick={refresh}>Retry</button><Link className="button button-secondary" href="/agents">Back to agents</Link></>}>
+          <p>{error}</p>
+        </StateBlock>
       ) : null}
-      {state === "loading" ? <p role="status">Loading persisted paper history…</p> : null}
-      {state === "error" ? <section className="state-panel" role="alert">{error}</section> : null}
       {state === "ready" ? (
         <>
-          <section className="state-panel tape-panel" aria-label="Paper positions">
-            <div className="market-status-row"><h2>Positions</h2><span>PAPER</span></div>
-            {data.positions.length === 0 ? <p>No paper positions.</p> : (
-              <div className="tape-list">
-                {data.positions.map((position) => (
-                  <article className="tape-row" key={position.id}>
-                    <strong>{position.symbol}</strong>
-                    <span>{position.quantity} · {position.status}</span>
-                    <span>Mark {position.markPriceUsd} USD</span>
-                    <span>Unrealized P/L {position.unrealizedPnlUsd} USD</span>
-                  </article>
-                ))}
+          <dl className="metric-row tape-summary" aria-label="Tape summary">
+            <div className="metric"><dt>Decisions</dt><dd className="mono">{data.decisions.length}</dd></div>
+            <div className="metric"><dt>Opened</dt><dd className="mono">{counts.open}</dd></div>
+            <div className="metric"><dt>Held or skipped</dt><dd className="mono">{counts.hold + counts.skip}</dd></div>
+            <div className="metric"><dt>Paper orders</dt><dd className="mono">{data.orders.length}</dd></div>
+          </dl>
+          <div className="tape-layout">
+            <section className="panel" aria-label="Decision Tape">
+              <div className="panel-head">
+                <h2>Decision Tape</h2>
+                <Chip>Paper</Chip>
               </div>
-            )}
-          </section>
-          <section className="state-panel tape-panel" aria-label="Paper orders">
-            <div className="market-status-row"><h2>Paper orders</h2><span>MODELED · PAPER</span></div>
-            {data.orders.length === 0 ? <p>No paper orders.</p> : (
-              <div className="tape-list">
-                {data.orders.map((order) => (
-                  <article className="tape-row" key={order.id}>
-                    <div className="market-status-row"><strong>{order.side.toUpperCase()} {order.quantity} {order.symbol} {order.optionType.toUpperCase()}</strong><span>{order.status}</span></div>
-                    <span>Strike ${order.strikeUsd} · expiry {order.expiryAt}</span>
-                    <span>Model premium ${order.modelPremiumUsd} · paper fill ${order.priceUsd}</span>
-                    <span>IV {order.impliedVolatility} · {order.slippageBps} bp slippage · venue fees excluded</span>
-                  </article>
-                ))}
-              </div>
-            )}
-          </section>
-          <section className="state-panel tape-panel" aria-label="Decision Tape">
-            <div className="market-status-row"><h2>Decision Tape</h2><span>PAPER</span></div>
-            {data.decisions.length === 0 ? <p>No persisted decisions.</p> : (
-              <div className="tape-list">
-                {data.decisions.map((decision) => (
-                  <article className="tape-row" key={decision.id}>
-                    <div className="market-status-row">
-                      <strong>{decision.action.toUpperCase()}</strong>
-                      <time dateTime={decision.createdAt}>{decision.createdAt}</time>
-                    </div>
-                    <p>{decision.reason}</p>
-                    <p className="market-note">Source: {decision.snapshotSource} · Recipe {decision.recipeHash}</p>
-                    {decision.hookResults.length > 0 ? (
-                      <details>
-                        <summary>Decision trace ({decision.hookResults.length})</summary>
-                        <ul>
-                          {decision.hookResults.map((result, index) => <li key={`${result.hookId}:${index}`}>{result.hookId} · {result.status}: {result.reason}</li>)}
-                        </ul>
-                      </details>
-                    ) : null}
-                  </article>
-                ))}
-              </div>
-            )}
-          </section>
+              {data.decisions.length > 0 ? (
+                <div className="filter-row" role="group" aria-label="Filter decisions by action">
+                  {(["all", "open", "hold", "close", "skip"] as const).map((action) => (
+                    <button key={action} type="button" className="filter-pill" aria-pressed={filter === action} onClick={() => setFilter(action)}>
+                      {action === "all" ? "All" : titleCase(action)}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+              <TapeList decisions={visible} />
+              {data.decisions.length > 0 && visible.length === 0 ? <p className="empty-line">No {filter} decisions on this Tape.</p> : null}
+            </section>
+            <div className="tape-side">
+              <section className="panel" aria-label="Paper positions">
+                <div className="panel-head"><h2>Positions</h2><Chip>Paper</Chip></div>
+                <PositionGrid positions={data.positions} />
+              </section>
+              <section className="panel" aria-label="Paper orders">
+                <div className="panel-head"><h2>Paper orders</h2><Chip tone="ember">Modeled premiums</Chip></div>
+                <OrdersTable orders={data.orders} />
+              </section>
+              <Link className="button button-secondary" href={`/agents/${encodeURIComponent(agentId)}`}>Open agent</Link>
+            </div>
+          </div>
         </>
       ) : null}
     </main>

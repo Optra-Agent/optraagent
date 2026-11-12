@@ -3,6 +3,8 @@
 import { useEffect, useState } from "react";
 import { ApiErrorSchema, MarketListSchema, MarketSnapshotSchema } from "../../../lib/domain/contracts";
 import type { MarketAsset, MarketSnapshot } from "../../../lib/domain/contracts";
+import { formatUtc, errorText } from "../format";
+import { Chip, PageHeader, Skeleton, StateBlock } from "../ui";
 
 type LoadStatus = "loading" | "ready" | "error";
 
@@ -60,7 +62,7 @@ export function MarketScreen() {
       })
       .catch((error: unknown) => {
         if (controller.signal.aborted) return;
-        setListError(error instanceof Error ? error.message : "Market data is temporarily unavailable.");
+        setListError(errorText(error, "Market data is temporarily unavailable."));
         setListStatus("error");
       });
     return () => controller.abort();
@@ -81,57 +83,72 @@ export function MarketScreen() {
       })
       .catch((error: unknown) => {
         if (controller.signal.aborted) return;
-        setSnapshotError(error instanceof Error ? error.message : "Market quote is unavailable.");
+        setSnapshotError(errorText(error, "Market quote is unavailable."));
         setSnapshotStatus("error");
       });
     return () => controller.abort();
   }, [selectedSymbol, refreshCount]);
 
+  const blocked = snapshot ? snapshot.stale || snapshot.tradingHalt : false;
+
   return (
     <main className="page-container">
-      <div className="page-heading-row">
-        <div>
-          <p className="eyebrow">READ-ONLY · ROBINHOOD CHAIN</p>
-          <h1>Market data</h1>
-          <p className="page-description">Current underlying references and Robinhood token quotes, with provider timestamps and multiplier data.</p>
-        </div>
-      </div>
+      <PageHeader
+        eyebrow="READ-ONLY · ROBINHOOD CHAIN"
+        title="Market data"
+        description="Current underlying references and Robinhood token quotes, with provider timestamps and multiplier data. Nothing on this page is an option price."
+      />
 
-      {listStatus === "loading" ? <p role="status">Loading supported markets…</p> : null}
-      {listStatus === "error" ? <section className="state-panel" role="alert">{listError}</section> : null}
-      {listStatus === "ready" && markets.length === 0 ? <section className="state-panel">No active Robinhood Chain markets are available.</section> : null}
+      {listStatus === "loading" ? <StateBlock kind="loading" title="Loading supported markets…" /> : null}
+      {listStatus === "error" ? <StateBlock kind="error" title="Markets unavailable"><p>{listError}</p></StateBlock> : null}
+      {listStatus === "ready" && markets.length === 0 ? <StateBlock kind="empty">No active Robinhood Chain markets are available.</StateBlock> : null}
 
       {markets.length > 0 ? (
-        <section className="state-panel market-panel" aria-label="Current market quote">
-          <div className="market-controls">
-            <label htmlFor="market-symbol">Underlying symbol</label>
-            <select id="market-symbol" value={selectedSymbol} onChange={(event) => selectMarket(event.target.value)}>
-              {markets.map((market) => <option key={market.symbol} value={market.symbol}>{market.symbol} · {market.name}</option>)}
-            </select>
+        <section className="panel market-panel" aria-label="Current market quote">
+          <div className="control-row">
+            <div className="field field-inline">
+              <label htmlFor="market-symbol">Underlying symbol</label>
+              <select id="market-symbol" value={selectedSymbol} onChange={(event) => selectMarket(event.target.value)}>
+                {markets.map((market) => <option key={market.symbol} value={market.symbol}>{market.symbol} · {market.name}</option>)}
+              </select>
+            </div>
             <button className="button button-secondary" type="button" disabled={snapshotStatus === "loading"} onClick={refreshQuote}>
               Refresh quote
             </button>
           </div>
 
-          {snapshotStatus === "loading" ? <p role="status">Loading {selectedSymbol} quote…</p> : null}
+          {snapshotStatus === "loading" ? <div role="status"><Skeleton lines={3} /><span className="sr-only">Loading {selectedSymbol} quote…</span></div> : null}
           {snapshotStatus === "error" ? <p role="alert" className="inline-error market-error">{snapshotError}</p> : null}
           {snapshot ? (
             <>
-              <div className="market-status-row">
-                <strong>{snapshot.stale ? "Quote stale" : snapshot.tradingHalt ? "Trading halted" : "Fresh quote"}</strong>
-                <span>Robinhood quote · {snapshot.pricingMethod}</span>
+              <div className="quote-status">
+                <Chip tone={blocked ? "ember" : "azure"}>{snapshot.stale ? "Quote stale" : snapshot.tradingHalt ? "Trading halted" : "Fresh quote"}</Chip>
+                <span className="mono">Robinhood quote · {snapshot.pricingMethod}</span>
               </div>
-              {snapshot.stale ? <p role="alert">Paper entries are blocked until a fresh quote is available.</p> : null}
-              {snapshot.tradingHalt ? <p role="alert">Paper entries are blocked while Robinhood reports a trading halt.</p> : null}
-              <dl className="market-grid">
-                <div><dt>Underlying bid</dt><dd>{snapshot.underlyingBidUsd} USD</dd></div>
-                <div><dt>Underlying ask</dt><dd>{snapshot.underlyingAskUsd} USD</dd></div>
-                <div><dt>Token quote bid</dt><dd>{snapshot.tokenBidUsd} USD</dd></div>
-                <div><dt>Token quote ask</dt><dd>{snapshot.tokenAskUsd} USD</dd></div>
-                <div><dt>Current multiplier</dt><dd>{snapshot.currentMultiplier}</dd></div>
-                <div><dt>Provider timestamp</dt><dd><time dateTime={snapshot.observedAt}>{snapshot.observedAt}</time></dd></div>
+              {snapshot.stale ? <p className="callout callout-ember" role="alert">Paper entries are blocked until a fresh quote is available.</p> : null}
+              {snapshot.tradingHalt ? <p className="callout callout-ember" role="alert">Paper entries are blocked while Robinhood reports a trading halt.</p> : null}
+              <div className="quote-board">
+                <section aria-label="Underlying reference">
+                  <h2>Underlying reference</h2>
+                  <dl className="quote-pair">
+                    <div><dt>Underlying bid</dt><dd className="mono">{snapshot.underlyingBidUsd} USD</dd></div>
+                    <div><dt>Underlying ask</dt><dd className="mono">{snapshot.underlyingAskUsd} USD</dd></div>
+                  </dl>
+                </section>
+                <section aria-label="Token quote">
+                  <h2>Robinhood token quote</h2>
+                  <dl className="quote-pair">
+                    <div><dt>Token quote bid</dt><dd className="mono">{snapshot.tokenBidUsd} USD</dd></div>
+                    <div><dt>Token quote ask</dt><dd className="mono">{snapshot.tokenAskUsd} USD</dd></div>
+                  </dl>
+                </section>
+              </div>
+              <dl className="kv">
+                <div><dt>Current multiplier</dt><dd className="mono">{snapshot.currentMultiplier}</dd></div>
+                <div><dt>Provider timestamp</dt><dd className="mono"><time dateTime={snapshot.observedAt}>{formatUtc(snapshot.observedAt)}</time></dd></div>
+                <div><dt>Received</dt><dd className="mono"><time dateTime={snapshot.receivedAt}>{formatUtc(snapshot.receivedAt)}</time></dd></div>
               </dl>
-              <p className="market-note">Underlying reference prices are not option premiums or fills. The token quote is reported separately; no price is modeled here.</p>
+              <p className="panel-note">Underlying reference prices are not option premiums or fills. The token quote is reported separately; no price is modeled here.</p>
             </>
           ) : null}
         </section>
