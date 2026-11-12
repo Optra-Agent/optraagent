@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { Check } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
@@ -164,6 +165,32 @@ export function ForgeScreen() {
         description="Assemble a recipe from six stages of hook rules. The server validates it, gives it a canonical hash, and blocks anything it cannot run."
       />
 
+      <ol className="journey forge-rail" aria-label="Forge workflow">
+        <li className="forge-rail-wrap">
+          {(() => {
+            const steps = [
+              { label: "Choose agent", done: Boolean(templateId && symbol) },
+              { label: "Configure hooks", done: hookIds.length > 0 },
+              { label: "Validate recipe", done: Boolean(validation?.valid) },
+              { label: "Backtest in Lab", done: false },
+            ];
+            const current = steps.findIndex((step) => !step.done);
+            return (
+              <ol>
+                {steps.map((step, index) => {
+                  const state = step.done ? "done" : index === current ? "current" : "next";
+                  return (
+                    <li key={step.label} className={`journey-step journey-${state}`} aria-current={state === "current" ? "step" : undefined}>
+                      <span className="journey-static"><span className="journey-index">{step.done ? <Check aria-hidden /> : index + 1}</span><span className="journey-label">{step.label}</span></span>
+                    </li>
+                  );
+                })}
+              </ol>
+            );
+          })()}
+        </li>
+      </ol>
+
       {loadState === "loading" ? <StateBlock kind="loading" title="Loading verified recipe inputs…" /> : null}
       {loadState === "error" ? <StateBlock kind="error" title="Forge is unavailable"><p>{loadError}</p></StateBlock> : null}
       {loadState === "ready" && catalog ? (
@@ -208,21 +235,25 @@ export function ForgeScreen() {
                       <h3>{stage.label}</h3>
                       <span>{stage.purpose}</span>
                     </div>
-                    {group.ready.map((hook) => (
-                      <label className="forge-hook" key={hook.id}>
-                        <input type="checkbox" checked={hookIds.includes(hook.id)} onChange={() => toggleHook(hook.id)} />
-                        <span><strong>{hook.name}</strong><small>{hook.summary}</small></span>
-                      </label>
-                    ))}
+                    <div className="forge-chips">
+                      {group.ready.map((hook) => (
+                        <label className="forge-hook" key={hook.id} title={hook.summary}>
+                          <input type="checkbox" checked={hookIds.includes(hook.id)} onChange={() => toggleHook(hook.id)} />
+                          <span><strong>{hook.name}</strong><small className="sr-only">{hook.summary}</small></span>
+                        </label>
+                      ))}
+                    </div>
                     {group.catalogOnly.length > 0 ? (
                       <details className="forge-locked">
                         <summary>{group.catalogOnly.length} catalog-only in {stage.label.toLowerCase()} (locked)</summary>
-                        {group.catalogOnly.map((hook) => (
-                          <label className="forge-hook forge-hook-locked" key={hook.id}>
-                            <input type="checkbox" checked={false} disabled readOnly />
-                            <span><strong>{hook.name}</strong><small>{hook.summary} · {hook.unavailableReason ?? "Not implemented"}</small></span>
-                          </label>
-                        ))}
+                        <div className="forge-chips forge-chips-locked">
+                          {group.catalogOnly.map((hook) => (
+                            <label className="forge-hook forge-hook-locked" key={hook.id} title={`${hook.summary} ${hook.unavailableReason ?? "Not implemented"}`}>
+                              <input type="checkbox" checked={false} disabled readOnly />
+                              <span><strong>{hook.name}</strong><small className="sr-only">{hook.summary} · {hook.unavailableReason ?? "Not implemented"}</small></span>
+                            </label>
+                          ))}
+                        </div>
                       </details>
                     ) : null}
                   </div>

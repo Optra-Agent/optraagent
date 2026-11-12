@@ -11,6 +11,7 @@ import { TemplateCatalog } from "./TemplateCatalog";
 import { HouseAgentCreator } from "./HouseAgentCreator";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { Wallet } from "lucide-react";
 
 async function responseMessage(response: Response): Promise<string> {
   try {
@@ -71,14 +72,15 @@ export function AgentListScreen() {
       {status === "loading" ? <StateBlock kind="loading" title="Checking wallet session…" /> : null}
       {status === "error" ? <StateBlock kind="error" title="Wallet session could not be checked">Retry from the wallet control in the header.</StateBlock> : null}
       {status === "signed_out" ? (
-        <StateBlock
-          kind="info"
-          title="No agent session"
-          action={<Button variant="outline" type="button" onClick={() => { setWalletMenuOpen(true); window.scrollTo({ top: 0, behavior: "smooth" }); }}>Choose a wallet</Button>}
-        >
-          <p>Connect a wallet to view your agents.</p>
-          <p className="subtle">Supported: MetaMask and Phantom EVM on Robinhood Chain. Signing in proves wallet ownership only and never sends a transaction.</p>
-        </StateBlock>
+        <div className="connect-card" role="region" aria-label="Wallet session">
+          <span className="connect-icon" aria-hidden="true"><Wallet /></span>
+          <div className="connect-copy">
+            <h2>Connect to start</h2>
+            <p>Connect a wallet to view your agents.</p>
+            <p className="subtle">MetaMask and Phantom EVM on Robinhood Chain. Signing in proves wallet ownership only and never sends a transaction.</p>
+          </div>
+          <Button type="button" onClick={() => { setWalletMenuOpen(true); window.scrollTo({ top: 0, behavior: "smooth" }); }}>Choose a wallet</Button>
+        </div>
       ) : null}
 
       {status === "signed_in" ? (

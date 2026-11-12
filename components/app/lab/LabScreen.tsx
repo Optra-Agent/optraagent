@@ -17,6 +17,7 @@ import { formatUsd, formatUtc, shortHash, signedTone, errorText } from "../forma
 import { Chip, JourneyRail, PageHeader, Skeleton, StateBlock, Panel } from "../ui";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
+import { BenchmarkComparison } from "./BenchmarkComparison";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 function errorMessage(value: unknown): string {
@@ -339,7 +340,7 @@ export function LabScreen({ initialAgentId = "" }: { initialAgentId?: string }) 
                   <div className="kv-wide"><dt>Window</dt><dd className="mono">{formatUtc(run.startAt)} to {formatUtc(run.endAt)}</dd></div>
                   {run.historyDataHash ? <div><dt>History hash</dt><dd className="mono" title={run.historyDataHash}>{shortHash(run.historyDataHash, 16, 8)}</dd></div> : null}
                 </dl>
-                <p className="panel-note">Comparison with simply holding the stock: <strong>Not yet available</strong>. Treat these metrics as a model result, not a forecast.</p>
+                {run.metrics ? <BenchmarkComparison metrics={run.metrics} /> : <p className="panel-note">No metrics, so no benchmark comparison. Treat any result as a model result, not a forecast.</p>}
                 {run.status === "complete" && !launched ? (
                   <div className="action-row">
                     <Button  type="button" disabled={busy !== ""} onClick={() => void launchAgent()}>{busy === "launch" ? "Launching…" : "Launch paper agent"}</Button>

@@ -1,3 +1,4 @@
+import { Database } from "lucide-react";
 import type { AgentDecision, PaperOrder, PaperPosition } from "../../lib/domain/contracts";
 import { formatUsd, formatUtc, shortHash, signedTone } from "./format";
 import { actionTone, Chip, DecisionTrace } from "./ui";
@@ -59,21 +60,43 @@ export function OrdersTable({ orders }: { orders: PaperOrder[] }) {
   );
 }
 
+function tally(decision: AgentDecision) {
+  let pass = 0;
+  let block = 0;
+  for (const result of decision.hookResults) {
+    if (result.status === "block" || result.status === "fail" || result.status === "error") block += 1;
+    else if (result.status === "pass" || result.status === "select" || result.status === "size" || result.status === "action") pass += 1;
+  }
+  return { pass, block };
+}
+
+/** The Tape as a timeline: one node per persisted decision, newest first, with the evidence a click away. */
 export function TapeList({ decisions }: { decisions: AgentDecision[] }) {
   if (decisions.length === 0) return <p className="empty-line">No persisted decisions.</p>;
   return (
-    <div className="tape-list">
-      {decisions.map((decision) => (
-        <article className="tape-row" key={decision.id}>
-          <div className="tape-row-head">
-            <Chip tone={actionTone(decision.action)}>{decision.action}</Chip>
-            <time className="mono" dateTime={decision.createdAt}>{formatUtc(decision.createdAt)}</time>
-          </div>
-          <p className="tape-reason">{decision.reason}</p>
-          <p className="tape-source mono">Source {decision.snapshotSource} · Recipe {shortHash(decision.recipeHash, 14, 6)}</p>
-          <DecisionTrace decision={decision} />
-        </article>
-      ))}
-    </div>
+    <ol className="tape-list tape-timeline">
+      {decisions.map((decision) => {
+        const counts = tally(decision);
+        return (
+          <li className="tape-row" key={decision.id} data-action={decision.action}>
+            <article>
+              <div className="tape-row-head">
+                <Chip tone={actionTone(decision.action)}>{decision.action}</Chip>
+                <time className="mono" dateTime={decision.createdAt}>{formatUtc(decision.createdAt)}</time>
+                {counts.pass + counts.block > 0 ? (
+                  <span className="tape-tally mono" aria-label={`${counts.pass} hooks passed, ${counts.block} blocked`}>
+                    <span className="tally-pass">{counts.pass} pass</span>
+                    {counts.block > 0 ? <span className="tally-block">{counts.block} block</span> : null}
+                  </span>
+                ) : null}
+              </div>
+              <p className="tape-reason">{decision.reason}</p>
+              <p className="tape-source mono"><Database aria-hidden />Source {decision.snapshotSource}<span aria-hidden="true"> · </span>Recipe {shortHash(decision.recipeHash, 14, 6)}</p>
+              <DecisionTrace decision={decision} />
+            </article>
+          </li>
+        );
+      })}
+    </ol>
   );
 }

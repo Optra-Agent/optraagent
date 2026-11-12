@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { Check } from "lucide-react";
 import type { ComponentProps, ReactNode } from "react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -92,7 +93,7 @@ export function JourneyRail({ step, interactive = true }: { step: 1 | 2 | 3 | 4 
           const state = number < step ? "done" : number === step ? "current" : "next";
           const content = (
             <>
-              <span className="journey-index">{number}</span>
+              <span className="journey-index">{state === "done" ? <Check aria-hidden /> : number}</span>
               <span className="journey-label">{item.label}</span>
             </>
           );

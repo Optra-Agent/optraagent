@@ -5,10 +5,12 @@ import { ApiErrorSchema, HookCatalogResponseSchema } from "../../../lib/domain/c
 import type { HookCatalogResponse, HookStage } from "../../../lib/domain/contracts";
 import { Chip, PageHeader, StateBlock, Panel } from "../ui";
 import { errorText } from "../format";
+import { Activity, Crosshair, DoorOpen, Scaling, ShieldAlert, Timer } from "lucide-react";
 import { NativeSelect } from "@/components/ui/native-select";
 import { Label } from "@/components/ui/label";
 
 const STAGES: HookStage[] = ["gate", "strike", "size", "pulse", "expiry", "breaker"];
+const STAGE_ICON = { gate: DoorOpen, strike: Crosshair, size: Scaling, pulse: Activity, expiry: Timer, breaker: ShieldAlert } as const;
 const stageLabel = (stage: HookStage) => stage.charAt(0).toUpperCase() + stage.slice(1);
 
 function messageFrom(body: unknown): string {
@@ -82,7 +84,7 @@ export function HookCatalogScreen() {
                 const ready = implementedByStage[stage];
                 return (
                   <button key={stage} type="button" className={`stage-tile${stageFilter === stage ? " is-active" : ""}`} aria-pressed={stageFilter === stage} onClick={() => setStageFilter(stageFilter === stage ? "all" : stage)}>
-                    <span className="stage-tile-name">{stageLabel(stage)}</span>
+                    <span className="stage-tile-name">{(() => { const Icon = STAGE_ICON[stage]; return <Icon aria-hidden />; })()}{stageLabel(stage)}</span>
                     <strong className="mono">{expected}</strong>
                     <span className="stage-tile-bar" aria-hidden="true"><span style={{ width: expected ? `${Math.round((ready / expected) * 100)}%` : "0%" }} /></span>
                     <span className="stage-tile-note">{ready} live</span>

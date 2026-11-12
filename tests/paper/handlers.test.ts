@@ -24,10 +24,11 @@ function testHarness(owner: Session | null = session) {
     async getDecision(_ownerId: string, _agentId: string, tickId: string) { return decisions.get(tickId) ?? null; },
     async findAgent(ownerId: string, agentId: string) { return ownerId === session.user.id && agentId === agent.id ? agent : null; },
     async persistTick(input: PersistTickInput): Promise<PersistTickResult> {
-      const existing = decisions.get(input.decision.tickId);
+      const existing = decisions.get(input.tickId);
       if (existing) return { decision: existing, duplicate: true };
-      decisions.set(input.decision.tickId, input.decision);
-      return { decision: input.decision, duplicate: false };
+      const execution = input.evaluate({ agent, account: null, position: null });
+      decisions.set(input.tickId, execution.decision);
+      return { decision: execution.decision, duplicate: false, orderCount: execution.orderIntents.length };
     },
     async listTape(ownerId: string, agentId: string) { return ownerId === session.user.id && agentId === agent.id ? [...decisions.values()] : []; },
     async listPositions(): Promise<PaperPosition[]> { return []; },

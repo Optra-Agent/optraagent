@@ -3,7 +3,9 @@
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, KeyboardEvent, ReactNode } from "react";
+import { ChevronDown, ListTree, Lock, Pause, Play, RotateCcw, SkipBack } from "lucide-react";
 import { buttonVariants } from "@/components/ui/button";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { Chip } from "../app/ui";
 import type { Tone } from "../app/ui";
@@ -39,6 +41,19 @@ const PHASE_HOLD: Record<Phase, number> = { 0: 150, 1: 3000, 2: 3400, 3: 4200, 4
 const FLOW_HOLD = 1000;
 
 const reduced = () => typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+function ToolButton({ icon, label, hint, onClick, primary, pressed, disabled }: { icon: ReactNode; label: string; hint: string; onClick: () => void; primary?: boolean; pressed?: boolean; disabled?: boolean }) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <button type="button" className={cn(buttonVariants({ variant: primary ? "default" : "outline", size: "sm" }), "pn-tool")} onClick={onClick} aria-pressed={pressed} disabled={disabled}>
+          {icon}<span className="pn-tool-label">{label}</span>
+        </button>
+      </TooltipTrigger>
+      <TooltipContent side="bottom">{hint}</TooltipContent>
+    </Tooltip>
+  );
+}
+
 const tone: Record<Verdict, Tone> = { pass: "azure", select: "azure", size: "azure", action: "azure", block: "ember", noop: "neutral" };
 const px = (value: number) => `${value}px`;
 
@@ -130,6 +145,8 @@ type Ctl = {
   startFlow: (scenario: FlowScenario) => void;
   closeFlow: () => void;
   explore: () => void;
+  focus: string | null;
+  setFocus: (stage: string | null) => void;
 };
 
 function Card({ c }: { c: Ctl }) {
@@ -166,6 +183,7 @@ function Card({ c }: { c: Ctl }) {
           ) : null}
           <HookOutput hook={hook} />
           {hook.note ? <p className="pn-note">{hook.note}</p> : null}
+          {flow ? <button type="button" className={buttonVariants({ variant: "outline", size: "sm" })} onClick={() => c.select(null)}>Back to decision timeline</button> : null}
         </div>
       );
     }
@@ -204,6 +222,7 @@ function Card({ c }: { c: Ctl }) {
           </ul>
           <div className="pn-actions">
             <button type="button" className={buttonVariants({ variant: "outline", size: "sm" })} onClick={() => c.toggleCollapse(stage.stage)}>{hidden ? "Show its hooks" : "Hide its hooks"}</button>
+            {flow ? <button type="button" className={buttonVariants({ variant: "ghost", size: "sm" })} onClick={() => c.select(null)}>Back to decision timeline</button> : null}
           </div>
         </div>
       );
@@ -231,13 +250,21 @@ function Card({ c }: { c: Ctl }) {
   );
 }
 
+const STAGE_NAME: Record<FlowStep, string> = { gate: "Gate", strike: "Strike", size: "Size", pulse: "Pulse", expiry: "Expiry", breaker: "Breaker", decision: "Paper decision", tape: "Optra Tape" };
+const STAGE_ASK: Record<FlowStep, string> = { gate: "May the agent enter?", strike: "Which put?", size: "How many units?", pulse: "Manage an open position", expiry: "Close before expiry", breaker: "Risk check on every tick", decision: "The verdicts become one action", tape: "Written down for later" };
+
+/** The decision timeline: a result summary first, then one row per stage that opens into hook verdicts on demand. */
 function FlowCard({ c, scenario }: { c: Ctl; scenario: FlowScenario }) {
   const { data, step } = c;
+  const [flipped, setFlipped] = useState<string[]>([]);
   const lookup = (name: FlowStep): GraphStage | undefined => [...data.stages, data.breaker].find((row) => row.stage === name);
   const recorded = scenario.source === "recorded";
+  const done = step >= FLOW_STEPS.length - 1;
+  const progress = Math.max(0, Math.min(1, (step + 1) / FLOW_STEPS.length));
+  const blocked = scenario.action === "skip" || scenario.action === "hold";
   return (
-    <div className="pn-card" key="flow">
-      <p className="pn-kicker">Decision flow</p>
+    <div className="pn-card pn-timeline" key="flow">
+      <p className="pn-kicker">Decision timeline</p>
       <h3>{recorded ? "A public Tape record" : "How one tick becomes a decision"}</h3>
       <div className="pn-chips">
         <Chip tone={recorded ? "azure" : "ember"}>{recorded ? "Public Tape record" : "Illustrative only"}</Chip>
@@ -246,29 +273,62 @@ function FlowCard({ c, scenario }: { c: Ctl; scenario: FlowScenario }) {
       <div className="pn-seg" role="group" aria-label="Example">
         {c.scenarios.map((row) => <button key={row.id} type="button" aria-pressed={row.id === scenario.id} onClick={() => c.startFlow(row)}>{row.label}</button>)}
       </div>
-      <ol className="pn-steps" aria-label="Evaluation order">
+
+      <div className="pn-result" data-done={done ? "1" : "0"} data-tone={blocked ? "blocked" : "open"} role="status">
+        <div className="pn-result-top">
+          <span className="pn-result-label">{done ? "Result" : "Evaluating"}</span>
+          {done ? <Chip tone={scenario.action === "open" ? "azure" : "neutral"}>{scenario.action}</Chip> : null}
+        </div>
+        <p className="pn-result-text">{done ? scenario.reason : `Step ${Math.max(step + 1, 0)} of ${FLOW_STEPS.length}: ${STAGE_NAME[FLOW_STEPS[Math.max(step, 0)] ?? "gate"]}`}</p>
+        <div className="pn-progress" aria-hidden="true"><i style={{ transform: `scaleX(${progress})` }} /></div>
+      </div>
+
+      <ol className="pn-rail" aria-label="Evaluation order">
         {FLOW_STEPS.map((name, index) => {
           const reached = step >= index;
           const stage = lookup(name);
+          const verdicts = stage ? stage.hooks.map((hook) => ({ hook, verdict: scenario.verdicts[hook.id] })).filter((row) => row.verdict) : [];
+          const blocks = verdicts.filter((row) => row.verdict?.status === "block").length;
+          const passes = verdicts.filter((row) => row.verdict && row.verdict.status !== "block" && row.verdict.status !== "noop").length;
+          const nones = verdicts.length - blocks - passes;
+          const hasBody = reached && (verdicts.length > 0 || name === "decision" || name === "tape");
+          const open = hasBody && (blocks > 0) !== flipped.includes(name);
           return (
-            <li key={name} data-state={step === index ? "active" : reached ? "done" : "pending"}>
-              <p className="pn-step-title">{STEP_LABEL[name]}</p>
-              {reached && stage ? (
-                <ul className="pn-step-hooks">
-                  {stage.hooks.map((hook) => {
-                    const verdict = scenario.verdicts[hook.id];
-                    return verdict ? <li key={hook.id}><b>{hook.name}</b> <Chip tone={tone[verdict.status]}>{verdict.raw ?? verdict.status}</Chip>{verdict.status === "block" ? <span className="pn-step-why">{verdict.reason}</span> : null}</li> : null;
-                  })}
-                </ul>
+            <li key={name} data-state={step === index ? "active" : reached ? "done" : "pending"} data-block={reached && blocks > 0 ? "1" : "0"}>
+              <button type="button" className="pn-rail-head" aria-expanded={hasBody ? open : undefined} disabled={!hasBody} onClick={() => { c.setFocus(stage ? name : null); setFlipped((current) => (current.includes(name) ? current.filter((item) => item !== name) : [...current, name])); }}>
+                <span className="pn-rail-name">{STAGE_NAME[name]}</span>
+                <span className="pn-rail-ask">{STAGE_ASK[name]}</span>
+                {reached && verdicts.length > 0 ? (
+                  <span className="pn-rail-tally mono">
+                    {passes > 0 ? <span data-v="pass">{passes} pass</span> : null}
+                    {blocks > 0 ? <span data-v="block">{blocks} block</span> : null}
+                    {nones > 0 ? <span data-v="noop">{nones} idle</span> : null}
+                  </span>
+                ) : null}
+                {hasBody ? <ChevronDown className="pn-rail-caret" aria-hidden /> : null}
+              </button>
+              {open ? (
+                <div className="pn-rail-body">
+                  {verdicts.length > 0 ? (
+                    <ul className="pn-step-hooks">
+                      {verdicts.map(({ hook, verdict }) => (
+                        <li key={hook.id}>
+                          <b>{hook.name}</b> <Chip tone={tone[verdict!.status]}>{verdict!.raw ?? verdict!.status}</Chip>
+                          {verdict!.status === "block" ? <span className="pn-step-why">{verdict!.reason}</span> : null}
+                        </li>
+                      ))}
+                    </ul>
+                  ) : null}
+                  {name === "decision" ? <p className="pn-step-why">{scenario.reason}</p> : null}
+                  {name === "tape" ? <p className="pn-step-why">The decision, every hook verdict and the recipe hash are appended to the agent&apos;s Tape.</p> : null}
+                </div>
               ) : null}
-              {reached && name === "decision" ? <p className="pn-step-result"><Chip tone={scenario.action === "open" ? "azure" : "neutral"}>{scenario.action}</Chip> {scenario.reason}</p> : null}
-              {reached && name === "tape" ? <p className="pn-step-why">The decision, every hook verdict and the recipe hash are appended to the agent&apos;s Tape.</p> : null}
             </li>
           );
         })}
       </ol>
       <p className="pn-note">
-        {recorded ? "From the public Tape." : "Illustrative only. Not a recorded trade, and nothing is sent onchain."} The engine evaluates every hook each tick and combines the verdicts: any Gate or Breaker block stops a new entry.
+        {recorded ? "From the public Tape." : "Illustrative only. Not a recorded trade, and nothing is sent onchain."} Any Gate or Breaker block stops a new entry.
       </p>
       <div className="pn-actions">
         <button type="button" className={buttonVariants({ size: "sm" })} onClick={() => c.startFlow(scenario)}>Replay example</button>
@@ -294,6 +354,7 @@ export function AgentGraph({ data, recorded = null }: GraphProps) {
   const [collapsed, setCollapsed] = useState<string[]>([]);
   const [flow, setFlow] = useState<FlowScenario | null>(null);
   const [step, setStep] = useState(-1);
+  const [flowFocus, setFlowFocus] = useState<string | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
   const autoStarted = useRef(false);
 
@@ -331,7 +392,7 @@ export function AgentGraph({ data, recorded = null }: GraphProps) {
 
   const interacted = () => { autoStarted.current = true; };
   const needs = (id: string): Phase => (id.startsWith("hook:") || id.startsWith("locked:") ? 3 : id === "stage:pulse" || id === "stage:expiry" || id === "stage:breaker" ? 2 : 1);
-  const reset = () => { setSel(null); setFlow(null); setStep(-1); setCollapsed([]); };
+  const reset = () => { setSel(null); setFlow(null); setStep(-1); setCollapsed([]); setFlowFocus(null); };
 
   const c: Ctl = {
     data, agent, phase, sel, collapsed, flow, step, scenarios,
@@ -352,7 +413,9 @@ export function AgentGraph({ data, recorded = null }: GraphProps) {
       setFlow(scenario);
       if (reduced()) { setStep(FLOW_STEPS.length - 1); setPlaying(false); } else { setStep(0); setPlaying(true); }
     },
-    closeFlow() { setFlow(null); setStep(-1); setPlaying(false); },
+    closeFlow() { setFlow(null); setStep(-1); setPlaying(false); setFlowFocus(null); },
+    focus: flowFocus,
+    setFocus: setFlowFocus,
     explore() { interacted(); setSel(null); setPhase(1); setPlaying(true); },
   };
 
@@ -398,7 +461,7 @@ export function AgentGraph({ data, recorded = null }: GraphProps) {
   const inCollapsed = (stage: string | undefined, kind: string) => stage !== undefined && collapsed.includes(stage) && (kind === "hook" || kind === "risk" || kind === "locked" || kind === "lock");
   const visible = (node: LayoutNode) => ready && node.phase <= phase && !inCollapsed(node.stage, node.kind);
   const visibleEdge = (edge: LayoutEdge) => ready && edge.phase <= phase && !inCollapsed(edge.stage, edge.kind);
-  const dimmed = (stage: string | undefined) => (flowOn ? !reached(stage) : selStage !== null && stage !== undefined && stage !== selStage);
+  const dimmed = (stage: string | undefined) => (flowOn ? !reached(stage) || (flowFocus !== null && stage !== flowFocus) : selStage !== null && stage !== undefined && stage !== selStage);
   const nodeById = (id: string) => layout.nodes.find((node) => node.id === id)!;
   const stageData = (name: string | undefined) => [...data.stages, data.breaker].find((row) => row.stage === name);
 
@@ -413,15 +476,15 @@ export function AgentGraph({ data, recorded = null }: GraphProps) {
   const idle = phase === 0 && !playing;
 
   const controls = (
-    <div className="pn-controls" role="group" aria-label="Network playback">
+    <div className="pn-controls" role="toolbar" aria-label="Network playback">
       {idle ? (
-        <button type="button" className={cn(buttonVariants({ size: "sm" }), "pn-explore")} disabled={!ready} onClick={c.explore}>Explore agent</button>
+        <ToolButton primary icon={<Play aria-hidden />} label="Explore agent" hint="Grow the agent into its stages, hooks and decision" onClick={c.explore} disabled={!ready} />
       ) : (
         <>
-          <button type="button" className={buttonVariants({ variant: "outline", size: "sm" })} onClick={() => { interacted(); setPlaying((value) => !value); }} aria-pressed={playing}>{playing ? "Pause" : "Play"}</button>
-          <button type="button" className={buttonVariants({ variant: "outline", size: "sm" })} onClick={replay}>Replay</button>
-          {phase === 4 && !flow ? <button type="button" className={buttonVariants({ variant: "outline", size: "sm" })} onClick={() => c.startFlow(scenarios[0]!)}>View decision flow</button> : null}
-          <button type="button" className={buttonVariants({ variant: "ghost", size: "sm" })} onClick={start}>Back to start</button>
+          <ToolButton icon={playing ? <Pause aria-hidden /> : <Play aria-hidden />} label={playing ? "Pause" : "Play"} hint={playing ? "Pause the growth" : "Continue the growth"} pressed={playing} onClick={() => { interacted(); setPlaying((value) => !value); }} />
+          <ToolButton icon={<RotateCcw aria-hidden />} label="Replay" hint="Replay the growth from one agent" onClick={replay} />
+          {phase === 4 && !flow ? <ToolButton icon={<ListTree aria-hidden />} label="View decision flow" hint="Step through how one tick becomes a decision (illustrative)" onClick={() => c.startFlow(scenarios[0]!)} /> : null}
+          <ToolButton icon={<SkipBack aria-hidden />} label="Back to start" hint="Return to the single agent" onClick={start} />
         </>
       )}
     </div>
@@ -451,6 +514,7 @@ export function AgentGraph({ data, recorded = null }: GraphProps) {
   const illustration = flow?.source === "recorded" ? "PUBLIC TAPE RECORD" : "ILLUSTRATIVE ONLY · NO RECORDED TRADE";
 
   return (
+    <TooltipProvider delayDuration={150}>
     <div ref={rootRef} className="pn" data-phase={phase} data-agent={agent.id} data-ready={ready ? "1" : "0"} data-playing={playing ? "1" : "0"} data-flow={flowOn ? "1" : "0"} data-live="1" onKeyDown={onKey}>
       <p className="sr-only" role="status">{statusText}</p>
 
@@ -459,9 +523,9 @@ export function AgentGraph({ data, recorded = null }: GraphProps) {
           {data.agents.map((row) => (
             <li key={row.id}>
               <button type="button" className="pn-agent" aria-pressed={row.id === agentId} data-ready={row.ready ? "1" : "0"} onClick={() => pickAgent(row.id)}>
-                <svg viewBox="0 0 38 28" aria-hidden="true"><path d={SMALL_PAYOFF[row.id]} /></svg>
-                <span>{row.name}</span>
-                <small>{row.ready ? "Paper ready" : "Preview"}</small>
+                <span className="pn-agent-mark"><svg viewBox="0 0 38 28" aria-hidden="true"><path d={SMALL_PAYOFF[row.id]} /></svg></span>
+                <span className="pn-agent-text"><b>{row.name}</b><small>{row.ready ? "Paper ready" : "Preview"}</small></span>
+                {row.ready ? null : <Lock className="pn-agent-lock" aria-hidden />}
               </button>
             </li>
           ))}
@@ -474,6 +538,10 @@ export function AgentGraph({ data, recorded = null }: GraphProps) {
 
         <svg className="pn-svg" viewBox={`0 0 ${VIEW.w} ${VIEW.h}`} role="group" aria-label="Optra Agent network. Protective Put grows into six hook stages, the Breaker guard, a paper decision and Optra Tape." preserveAspectRatio="xMidYMid meet">
           <defs>
+            <linearGradient id="pn-root-fill" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="#14263b" />
+              <stop offset="100%" stopColor="#09111b" />
+            </linearGradient>
             <radialGradient id="pn-glow-grad" cx="50%" cy="50%" r="50%">
               <stop offset="0%" stopColor="#1e8fff" stopOpacity="0.3" />
               <stop offset="55%" stopColor="#1e8fff" stopOpacity="0.07" />
@@ -518,13 +586,26 @@ export function AgentGraph({ data, recorded = null }: GraphProps) {
               state={{ active: sel === "root" ? "1" : "0", ready: ready ? "1" : "0" }}
               className="pn-root"
             >
-              <circle className="pn-orbit-ring" r="88" />
-              <circle className="pn-root-ring" r="62" />
-              <circle className="pn-root-disc" r="54" />
-              <circle className="pn-focus" r="72" />
-              <g transform="translate(0 -4) scale(1.5)"><Glyph id={agent.id} ready={ready} /></g>
-              <path className="pn-root-strike" d="M-40 24 H40" />
-              <circle className="pn-root-dot" cx="22" cy="24" r="3.6" />
+              <circle className="pn-orbit-ring" r="100" />
+              <g className="pn-segments" aria-hidden="true">
+                {[0, 1, 2, 3, 4, 5].map((index) => {
+                  const start = ((-90 + index * 60 + 7) * Math.PI) / 180;
+                  const end = ((-90 + index * 60 + 53) * Math.PI) / 180;
+                  const r = 86;
+                  return <path key={index} className={index === 5 ? "pn-seg pn-seg-risk" : "pn-seg"} d={`M${(Math.cos(start) * r).toFixed(1)} ${(Math.sin(start) * r).toFixed(1)} A${r} ${r} 0 0 1 ${(Math.cos(end) * r).toFixed(1)} ${(Math.sin(end) * r).toFixed(1)}`} />;
+                })}
+              </g>
+              <path className="pn-root-shell" d="M0 -72 L62.4 -36 V36 L0 72 L-62.4 36 V-36 Z" fill="url(#pn-root-fill)" />
+              <path className="pn-root-inner" d="M0 -60 L52 -30 V30 L0 60 L-52 30 V-30 Z" />
+              <circle className="pn-root-disc" r="40" />
+              <path className="pn-focus" d="M0 -80 L69 -40 V40 L0 80 L-69 40 V-40 Z" />
+              <g transform="translate(0 -6) scale(1.35)"><Glyph id={agent.id} ready={ready} /></g>
+              <path className="pn-root-strike" d="M-30 22 H30" />
+              <circle className="pn-root-dot" cx="18" cy="22" r="3.4" />
+              <g className="pn-root-check" transform="translate(46 -46)" aria-hidden="true">
+                <circle r="12" />
+                <path d="M-5 0.5 L-1.5 4 L5.5 -3.5" />
+              </g>
               <text className="pn-root-name" y="118" textAnchor="middle">{agent.name}</text>
               <g className="pn-root-more" data-compact={phase >= 2 ? "1" : "0"}>
                 <text className="pn-root-tag pn-mono" y="140" textAnchor="middle" data-ready={ready ? "1" : "0"}>{ready ? "PAPER AGENT" : "PREVIEW"}</text>
@@ -535,7 +616,7 @@ export function AgentGraph({ data, recorded = null }: GraphProps) {
             {layout.nodes.filter((node) => node.kind === "stage").map((node) => {
               const stage = stageData(node.stage)!;
               return (
-                <Node key={node.id} node={node} show={visible(node)} label={`${stage.label} stage. ${stage.live} of ${stage.total} hooks implemented. Show details.`} pressed={sel === node.id} onActivate={() => c.select(node.id)} className="pn-stage-node" state={{ active: sel === node.id || (flowOn && step === stepOf(node.stage ?? "")) ? "1" : "0", dim: dimmed(node.stage) ? "1" : "0" }}>
+                <Node key={node.id} node={node} show={visible(node)} label={`${stage.label} stage. ${stage.live} of ${stage.total} hooks implemented. Show details.`} pressed={sel === node.id} onActivate={() => c.select(node.id)} className="pn-stage-node" state={{ active: sel === node.id || (flowOn && (flowFocus === node.stage || (flowFocus === null && step === stepOf(node.stage ?? "")))) ? "1" : "0", dim: dimmed(node.stage) ? "1" : "0" }}>
                   <polygon className="pn-box" points="-58,0 -44,-25 44,-25 58,0 44,25 -44,25" />
                   <polygon className="pn-focus" points="-64,0 -47,-31 47,-31 64,0 47,31 -47,31" />
                   <text className="pn-stage-name pn-mono" y="-3" textAnchor="middle">{stage.label.toUpperCase()}</text>
@@ -633,5 +714,6 @@ export function AgentGraph({ data, recorded = null }: GraphProps) {
         {showCard ? <div className="pm-card"><Card c={c} /></div> : null}
       </div>
     </div>
+    </TooltipProvider>
   );
 }

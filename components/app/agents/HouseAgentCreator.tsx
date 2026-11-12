@@ -11,6 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Chip, Panel } from "../ui";
 import { errorText } from "../format";
 import { Button } from "@/components/ui/button";
+import { ShieldCheck } from "lucide-react";
 
 function responseError(body: unknown, fallback: string): string {
   const parsed = ApiErrorSchema.safeParse(body);
@@ -58,8 +59,13 @@ export function HouseAgentCreator() {
     return () => controller.abort();
   }, []);
 
+  const sharesValid = Number.isFinite(Number(shares)) && Number(shares) >= 1;
+  const capitalValid = Number.isFinite(Number(capital)) && Number(capital) >= 100;
+  const formValid = sharesValid && capitalValid;
+
   async function createDraft(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (!formValid) return;
     setBusy(true);
     setError("");
     try {
@@ -101,21 +107,26 @@ export function HouseAgentCreator() {
         </div>
         <div className="field">
           <Label htmlFor="house-agent-shares">Virtual reference shares</Label>
-          <Input id="house-agent-shares" type="number" min="1" step="1" inputMode="numeric" value={shares} onChange={(event) => setShares(event.target.value)} required />
-          <span className="field-hint">Shares the put is sized to protect.</span>
+          <Input id="house-agent-shares" type="number" min="1" step="1" inputMode="numeric" value={shares} onChange={(event) => setShares(event.target.value)} aria-invalid={!sharesValid} aria-describedby="shares-note" required />
+          <span className={sharesValid ? "field-hint" : "field-hint field-hint-error"} id="shares-note">{sharesValid ? "Shares the put is sized to protect." : "Enter at least 1 share."}</span>
         </div>
         <div className="field">
           <Label htmlFor="house-agent-capital">Paper capital (USD)</Label>
-          <Input id="house-agent-capital" type="number" min="100" step="100" inputMode="numeric" value={capital} onChange={(event) => setCapital(event.target.value)} required />
-          <span className="field-hint">Virtual cash that pays premiums.</span>
+          <Input id="house-agent-capital" type="number" min="100" step="100" inputMode="numeric" value={capital} onChange={(event) => setCapital(event.target.value)} aria-invalid={!capitalValid} aria-describedby="capital-note" required />
+          <span className={capitalValid ? "field-hint" : "field-hint field-hint-error"} id="capital-note">{capitalValid ? "Virtual cash that pays premiums." : "Enter at least 100 USD."}</span>
         </div>
-        <Button type="submit" size="lg" className="w-full" disabled={busy || marketsLoading || symbols.length === 0}>{busy ? "Creating…" : "Create paper draft"}</Button>
+        <div className="strategy-summary" aria-live="polite">
+          <p className="eyebrow">YOUR STRATEGY</p>
+          <p className="strategy-line">Protect <b className="mono">{sharesValid ? shares : "?"} {symbol || "shares"}</b> with a put <b>7% out of the money</b>, about 30 days out.</p>
+          <p className="strategy-sub">Premium capped at 2% of the holding per entry, paid from <span className="mono">${capitalValid ? Number(capital).toLocaleString("en-US") : "?"}</span> of virtual capital. Premiums are modeled.</p>
+        </div>
+        <Button type="submit" size="lg" className="w-full" disabled={busy || marketsLoading || symbols.length === 0 || !formValid}>{busy ? "Creating…" : "Create paper draft"}</Button>
       </form>
       {error ? <p role="alert" className="form-error">{error}</p> : null}
       {!marketsLoading && symbols.length === 0 && !error ? <p className="form-hint">No active markets were returned, so a draft cannot be created right now.</p> : null}
 
-      <div className="recipe-outline">
-        <h3>What this recipe will run</h3>
+      <details className="recipe-outline">
+        <summary><ShieldCheck aria-hidden />What this recipe will run</summary>
         <ol>
           {stageSummary.map(([stage, hooks, text]) => (
             <li key={stage}>
@@ -124,7 +135,7 @@ export function HouseAgentCreator() {
             </li>
           ))}
         </ol>
-      </div>
+      </details>
     </Panel>
   );
 }

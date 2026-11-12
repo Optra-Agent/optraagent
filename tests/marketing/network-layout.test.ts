@@ -12,13 +12,14 @@ describe("agent network layout", () => {
     expect([count("stage"), count("hook") + count("risk"), count("risk"), count("locked"), count("decision"), count("tape")]).toEqual([5, 15, 5, 5, 1, 1]);
   });
 
-  it("grows outward: stages appear before hooks, hooks before the decision, and each child starts at its parent", () => {
+  it("grows outward: stages appear before hooks, hooks before the decision, and each child blooms after its branch starts", () => {
     expect(layout.nodes.filter((node) => node.kind === "stage").map((node) => node.phase).sort()).toEqual([1, 1, 1, 2, 2]);
     for (const edge of layout.edges.filter((row) => row.kind === "branch" || row.kind === "hook" || row.kind === "lock")) {
       const parent = edge.from === "root" ? layout.nodes[0]! : byId.get(edge.from)!;
       const child = byId.get(edge.to)!;
       expect(child.phase).toBeGreaterThanOrEqual(parent.phase);
-      expect(child.from).toEqual({ x: parent.x, y: parent.y });
+      expect(child.from).toEqual({ x: child.x, y: child.y });
+      expect(child.delay, `${child.id} should bloom after its branch starts`).toBeGreaterThanOrEqual(edge.delay + 600);
     }
     expect(byId.get("decision")!.phase).toBe(4);
     expect(layout.ring.phase).toBe(2);
