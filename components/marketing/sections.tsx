@@ -6,11 +6,15 @@ import { Chip } from "../app/ui";
 import type { Tone } from "../app/ui";
 import type { PublicVerification } from "../../lib/domain/contracts";
 import { AgentGraph } from "./AgentGraph";
+import { ForgeDemo } from "./ForgeDemo";
+import { HookExplorer } from "./HookExplorer";
+import { TapeTimeline } from "./TapeTimeline";
+import type { ExplorerStage, ForgeDemoData, RiskRail } from "./section-data";
 import { AppPreview } from "./AppPreview";
 import type { GraphData } from "./graph-data";
 import type { FlowScenario } from "./graph-flow";
 import { HeroStage } from "./HeroStage";
-import { getLandingFacts, STAGE_QUESTION, stageLabel } from "./data";
+import { getLandingFacts } from "./data";
 
 type Facts = ReturnType<typeof getLandingFacts>;
 
@@ -24,14 +28,6 @@ function SectionHead({ eyebrow, title, children, className }: { eyebrow: string;
       <h2>{title}</h2>
       {children}
     </div>
-  );
-}
-
-function Cells({ live, total }: { live: number; total: number }) {
-  return (
-    <span className="cells" aria-hidden="true">
-      {Array.from({ length: total }, (_, index) => <i key={index} className={index < live ? "is-live" : ""} />)}
-    </span>
   );
 }
 
@@ -89,45 +85,14 @@ export function HouseAgents({ facts, graph, recorded }: { facts: Facts; graph: G
 
 /* ─────────────────────────── Forge ─────────────────────────── */
 
-export function Forge({ facts }: { facts: Facts }) {
+export function Forge({ facts, forge }: { facts: Facts; forge: ForgeDemoData }) {
   return (
     <section className="m-section m-section-raised" id="forge" aria-labelledby="forge-title">
       <div className="m-wrap">
         <SectionHead eyebrow="OPTRA FORGE" title="Click rules together. The server checks every recipe.">
-          <p>An agent is a recipe of rules. Forge validates it, gives it a canonical hash, and blocks anything it cannot run, before it can reach a backtest.</p>
+          <p>An agent is a recipe of rules. Forge validates it, gives it a canonical hash, and blocks anything it cannot run, before it can reach a backtest. Try removing a hook below to see what the validator says.</p>
         </SectionHead>
-        <ol className="flow flow-4 reveal-stagger" aria-label="Forge workflow">
-          <li className="flow-node" style={at(0)}>
-            <div className="flow-head"><span className="flow-step mono">1</span><h3>Describe or click</h3></div>
-            <div className="flow-body">
-              <div className="flow-option flow-option-off"><span>Describe a strategy in words</span><Chip>Coming soon</Chip></div>
-              <div className="flow-option flow-option-on"><span>Click rules together</span><Chip tone="azure">Working</Chip></div>
-            </div>
-          </li>
-          <li className="flow-node" style={at(1)}>
-            <div className="flow-head"><span className="flow-step mono">2</span><h3>Pick hooks</h3></div>
-            <div className="flow-body">
-              <ul className="flow-chips">
-                {facts.byStage.map((row) => <li key={row.stage}>{stageLabel(row.stage)} <span className="mono">{row.live}</span></li>)}
-              </ul>
-              <p className="flow-note">{facts.hookLive} of {facts.hookTotal} hooks are selectable. The rest are locked.</p>
-            </div>
-          </li>
-          <li className="flow-node" style={at(2)}>
-            <div className="flow-head"><span className="flow-step mono">3</span><h3>Validated recipe</h3></div>
-            <div className="flow-body">
-              <div className="flow-hash mono">sha256:<i /></div>
-              <p className="flow-note">The canonical hash appears once the server validates. Unsupported recipes are blocked with a reason.</p>
-            </div>
-          </li>
-          <li className="flow-node" style={at(3)}>
-            <div className="flow-head"><span className="flow-step mono">4</span><h3>Backtest</h3></div>
-            <div className="flow-body">
-              <div className="flow-option flow-option-on"><span>Replay in Lab</span><Chip tone="ember">Modeled premiums</Chip></div>
-              <p className="flow-note">Needs 1,441 consecutive closed hourly candles.</p>
-            </div>
-          </li>
-        </ol>
+        <ForgeDemo data={forge} />
         <ul className="forge-points reveal-stagger">
           <li style={at(0)}><strong>{facts.hookLive} of {facts.hookTotal} hooks run today.</strong> The other {facts.hookCatalogOnly} are documented in the library and locked in Forge.</li>
           <li style={at(1)}><strong>AI composition: Coming soon.</strong> Rules decide. No AI provider is configured, so recipes are built by clicking.</li>
@@ -144,39 +109,14 @@ export function Forge({ facts }: { facts: Facts }) {
 
 /* ─────────────────────────── 36 Hooks ─────────────────────────── */
 
-export function Hooks({ facts }: { facts: Facts }) {
-  const main = facts.byStage.filter((row) => row.stage !== "breaker");
-  const breaker = facts.byStage.find((row) => row.stage === "breaker");
+export function Hooks({ facts, explorer }: { facts: Facts; explorer: ExplorerStage[] }) {
   return (
     <section className="m-section" id="hooks" aria-labelledby="hooks-title">
       <div className="m-wrap">
         <SectionHead eyebrow="THE HOOK LIBRARY" title={`${facts.hookTotal} hooks. Six stages. One agent.`}>
-          <p>Every tick runs the same path: Gate, Strike, Size, Pulse, Expiry. A Breaker guards the whole path and can stop new entries at any point.</p>
+          <p>Every tick runs the same path: Gate, Strike, Size, Pulse, Expiry. A Breaker guards the whole path and can stop new entries at any point. Open a stage to read every hook in it, including the ones that are still locked.</p>
         </SectionHead>
-        <div className="stages" role="group" aria-label="Hook stages and coverage">
-          <ol className="stage-row reveal-stagger">
-            {main.map((row, index) => (
-              <li className="stage-node lift" style={at(index)} key={row.stage}>
-                <p className="stage-name mono">{stageLabel(row.stage)}</p>
-                <p className="stage-q">{STAGE_QUESTION[row.stage]}</p>
-                <Cells live={row.live} total={row.total} />
-                <p className="stage-count mono">{row.live} of {row.total} implemented</p>
-                <ul className="stage-hooks">{row.liveNames.map((name) => <li key={name}>{name}</li>)}</ul>
-              </li>
-            ))}
-          </ol>
-          {breaker ? (
-            <div className="breaker-guard reveal">
-              <div className="breaker-head">
-                <span className="stage-name mono">{stageLabel(breaker.stage)}</span>
-                <Chip tone="azure">Always on</Chip>
-                <span className="stage-count mono">{breaker.live} of {breaker.total} implemented</span>
-              </div>
-              <p>{STAGE_QUESTION.breaker} {breaker.liveNames.join(", ")} watch data health, daily loss, drawdown and exposure on every tick. Exits keep running when entries are blocked.</p>
-              <Cells live={breaker.live} total={breaker.total} />
-            </div>
-          ) : null}
-        </div>
+        <HookExplorer stages={explorer} />
         <p className="stage-legend"><i className="cell-key is-live" /> Implemented evaluator <i className="cell-key" /> Catalog only, locked ({facts.hookCatalogOnly} hooks)</p>
         <div className="m-actions">
           <Link className={buttonVariants({ variant: "outline" })} href="/hooks">Browse all {facts.hookTotal} hooks</Link>
@@ -246,12 +186,12 @@ export function HowItWorks() {
 
 /* ─────────────────────────── Optra Tape ─────────────────────────── */
 
-export function TapeSection() {
+export function TapeSection({ graph }: { graph: GraphData }) {
   return (
     <section className="m-section" id="tape" aria-labelledby="tape-title">
       <div className="m-wrap tape-grid">
         <SectionHead eyebrow="OPTRA TAPE" title="Every decision is written down, including the ones to wait." className="tape-head">
-          <p>Each tick the agent records what it did and why: which rule passed or blocked, on what data, under which recipe hash. Holds and skips are entries, not gaps.</p>
+          <p>Each tick the agent records what it did and why: which rule passed or blocked, on what data, under which recipe hash. Skips and holds are entries, not gaps.</p>
           <ul className="forge-points">
             <li><strong>Append-only.</strong> Decisions and paper orders persist per agent.</li>
             <li><strong>Private to your wallet.</strong> There is no public Tape yet, so none is shown here.</li>
@@ -260,23 +200,7 @@ export function TapeSection() {
             <Link className={buttonVariants()} href="/agents">Launch a paper agent</Link>
           </div>
         </SectionHead>
-        <figure className="tape-figure reveal">
-          <figcaption>Illustrative paper example. Not a recorded trade.</figcaption>
-          <div className="tape-flow">
-            <ol className="ts-trace">
-              <li className="is-pass"><span className="ts-stage">Gate</span><b>Sessia</b><span className="ts-verdict">pass</span>Regular US session</li>
-              <li className="is-pass"><span className="ts-stage">Gate</span><b>Corpax</b><span className="ts-verdict">pass</span>No corporate action in window</li>
-              <li className="is-block"><span className="ts-stage">Gate</span><b>Calmo</b><span className="ts-verdict">block</span>Volatility ratio above the 1.2 limit</li>
-              <li className="is-pass"><span className="ts-stage">Breaker</span><b>Haltr</b><span className="ts-verdict">pass</span>Hourly move within the limit</li>
-            </ol>
-            <div className="tape-join draw" aria-hidden="true" />
-            <div className="tape-decision">
-              <Chip>hold</Chip>
-              <p className="ts-reason">Entry blocked: volatility is not calm.</p>
-              <p className="ts-foot mono">Protective Put · PAPER<br />Source robinhood_stock_token_api<br />Recipe sha256:…</p>
-            </div>
-          </div>
-        </figure>
+        <TapeTimeline ticks={graph.ticks} stages={[...graph.stages, graph.breaker]} />
       </div>
     </section>
   );
@@ -284,36 +208,62 @@ export function TapeSection() {
 
 /* ─────────────────────────── Optra Lab ─────────────────────────── */
 
-export function LabSection() {
+export function LabSection({ facts }: { facts: Facts }) {
+  const recipeHooks = facts.recipeStages.flatMap((entry) => entry.hooks);
+  const line = (id: string) => recipeHooks.find((hook) => hook.id === id)?.line ?? "";
   return (
     <section className="m-section m-section-raised" id="lab" aria-labelledby="lab-title">
-      <div className="m-wrap lab-grid">
-        <SectionHead eyebrow="OPTRA LAB" title="Backtests that show only what the data supports." className="lab-head">
-          <p>The Lab replays real hourly candles. If history is short, gapped, or produces no entry, it shows no metrics at all instead of a guess.</p>
+      <div className="m-wrap">
+        <SectionHead eyebrow="OPTRA LAB" title="Backtests that show only what the data supports.">
+          <p>The Lab replays real hourly candles through the same engine. If history is short, gapped, or produces no entry, it shows no metrics at all instead of a guess.</p>
           <Link className={buttonVariants({ variant: "outline" })} href="/lab">Open the Lab</Link>
         </SectionHead>
-        <div className="lab-visual reveal-stagger">
-          <div className="lab-row" style={at(0)}>
-            <div className="lab-row-head"><h3>Verified historical candles</h3><Chip tone="azure">Source-backed</Chip></div>
-            <div className="mini-bar"><i style={{ flexGrow: 721 }} /><i className="is-decisions" style={{ flexGrow: 720 }} /></div>
-            <div className="mini-bar-labels mono"><span>721 warmup</span><span>720 decisions</span><span>1,441 consecutive closed candles</span></div>
-          </div>
-          <div className="lab-row" style={at(1)}>
-            <div className="lab-row-head"><h3>Option premiums</h3><Chip tone="ember">Modeled</Chip></div>
-            <p>Black–Scholes put, volatility = 30-day realized × 1.1, 50 bp slippage. Venue fees are not modeled and no option quote is recorded.</p>
-          </div>
-          <div className="lab-row" style={at(2)}>
-            <div className="lab-row-head"><h3>Results</h3><Chip>Appear after a complete run</Chip></div>
+        <ol className="lp reveal-stagger" aria-label="How a backtest runs">
+          <li className="lp-col lp-in" style={at(0)}>
+            <p className="lp-n mono">1 · Inputs</p>
+            <h3>Verified historical candles</h3>
+            <div className="lp-strip" aria-hidden="true">
+              <i className="lp-warm" style={{ flexGrow: 721 }} />
+              <i className="lp-dec" style={{ flexGrow: 720 }} />
+              <b className="lp-fill" />
+            </div>
+            <div className="lp-labels mono"><span>721 warmup</span><span>720 decisions</span></div>
+            <p className="lp-copy">1,441 consecutive closed hourly candles. Gaps or a missing corporate-action check block the run.</p>
+            <Chip tone="azure">Source-backed</Chip>
+          </li>
+          <li className="lp-col lp-in" style={at(1)}>
+            <p className="lp-n mono">2 · Premiums</p>
+            <h3>Modeled option premium</h3>
+            <dl className="lp-model">
+              <div><dt>Strike</dt><dd>{line("percy")}</dd></div>
+              <div><dt>Expiry</dt><dd>{line("tenora")}</dd></div>
+              <div><dt>Volatility</dt><dd>30-day realized × 1.1</dd></div>
+              <div><dt>Slippage</dt><dd className="mono">50 bp</dd></div>
+              <div><dt>Venue fees</dt><dd>Not modeled</dd></div>
+            </dl>
+            <Chip tone="ember">Modeled, not quoted</Chip>
+          </li>
+          <li className="lp-col lp-in" style={at(2)}>
+            <p className="lp-n mono">3 · Rules</p>
+            <h3>Every hook on every candle</h3>
+            <div className="lp-cells" aria-hidden="true">
+              {Array.from({ length: recipeHooks.length }, (_, index) => <i key={index} style={at(index)} />)}
+            </div>
+            <p className="lp-copy">{recipeHooks.length} hooks evaluate each of the 720 decision candles. The result is open, hold, close or skip, as on a paper tick.</p>
+            <Chip>Same engine as paper</Chip>
+          </li>
+          <li className="lp-col lp-out" style={at(3)}>
+            <p className="lp-n mono">4 · Results</p>
+            <h3>Appear after a complete run</h3>
             <div className="lab-slots">
               <div><span>Total return</span><i /></div>
               <div><span>Maximum drawdown</span><i /></div>
               <div><span>Ending cash</span><i /></div>
             </div>
-          </div>
-          <div className="lab-row lab-row-off" style={at(3)}>
-            <div className="lab-row-head"><h3>Comparison with holding the stock</h3><Chip>Not yet available</Chip></div>
-          </div>
-        </div>
+            <p className="lp-copy">Comparison with holding the stock</p>
+            <Chip>Not yet available</Chip>
+          </li>
+        </ol>
       </div>
     </section>
   );
@@ -329,7 +279,7 @@ const sessionBands = [
   { name: "Overnight", hours: 4, on: false },
 ] as const;
 
-export function Sessions() {
+export function Sessions({ rails }: { rails: RiskRail[] }) {
   return (
     <section className="m-section" id="sessions" aria-labelledby="sessions-title">
       <div className="m-wrap">
@@ -350,6 +300,27 @@ export function Sessions() {
           </div>
         </div>
         <p className="how-note">Standard US session hours in Eastern Time. Sessia is implemented; other session choices are not selectable yet.</p>
+
+        <div className="risk">
+          <div className="risk-head reveal-lead">
+            <p className="m-eyebrow">RISK</p>
+            <h3>Breakers stop new entries. Exits keep running.</h3>
+            <p>Four of the five Breakers watch a number. Each rail runs from zero to the largest value Forge allows, and the marker is the Protective Put default. Venux, the fifth, checks that data and the premium model are healthy.</p>
+          </div>
+          <ul className="risk-rails reveal-stagger">
+            {rails.map((rail, index) => (
+              <li key={rail.id} style={at(index)} className="risk-rail">
+                <div className="risk-rail-top"><span className="risk-hook mono">{rail.name}</span><span className="risk-label">{rail.label}</span><b className="mono">Stops entries at {rail.value}{rail.unit}</b></div>
+                <div className="risk-track" role="img" aria-label={`${rail.label}: new entries stop at ${rail.value}${rail.unit}. Scale 0 to ${rail.max}${rail.unit}.`}>
+                  <i className="risk-ok" style={{ width: `${(rail.value / rail.max) * 100}%` }} />
+                  <i className="risk-stop" />
+                  <b className="risk-mark mono" style={{ left: `${(rail.value / rail.max) * 100}%` }}>{rail.value}{rail.unit}</b>
+                </div>
+                <div className="risk-scale mono" aria-hidden="true"><span>0</span><span>{rail.max}{rail.unit}</span></div>
+              </li>
+            ))}
+          </ul>
+        </div>
       </div>
     </section>
   );
@@ -403,7 +374,7 @@ const endpoints = [
   { path: "/api/public/v1/tape", detail: "Public decisions. Empty for the same reason", status: "Empty", tone: "neutral" },
 ] as const;
 
-export function Developers() {
+export function Developers({ sample }: { sample: string }) {
   return (
     <section className="m-section" id="developers" aria-labelledby="developers-title">
       <div className="m-wrap dev-grid">
@@ -423,6 +394,10 @@ export function Developers() {
             <li className="is-off"><span className="method mono">MCP</span><span className="endpoint-path mono">MCP server</span><span className="endpoint-detail">Agent tools over the Model Context Protocol</span><Chip>Planned</Chip></li>
             <li className="is-off"><span className="method mono">x402</span><span className="endpoint-path mono">Pay-per-call endpoints</span><span className="endpoint-detail">Metered access in USDG</span><Chip>Planned</Chip></li>
           </ul>
+          <div className="api-sample">
+            <p className="api-sample-head mono"><span>GET /api/public/v1/hooks</span><span>Response excerpt</span></p>
+            <pre tabIndex={0} aria-label="Response excerpt from the hooks endpoint"><code>{sample}</code></pre>
+          </div>
         </div>
       </div>
     </section>

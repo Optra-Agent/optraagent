@@ -310,10 +310,40 @@ export const PublicVerificationSchema = z.object({
   claims: z.array(PublicClaimSchema),
 }).strict();
 
+const SignedPercentageSchema = z.string().regex(/^-?\d+(?:\.\d+)?$/);
+
+export const BacktestBenchmarksSchema = z.object({
+  window: z.object({
+    startAt: IsoDateTimeSchema,
+    endAt: IsoDateTimeSchema,
+    decisionSamples: z.number().int().positive(),
+  }).strict(),
+  underlying: z.object({
+    symbol: z.string().regex(/^[A-Z0-9.]{1,16}$/),
+    startingValueUsd: DecimalStringSchema,
+    endingValueUsd: DecimalStringSchema,
+    returnPct: SignedPercentageSchema,
+    method: z.literal("buy_and_hold_price_only"),
+    dividendsIncluded: z.literal(false),
+    feesIncluded: z.literal(false),
+  }).strict(),
+  cash: z.object({
+    startingValueUsd: DecimalStringSchema,
+    endingValueUsd: DecimalStringSchema,
+    returnPct: SignedPercentageSchema,
+    denomination: z.literal("USD"),
+    method: z.literal("flat_no_yield"),
+    usdGPricePath: z.literal("not_modeled"),
+  }).strict(),
+  vsHoldingPct: SignedPercentageSchema,
+  vsCashPct: SignedPercentageSchema,
+}).strict();
+
 export const BacktestMetricsSchema = z.object({
   totalReturnPct: z.string().regex(/^-?\d+(?:\.\d+)?$/),
   maxDrawdownPct: z.string().regex(/^\d+(?:\.\d+)?$/),
   endingCashUsd: DecimalStringSchema,
+  benchmarks: BacktestBenchmarksSchema.optional(),
 }).strict();
 
 export const BacktestRunSchema = z.object({
@@ -392,5 +422,6 @@ export type PublicClaim = z.infer<typeof PublicClaimSchema>;
 export type PublicVerification = z.infer<typeof PublicVerificationSchema>;
 export type BacktestRun = z.infer<typeof BacktestRunSchema>;
 export type BacktestMetrics = z.infer<typeof BacktestMetricsSchema>;
+export type BacktestBenchmarks = z.infer<typeof BacktestBenchmarksSchema>;
 export type BacktestCoverage = z.infer<typeof BacktestCoverageSchema>;
 export type MarketHistoryCollection = z.infer<typeof MarketHistoryCollectionSchema>;

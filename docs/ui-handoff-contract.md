@@ -1,6 +1,6 @@
 # Claude Code UI Handoff Contract
 
-The backend core now supports one complete paper-only House Agent workflow: Protective Put. This contract is the boundary for the later premium UI phase. Keep this one Next.js application, preserve the route/API semantics below, and do not add fictional financial values or live trading controls.
+The backend core supports one complete paper-only House Agent workflow: Protective Put. This contract defines the UI/API boundary used by the premium UI documented in `docs/final-ui-handoff.md`. Keep this one Next.js application, preserve the route/API semantics below, and do not add fictional financial values or live trading controls.
 
 ## Capability status to show accurately
 
@@ -15,11 +15,11 @@ The backend core now supports one complete paper-only House Agent workflow: Prot
 
 | Route | Connected behavior | States the UI must preserve |
 |---|---|---|
-| `/` | Redirects to `/agents`. | Keep route behavior. |
+| `/` | Public marketing landing page backed by public capability data. | No private agent/session/Tape/position data; authored decision paths stay visibly illustrative. |
 | `/agents` | Lists session owner's agents; loads template catalog; signed-in Protective Put form reads `/api/markets` and creates a draft through `/api/agents`. Reference shares are virtual simulation inputs. | Session loading/error/signed-out; list loading/error/empty; market loading/error; create pending/error/success; one paper-ready template and three previews. |
 | `/agents/{agentId}` | Loads owner detail, recipe, Tape, positions; pause/resume/stop/fork; paper tick for running agent. | Loading/not-found/forbidden; lifecycle acknowledgement; tick pending/error/skip/open/hold/close; modeled position and order labels. |
 | `/market` | Current Robinhood Chain quote. | Source/time/unit/multiplier; current, stale, halted, and unavailable; never label quote as option premium. |
-| `/lab` | Reads actual historical coverage; creates/persists backtest; launches matching draft after complete proof. | Coverage loading/error/block/ready; insufficient or invalid data; no metrics when run is incomplete or no entry occurs; model assumptions; launch pending/blocked/acknowledged. |
+| `/lab` | Reads actual historical coverage; creates/persists backtest; launches matching draft after complete proof. | Coverage loading/error/block/ready; insufficient or invalid data; no metrics when run is incomplete or no entry occurs; agent return plus optional same-window holding and flat-USD comparisons; model assumptions; launch pending/blocked/acknowledged. |
 | `/forge` | Generic RecipeV1 editor; validates through `/api/recipes/validate`, saves through `/api/recipes` only if valid. | Catalog-only hooks disabled, unsupported recipes blocked, canonical hash and errors, save disabled until valid; AI composition stays Planned. |
 | `/hooks` | Loads the PM catalog and shows stage filters/parameters. | 36 catalog entries; `implemented` versus `catalog_only`; unavailable reasons and loading/error states. Filtering cannot change capability status. |
 | `/tape?agentId={id}` | Owner-scoped persisted decisions, orders, and positions. | Session error, not-found, empty state, PAPER label, hook trace/context, modeled premium and fill assumptions. |
@@ -27,9 +27,21 @@ The backend core now supports one complete paper-only House Agent workflow: Prot
 
 The backend has no public visibility model. `/api/public/v1/agents` and `/api/public/v1/tape` return empty data; do not infer public access from user ownership.
 
+### Backtest comparison contract
+
+`BacktestMetrics.benchmarks` is optional so older persisted runs remain readable. When present, use the server-returned values directly:
+
+- `underlying.returnPct` is a price-only buy-and-hold benchmark over the same 720 decision candles. It excludes dividends, fees, and slippage.
+- `cash.returnPct` and `vsCashPct` use a flat USD-denominated starting balance with zero yield. Label this **flat USD cash**; it is not observed USDG performance (`usdGPricePath: "not_modeled"`).
+- `vsHoldingPct` and `vsCashPct` are percentage-point differences between the agent return and each benchmark return.
+- `window.startAt`, `window.endAt`, and `window.decisionSamples` identify the exact evaluated window. Do not mix in the 721 warmup candles.
+- If `benchmarks` is absent on an older run, show comparison unavailable. Never reconstruct a value from UI state or label the cash baseline as a measured USDG return.
+
+The calculation uses verified share-normalized underlying candle closes. A non-finite or nonpositive first/last decision close withholds all metrics and leaves the backtest failed/unlaunchable.
+
 ## Shared TypeScript contracts
 
-Canonical Zod schemas and inferred types are in `lib/domain/contracts.ts`. Reuse `Session`, `AuthenticatedWalletUser`, `ApiError`, `MarketAsset`, `MarketList`, `MarketSnapshot`, `MarketCandle`, `MarketHistoryCoverage`, `HookDefinition`, `HookCatalogResponse`, `HookResult`, `RecipeV1`, `RecipeValidationResult`, `Agent`, `AgentDetail`, `AgentListResponse`, `AgentDecision`, `PaperOrder`, `PaperPosition`, `PaperTickResponse`, `TapeResponse`, `PaperPositionsResponse`, `BacktestCoverage`, `BacktestRun`, `BacktestMetrics`, `HouseAgentTemplate`, `HouseAgentTemplateCatalogResponse`, `PublicAgentsResponse`, `PublicTapeResponse`, `PublicClaim`, and `PublicVerification`.
+Canonical Zod schemas and inferred types are in `lib/domain/contracts.ts`. Reuse `Session`, `AuthenticatedWalletUser`, `ApiError`, `MarketAsset`, `MarketList`, `MarketSnapshot`, `MarketCandle`, `MarketHistoryCoverage`, `HookDefinition`, `HookCatalogResponse`, `HookResult`, `RecipeV1`, `RecipeValidationResult`, `Agent`, `AgentDetail`, `AgentListResponse`, `AgentDecision`, `PaperOrder`, `PaperPosition`, `PaperTickResponse`, `TapeResponse`, `PaperPositionsResponse`, `BacktestCoverage`, `BacktestRun`, `BacktestMetrics`, `BacktestBenchmarks`, `HouseAgentTemplate`, `HouseAgentTemplateCatalogResponse`, `PublicAgentsResponse`, `PublicTapeResponse`, `PublicClaim`, and `PublicVerification`.
 
 Timestamps are ISO UTC strings. Decimal money and quantities are strings. API errors are `{ error: { code, message, retryable, details? } }`. For paper orders/positions, show `instrumentType: modeled_option`, `modelName: black_scholes_european_put`, `premiumSource: modeled`, and `executionMode: PAPER` as applicable.
 
@@ -58,7 +70,7 @@ Timestamps are ISO UTC strings. Decimal money and quantities are strings. API er
 - `POST /api/agents/{id}/lifecycle` — `{ action: pause | resume | stop }`; resume requires the attached matching backtest.
 - `POST /api/agents/{id}/fork` — `{}` or `{ name }`; new draft has no copied paper state.
 - `GET /api/backtests/coverage?symbol={symbol}` → source-backed `BacktestCoverage`, 1,441-candle requirement and blocking reason.
-- `POST /api/backtests` — `{ recipe }`, authenticated; persisted `BacktestRun`. Same `runTick` engine as paper execution.
+- `POST /api/backtests` — `{ recipe }`, authenticated; persisted `BacktestRun`. Same `runTick` engine as paper execution. New completed runs include optional `metrics.benchmarks`; older stored metrics may omit it.
 - `POST /api/agents/{id}/launch` — `{ backtestRunId }`; requires complete matching recipe/data proof, >=720 decisions, >=1 entry, and metrics.
 - `POST /api/agents/{id}/tick` — requires `Idempotency-Key`; server market/history; running owned agent only. Returns `PaperTickResponse`.
 - `POST /api/agents/{id}/tick?asOf={exactClosedCandleEndAt}` — reproducible exact historical paper replay; 721 prior bars required; canonical timestamp is idempotency identity.

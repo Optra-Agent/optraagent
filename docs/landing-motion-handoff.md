@@ -75,7 +75,7 @@ Section order follows the PM: House Agents, Forge, Hooks, How it works, Tape, La
 
 Chromium (headless, SwiftShader WebGL) against the existing dev server on port 3001. The unrelated project holding port 3000 was left alone; tests used a scratch Playwright config pointing at 3001.
 
-- **Hero frames** (real-time CDP screencast, not screenshots): at 0 ms, about 500 ms, 1.5 s, 3 s and settled (7 s), the headline, description, CTAs and status row are fully readable. The beam is falling at 500 ms, full length by 3 s, and LaserFlow's beam lands on the preview edge by 7 s. See `docs/ui-screenshots/landing-hero-t*.jpg`.
+- **Hero frames** (real-time CDP screencast, not screenshots): at 0 ms, about 500 ms, 1.5 s, 3 s and settled (7 s), the headline, description, CTAs and status row are fully readable. The beam is falling at 500 ms, full length by 3 s, and LaserFlow's beam lands on the preview edge by 7 s. The disposable frame captures were removed after review; this paragraph is the record.
 - **Scroll down then back up** through every section: revisited sections render fully. Measured opacity at section heads and agent cards is at least 0.95 once in view, both directions.
 - Desktop 1440, tablet 768, mobile 390 for all sections: no horizontal overflow, no page errors.
 - The real signed-in flow (wallet session, create draft, Lab backtest, launch, paper tick, Tape) ran again against the real backend on an isolated database after touching the shared `Button`, `Tabs` and `TemplateCard`: zero console errors. The wallet session was created by signing the server's challenge with a test key, because no wallet extension is installed.
@@ -94,7 +94,7 @@ Run note: `bun run test:e2e` with the repo config cannot run while an unrelated 
 
 ## 9. Files
 
-Changed this pass: `components/marketing/sections.tsx`, `components/marketing/data.ts`, `components/marketing/MarketingNav.tsx`, `components/app/agents/TemplateCard.tsx` (children and href props), `app/(marketing)/marketing.css`, `app/(marketing)/page.tsx`, `components/ui/button.tsx` (press feedback), `components/ui/tabs.tsx` (content fade), `tests/e2e/landing.spec.ts`, `docs/ui-screenshots/`, this document.
+Changed this pass: `components/marketing/sections.tsx`, `components/marketing/data.ts`, `components/marketing/MarketingNav.tsx`, `components/app/agents/TemplateCard.tsx` (children and href props), `app/(marketing)/marketing.css`, `app/(marketing)/page.tsx`, `components/ui/button.tsx` (press feedback), `components/ui/tabs.tsx` (content fade), `tests/e2e/landing.spec.ts`, this document.
 
 Untouched: `components/LaserFlow.*`, `components/marketing/HeroStage.tsx`, `app/api/**`, `lib/**`, `db/**`, `drizzle/**`, `package.json`, `next.config.ts`, `playwright.config.ts`, all other existing specs.
 

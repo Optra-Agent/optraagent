@@ -15,3 +15,4 @@ test("Lab reports source-backed replay coverage and blocks when its full window 
   await expect(page.getByText("Backtest blocked", { exact: true })).toBeVisible();
   await expect(page.getByText("Total return", { exact: true })).toHaveCount(0);
 });
+

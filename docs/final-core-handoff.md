@@ -1,6 +1,6 @@
 # Optra Paper Core — Claude Code UI Handoff
 
-Updated: 2026-11-12 (Asia/Jakarta)
+Updated: 2026-11-12 (Asia/Jakarta); benchmark contract added 2026-11-12
 
 ## Delivery status
 
@@ -8,7 +8,7 @@ Updated: 2026-11-12 (Asia/Jakarta)
 
 The verified path is: wallet challenge/session → create Protective Put draft → fetch verified market history → replay a 720-decision backtest after warmup → persist source snapshot/hash/provenance/model assumptions → launch the matching recipe → run a paper tick → persist order, position, account and full Optra Tape trace. A valid historical candle path creates one modeled PAPER order. A closed-session tick records `skip` with zero orders. Incomplete, gapped, stale, multiplier-uncertain, or no-entry inputs do not unlock metrics/launch.
 
-No premium UI redesign was started. Preserve the single Next.js repository and backend/API contracts while working on presentation.
+The premium application UI is documented in `docs/final-ui-handoff.md`; current marketing graph work is concurrent and still awaits the coordinated QA listed below. This handoff records core behavior and data boundaries. Preserve the single Next.js repository and backend/API contracts while working on presentation.
 
 ## Completed functionality
 
@@ -19,7 +19,7 @@ No premium UI redesign was started. Preserve the single Next.js repository and b
 - Crius hourly Robinhood Chain candle adapter with real trades only (`fill=false`, `continuous=false`), active-candle exclusion, symbol/token mapping, multiplier/corporate-action checks, gap/coverage reporting, and no synthetic bars.
 - Deterministic European Black–Scholes put premium using RV30 × 1.1. Every premium/order/position is marked `modeled`.
 - One shared `runTick` evaluator for backtest and paper ticks. A full run needs 721 warmup candles plus 720 decision candles (1,441 consecutive closed bars) and at least one modeled entry.
-- Persisted owner-scoped backtest history snapshots, normalized data hash, provider provenance, model assumptions, entry/exit counts, and metrics; launch verifies same recipe hash and stored history hash.
+- Persisted owner-scoped backtest history snapshots, normalized data hash, provider provenance, model assumptions, entry/exit counts, agent metrics, and new same-window benchmark metrics; launch verifies same recipe hash and stored history hash.
 - Persisted paper decisions, full hook/model context, PAPER orders, modeled positions, and account balances in one transaction; idempotent tick replay does not duplicate fills.
 - Connected minimal screens at `/agents`, `/agents/{agentId}`, `/market`, `/lab`, `/forge`, `/hooks`, and `/tape`.
 - Public read-only capability endpoints with truthful hook/template/live-execution statuses. Public agent/Tape lists remain empty because no visibility model exists.
@@ -35,11 +35,15 @@ Premium assumptions: European put; annualized standard deviation of 720 hourly l
 
 The captured current quote is outside regular US trading hours. It is used in the integration test to verify the blocked live-quote path, not to produce the successful paper order. The successful integration order comes from a specific in-session closed candle in the captured provider history.
 
+### Backtest comparisons
+
+New completed `BacktestRun.metrics` include optional `benchmarks` from `BacktestBenchmarksSchema` in `lib/domain/contracts.ts`. The buy-and-hold return invests the initial capital at the first decision candle's verified share-normalized close and values it at the final decision close across the same 720 decision samples; it is price-only and excludes dividends, fees, and slippage. Cash is a flat USD accounting balance with zero yield. No USDG/USD price path is present, so `vsCashPct` is **not** an observed USDG market return. Older persisted metrics may omit `benchmarks`; consumers must show unavailable in that case. Invalid or nonpositive benchmark endpoint closes fail the run with null metrics and keep launch blocked. The Lab UI currently retains its prior “comparison unavailable” message and still needs to render the new field; see `docs/ui-integration-requests.md`.
+
 ## Application routes and shared UI contracts
 
 | Route | Purpose and behavior |
 |---|---|
-| `/` | Redirects to `/agents`. |
+| `/` | Public marketing landing page. It uses public capability data and an explicitly illustrative decision story; see `docs/agent-graph-data-contract.md`. |
 | `/agents` | Wallet-owned agent list; one Protective Put paper-ready template; three Preview templates; signed-in form creates a Protective Put draft using virtual share/capital inputs and market API symbols. |
 | `/agents/{agentId}` | Owner recipe/status detail, persisted position/Tape summary, lifecycle controls, and manual paper tick for a running agent. |
 | `/market` | Current read-only quote with source, timestamp, price units, multiplier, halt/stale state. |
@@ -47,9 +51,9 @@ The captured current quote is outside regular US trading hours. It is used in th
 | `/forge` | Generic RecipeV1 builder. Unsupported compositions fail server validation; only the approved Protective Put composition is launchable. AI composition is not configured. |
 | `/hooks` | PM stage catalog with implemented/catalog-only status and parameter details. |
 | `/tape?agentId={id}` | Owner-scoped decisions, orders, and positions. |
-| `/verify` | No page in this core pass; public JSON evidence is `/api/public/v1/verify`. |
+| `/verify` | Public verification screen sourced from `/api/public/v1/verify`. |
 
-Use Zod-inferred types from `lib/domain/contracts.ts`: `Session`, `AuthenticatedWalletUser`, `ApiError`, `MarketAsset`, `MarketList`, `MarketSnapshot`, `MarketCandle`, `MarketHistoryCoverage`, `HookDefinition`, `HookCatalogResponse`, `HookResult`, `RecipeV1`, `RecipeValidationResult`, `Agent`, `AgentDetail`, `AgentListResponse`, `AgentDecision`, `PaperOrder`, `PaperPosition`, `PaperTickResponse`, `TapeResponse`, `PaperPositionsResponse`, `BacktestCoverage`, `BacktestRun`, `BacktestMetrics`, `HouseAgentTemplate`, `HouseAgentTemplateCatalogResponse`, `PublicAgentsResponse`, `PublicTapeResponse`, `PublicClaim`, and `PublicVerification`. Timestamps are ISO strings; decimal amounts are strings. API errors use `{ error: { code, message, retryable, details? } }`.
+Use Zod-inferred types from `lib/domain/contracts.ts`: `Session`, `AuthenticatedWalletUser`, `ApiError`, `MarketAsset`, `MarketList`, `MarketSnapshot`, `MarketCandle`, `MarketHistoryCoverage`, `HookDefinition`, `HookCatalogResponse`, `HookResult`, `RecipeV1`, `RecipeValidationResult`, `Agent`, `AgentDetail`, `AgentListResponse`, `AgentDecision`, `PaperOrder`, `PaperPosition`, `PaperTickResponse`, `TapeResponse`, `PaperPositionsResponse`, `BacktestCoverage`, `BacktestRun`, `BacktestMetrics`, `BacktestBenchmarks`, `HouseAgentTemplate`, `HouseAgentTemplateCatalogResponse`, `PublicAgentsResponse`, `PublicTapeResponse`, `PublicClaim`, and `PublicVerification`. Timestamps are ISO strings; decimal amounts are strings. API errors use `{ error: { code, message, retryable, details? } }`.
 
 Preserve loading, signed-out, error, empty, stale, halted, insufficient-history, model-limited, blocked, and acknowledged-success states. Do not add demo values or substitute mock data into user-facing market/history/order/performance screens.
 
@@ -84,7 +88,7 @@ Preserve loading, signed-out, error, empty, stale, halted, insufficient-history,
 | `POST /api/agents/{id}/lifecycle` | Session + owner; `{ action: "pause" | "resume" | "stop" }`; resume requires matching attached complete run. |
 | `POST /api/agents/{id}/fork` | Session + owner; `{}` or `{ name }`; new draft carries no Tape, orders, positions, or backtest. |
 | `GET /api/backtests/coverage?symbol={symbol}` | `BacktestCoverage`; runtime source-backed history and 1,441-candle gate. |
-| `POST /api/backtests` | Session; `{ recipe }` → persisted `BacktestRun` with metrics only if complete and at least one modeled entry exists. |
+| `POST /api/backtests` | Session; `{ recipe }` → persisted `BacktestRun` with metrics only if complete and at least one modeled entry exists. New completed metrics include optional `benchmarks`; old JSONB rows remain valid without them. |
 | `POST /api/agents/{id}/launch` | Session + owner; `{ backtestRunId }`; requires complete matching recipe/hash, verified stored history, provenance, assumptions, >=720 samples, >=1 entry and metrics. |
 | `POST /api/agents/{id}/tick` | Session + owner; requires `Idempotency-Key`, running agent, server quote/history. Returns `PaperTickResponse`. |
 | `POST /api/agents/{id}/tick?asOf={exactCandleEndAt}` | Historical paper replay of an exact closed provider candle with 721 preceding bars. Idempotency key remains required; timestamp determines replay ID. |
@@ -94,6 +98,8 @@ Preserve loading, signed-out, error, empty, stale, halted, insufficient-history,
 ### Public proof
 
 `GET /api/public/v1/hooks`, `/templates`, `/agents`, `/tape`, and `/verify` are read-only. Public agents and Tape remain empty. Verification reports the current catalog/evaluator counts, one paper-ready template, `V4` L0, and live execution disabled. Full payloads/statuses are in `docs/api-contracts.md`.
+
+For the progressive public Agent Intelligence Graph, use [the graph data contract](agent-graph-data-contract.md). Existing public template/hook/Tape sources plus `PAPER_PROTECTIVE_PUT_HOOK_IDS` are sufficient; no new endpoint is required. The graph root is the Protective Put template, public Tape has no records, and public evaluation outcomes do not exist. Keep authored rule stories labeled `Illustrative only`; never read private wallet sessions, user strategies, owner Tape, positions, or agent instances into the landing graph.
 
 ## Authentication, database, and environment
 
@@ -119,6 +125,8 @@ Verified in this workspace on 2026-11-12:
 
 Browser Playwright cannot exercise the real extension signature prompt without an installed wallet extension. The integration test signs a genuine EVM challenge using a test account. E2E mocks only UI-level auth/market responses where required; the full paper order/performance path is verified with the captured source fixture in the database integration test.
 
+Continuation verification on 2026-11-12: `bun run test -- tests/backtest` passed 5 files / 17 tests; `bun run test -- tests/integration/paper-flow.test.ts` passed 1 test and asserts that benchmark metadata survives the API response and persisted JSONB row; `bun run test -- tests/domain/contracts.test.ts` passed 1 file / 6 tests and confirms old metrics remain valid; `bunx tsc --noEmit --incremental false` passed; `bun run lint` passed. The full suite, Playwright, and production build have not been rerun after the benchmark and concurrent landing graph changes. The browser attempt against an active dev server did not hydrate or issue API calls. Follow the coordination and port restrictions in `docs/nov13-nov14-completion-report.md` before final QA.
+
 ## Claude Code file ownership
 
 Claude Code may redesign presentation in `app/(app)/**/*.tsx`, `components/app/**`, `app/globals.css`, and `docs/landing-content-contract.md`, while preserving route paths, contracts, provenance, and safety states. Do not begin by adding mock metrics or changing data claims.
@@ -134,3 +142,5 @@ Claude Code must not modify these backend/safety/evidence modules during the pre
 - `docs/api-contracts.md`, `docs/execution-ledger.md`, `docs/tasks/optra-fullstack-progress.md`, `docs/final-core-handoff.md`, and this UI contract
 
 If the visual work requires a backend field or route, record a separate backend contract request instead of changing protected code or adding UI-side values. See `docs/ui-handoff-contract.md` for the screen-level contracts.
+
+See `docs/nov13-nov14-completion-report.md` for the remaining Nov 13 integration work and Nov 14 final QA checklist.

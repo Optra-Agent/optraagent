@@ -65,11 +65,11 @@ Browser verification (Chromium, headless, SwiftShader WebGL):
 - Overflow sweep: 11 routes by 390, 768, 1024 and 1440px: no horizontal overflow.
 - In-page accessibility audit: names, labels, heading order, landmarks, unique titles, sampled text contrast. After the contrast fix the only finding is Radix's internal `aria-hidden` `<select>` inside the Select primitive, which is not a user control. axe-core was not run (the harness blocks injecting remote scripts), so this is a self-written check, not a full WCAG audit.
 - Keyboard: logical Tab order, visible focus rings, Escape closes the drawer, the wallet dialog and the landing menu.
-- Compared the landing preview with the live Agents screen: same sidebar, topbar, journey rail, template cards, configure panel and terminology (see the screenshots).
+- Compared the landing preview with the live Agents screen: same sidebar, topbar, journey rail, template cards, configure panel and terminology.
 
-## Screenshots
+## Visual evidence
 
-`docs/ui-screenshots/`: `landing-hero-desktop-1440`, `landing-app-preview-1440`, `landing-hero-tablet-768`, `landing-hero-mobile-390`, `app-agents-signed-in`, `app-agent-detail`, `app-lab-result`, `app-tape-trace`, `app-forge`, `app-wallet-dialog`, `app-mobile-drawer-390`. The signed-in captures are from the real backend with live candles.
+The landing preview and the signed-in screens (Agents, Agent detail, Lab result, Tape trace, Forge, wallet dialog, mobile drawer) were captured in a real browser against the real backend with live candles and compared by eye. The disposable screenshot files were removed afterwards; the findings are the text above.
 
 ## Files changed
 

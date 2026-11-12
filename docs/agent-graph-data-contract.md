@@ -4,11 +4,11 @@ Updated: 2026-11-12
 
 ## Purpose and scope
 
-This contract supports a public, read-only graph of Optra product capabilities. It describes four House Agent templates, the six PM hook stages, hook availability/details, the supported Protective Put composition, and optional illustrative decision storytelling.
+This contract supports a public, read-only graph that expands one selected House Agent template into its rule system: **Selected Agent → Hook Stages → Hook Evaluations → Risk Guard → Paper Decision → Optra Tape**. The root is the `protective_put` template, not a running user's agent instance. It also describes all four House Agent templates, all six PM hook stages, hook availability/details, the supported Protective Put composition, and the provenance of any evaluation storytelling.
 
-The graph is a frontend adapter over existing public APIs and one shared recipe-membership constant. **No new endpoint or source change is needed.** Public Tape currently contains no records. The marketing graph must not fetch, copy, or infer user-specific records from authenticated APIs.
+The graph is a frontend adapter over existing public APIs and one shared recipe-membership constant. **No new endpoint or source change is needed.** Public Tape currently contains no records and no public tick-evaluation endpoint exists. The marketing graph must not fetch, copy, or infer user-specific records from authenticated APIs.
 
-Graph edges encode template/recipe membership, stage grouping, optional conceptual stage ordering, lifecycle capability, or a rule-evaluation reference. Do not create agent-to-agent edges or imply that House Agents communicate with one another.
+Graph edges encode template/recipe membership, stage grouping, evaluator capability, Breaker guard membership, conceptual transitions to paper decision and Tape, lifecycle capability, or explicitly sourced evaluation references. The six stages are rule groupings; they are not six independently operating agents. Do not create agent-to-agent edges or imply that House Agents communicate with one another.
 
 ## Available data sources
 
@@ -24,6 +24,7 @@ Graph edges encode template/recipe membership, stage grouping, optional conceptu
 | `GET /api/agents` and `GET /api/agents/{agentId}` | Authenticated, owner-scoped | User-created agent records and recipe details. `Agent` includes `ownerId` and lifecycle status. | Do not call from the public landing graph. |
 | `GET /api/agents/{agentId}/tape` | Authenticated, owner-scoped | `TapeResponse`: that owner’s decisions and paper orders. | Not a public graph source. |
 | `GET /api/agents/{agentId}/positions` | Authenticated, owner-scoped | That owner’s modeled positions. | Not a public graph source. |
+| `POST /api/agents/{agentId}/launch`; `POST /api/agents/{agentId}/lifecycle`; `POST /api/agents/{agentId}/fork` | Authenticated, owner-scoped | Launch after a matching complete backtest; pause/resume/stop transitions; fork creates a fresh draft without copied paper state. | Derive only the generic lifecycle capability. Never fetch user instances or current statuses into the public graph. |
 
 `/api/public/v1/hooks` and `/api/public/v1/templates` are public wrappers over the same registry data as `/api/hooks` and `/api/agents/templates`. Prefer the versioned public paths from the landing page.
 
@@ -62,6 +63,8 @@ Relevant distinctions:
 - Decision action (`AgentDecision.action`): `open | hold | close | skip`.
 - Agent lifecycle (`Agent.status`): `draft | running | paused | stopped`.
 
+The supported lifecycle model is: a valid saved recipe starts as `draft`; a draft may be stopped or launched to `running` only after a matching complete backtest; `running` may move to `paused` or `stopped`; `paused` may resume to `running` only while its attached matching backtest remains valid, or move to `stopped`; a stopped instance cannot resume. Forking creates a distinct draft with no copied Tape, orders, positions, or backtest. These transitions are backed by authenticated owner-scoped handlers, not public activity data. A landing graph may render this as a generic capability state machine; it must not show counts or claim that a real user agent is in any state.
+
 `HookDefinition.parameters` is typed as `Record<string, unknown>`, not a strict reusable parameter-schema interface. Each current catalog entry supplies descriptor-shaped data, but graph code should treat it as opaque display metadata or explicitly narrow/validate fields before rendering controls. Do not infer an evaluator from a parameter descriptor.
 
 ## Suggested frontend graph types
@@ -71,21 +74,49 @@ The following is an adapter contract for the landing page, not a new server resp
 ```ts
 import type {
   Agent,
+  AgentDecision,
   HookDefinition,
   HookResult,
   HookStage,
   HouseAgentTemplate,
+  PublicTapeResponse,
 } from "@/lib/domain/contracts";
 
 export type GraphHookAvailability = HookDefinition["availability"];
 export type GraphHookEvaluationStatus = HookResult["status"];
 export type GraphStageId = `stage:${HookStage}`;
 
+export type GraphEvaluation =
+  | {
+      kind: "capability";
+      hookId: string;
+      availability: GraphHookAvailability;
+      source: "public_hooks_api";
+      actualOutcome?: never;
+    }
+  | {
+      kind: "recorded";
+      result: Pick<HookResult, "hookId" | "status" | "reason" | "stage">;
+      source: "public_tape_api";
+      actualActivity: true;
+    }
+  | {
+      kind: "illustrative";
+      hookId: string;
+      status?: GraphHookEvaluationStatus;
+      reason?: string;
+      source: "illustrative";
+      actualActivity: false;
+      label: "Illustrative only";
+    };
+
 export type GraphNode =
   | {
-      id: `template:${HouseAgentTemplate["id"]}`;
-      kind: "template";
+      id: `agent-template:${HouseAgentTemplate["id"]}`;
+      kind: "house_agent_template";
       template: HouseAgentTemplate;
+      displaySummary?: { text: string; source: "product_copy" };
+      isUserInstance: false;
       source: "public_templates_api";
     }
   | {
@@ -111,24 +142,47 @@ export type GraphNode =
       source: "public_hooks_api";
     }
   | {
+      id: `evaluation:${string}`;
+      kind: "hook_evaluation";
+      evaluation: GraphEvaluation;
+    }
+  | {
+      id: "risk-guard:protective_put";
+      kind: "risk_guard";
+      stage: "breaker";
+      hookIds: readonly string[];
+      source: "shared_recipe_registry";
+    }
+  | {
+      id: "decision:paper";
+      kind: "paper_decision_capability";
+      executionMode: "PAPER";
+      actualDecisionId?: never;
+      source: "capability_model";
+    }
+  | {
+      id: "tape:optra";
+      kind: "tape";
+      decisionCount: PublicTapeResponse["decisions"]["length"];
+      source: "public_tape_api";
+    }
+  | {
       id: `lifecycle:${Agent["status"]}`;
       kind: "lifecycle_state";
       status: Agent["status"];
       representation: "capability_state_machine";
       actualAgentId?: never;
     }
-  | {
-      id: `decision:${string}`;
-      kind: "decision_example";
-      label: "Illustrative only";
-      actualActivity: false;
-      source: "illustrative";
-    };
 
 export type GraphEdgeKind =
+  | "agent_expands_to_stage"
   | "stage_contains_hook"
-  | "template_uses_recipe"
+  | "agent_uses_recipe"
   | "recipe_uses_hook"
+  | "hook_has_evaluator"
+  | "breaker_protects_entry"
+  | "guard_gates_paper_decision"
+  | "paper_decision_writes_tape"
   | "conceptual_stage_order"
   | "lifecycle_transition"
   | "illustrative_trace_step";
@@ -149,15 +203,33 @@ export type GraphDecisionReference =
       records: readonly [];
     }
   | {
+      kind: "recorded";
+      source: "/api/public/v1/tape";
+      actualActivity: true;
+      records: Array<{
+        responseIndex: number;
+        action: AgentDecision["action"];
+        reason: string;
+        executionMode: "PAPER";
+        evaluations: Array<Pick<HookResult, "hookId" | "status" | "reason" | "stage">>;
+      }>;
+    }
+  | {
       kind: "illustrative";
       source: "illustrative";
       actualActivity: false;
       label: "Illustrative only";
-      steps: Array<{ hookId: string; label: string; illustrative: true }>;
+      steps: Array<{
+        hookId: string;
+        status?: GraphHookEvaluationStatus;
+        label: string;
+        illustrative: true;
+      }>;
     };
 
 export interface AgentIntelligenceGraphData {
   visibility: "public_capability";
+  rootAgentId: "agent-template:protective_put";
   nodes: GraphNode[];
   edges: GraphEdge[];
   decisionTrace: GraphDecisionReference;
@@ -172,19 +244,22 @@ export const AGENT_GRAPH_STAGE_ORDER = [
 ] as const satisfies readonly HookStage[];
 ```
 
-`conceptual_stage_order` and lifecycle edges are capability-diagram relationships. They are not timestamped events. There is deliberately no `agent_to_agent` edge kind.
+The root identity is the selected `protective_put` House Agent template (`isUserInstance: false`). The other three template nodes are overview/Preview nodes, not active instances. `conceptual_stage_order` and lifecycle edges are capability-diagram relationships, not timestamped events. The Risk Guard is a guard layer around the flow, not a seventh stage or a final evaluator that runs only after the other stages. There is deliberately no `agent_to_agent` edge kind.
 
 ## Supported Protective Put topology
 
-Build the public capability graph from these relationships:
+Build the progressive graph from these relationships:
 
-1. Add four `template` nodes from `/api/public/v1/templates`; preserve each returned `availability` and `reason`.
-2. Add one `recipe:protective_put` node because Protective Put is the only `paper_ready` template.
-3. Populate its `hookIds` using `PAPER_PROTECTIVE_PUT_HOOK_IDS` from `lib/hooks/catalog.ts`. The constant has the exact same IDs used by `buildProtectivePutRecipe` and the validator.
-4. Add six `stage` nodes from `HookCatalogResponse.coverage.expectedByStage` and the `HookStage` union.
-5. Add one `hook` node for every returned definition. Preserve `availability`, `summary`, `implementationNote`, `unavailableReason`, and parameter metadata. Add `stage_contains_hook` edges from its stage.
-6. Add `template_uses_recipe` from Protective Put to the supported recipe, then `recipe_uses_hook` edges only for the 15 canonical recipe hook IDs.
-7. Keep the other three Preview templates unconnected to recipe/hook nodes because their recipe definitions are not exposed or paper-ready.
+1. Add four `house_agent_template` nodes from `/api/public/v1/templates`; preserve each returned `availability` and `reason`. Set the root to `agent-template:protective_put`. This is a public template identity, not a user agent.
+2. Add `recipe:protective_put` because Protective Put is the only `paper_ready` template. Populate its membership from `PAPER_PROTECTIVE_PUT_HOOK_IDS`; it matches the IDs used by `buildProtectivePutRecipe` and the validator.
+3. Add six `stage` nodes from the hook catalog's expected stage counts and the `HookStage` union. Connect only the selected root to these stages. These are taxonomy nodes, not agent nodes.
+4. Add one `hook` node for each of the 36 returned definitions. Preserve `availability`, `summary`, `implementationNote`, `unavailableReason`, and parameter metadata. Add `stage_contains_hook` edges for all catalog entries.
+5. Add `recipe_uses_hook` edges only for the 15 canonical Protective Put hook IDs. Add an evaluation-capability reference for each hook using its catalog `availability`; `implemented` means an evaluator exists, not that it produced a recorded result.
+6. Add one `risk_guard:protective_put` grouping node for the five mandatory Breakers (`haltr`, `daylo`, `drawra`, `exposa`, `venux`). Connect those Breaker hook/evaluation nodes to the guard, then connect the guard to the paper-decision capability node. Show this as a conceptual guard relationship: Breakers gate new entries and are not five more agents.
+7. Connect the paper-decision capability node to the Optra Tape node. Set the Tape node's record count from `/api/public/v1/tape`; it is currently zero. Use a recorded evaluation/decision reference only if that public response actually contains an explicitly public record.
+8. Keep the other three Preview templates unconnected to recipe/hook nodes because their recipe definitions are not exposed or paper-ready.
+
+The headline flow is a progressive visual expansion, not an execution trace. The six stages, evaluator availability, Breaker guard and Tape destination are actual product concepts. Public deterministic outcomes are unavailable: authenticated `AgentDecision.hookResults` are owner-private, and there is no public tick-evaluation endpoint.
 
 The 15 recipe members group under the six stages as follows:
 
@@ -220,11 +295,11 @@ An authenticated owner’s `GET /api/agents/{agentId}/tape` returns a private `T
 
 The anonymous `/api/public/v1/tape` currently returns empty decisions and orders. Therefore the landing page has **no actual public decision traces** to display. Keep `decisionTrace` as `{ kind: "none", source: "/api/public/v1/tape", records: [] }` when the public response is empty.
 
-If the visual needs a sample path, use a separate `kind: "illustrative"` item and visibly label it **Illustrative only**. Its steps may reference real hook IDs/names and describe the configured rule concept. Do not add a user/agent ID, decision ID, timestamp, market value, premium, fill, performance number, position, or a pass/block result that could be mistaken for an observed Tape event. No illustration may be serialized as `AgentDecision` or `HookResult`.
+If the visual needs a sample path, use a separate `kind: "illustrative"` item and visibly label the entire path **Illustrative only**. It may show educational pass/block/action wording about rule behavior, but those results are authored examples, not outputs from a public engine run. Do not add a user/agent ID, decision ID, timestamp, observed market value, premium, fill, performance number, or position. No illustration may be serialized as `AgentDecision` or `HookResult`.
 
 ### Existing landing-adapter caution
 
-The current `components/marketing/graph-data.ts` adapter creates `EXAMPLE_TEXT` entries with sample value strings and statuses, plus `illustrativeScenarios()` with synthetic pass/block verdicts and `open`/`skip` actions. `components/marketing/graph-flow.ts` marks those scenarios with `source: "illustrative"`, but that source marker is data only; the rendered graph must make the label visible for the whole scenario and any displayed sample values. These are not API responses, engine-run outputs, or Tape events. Keep them isolated from actual records, or omit the sample outcomes/values. `scenarioFromDecision()` should only receive records returned by the public Tape endpoint; that endpoint currently returns no decisions. It also normalizes some hook statuses for presentation (`fail`/`error` to `block`, `skip` to `noop`), so retain canonical `HookResult.status` in any adapter that presents actual records.
+The current `components/marketing/graph-data.ts` adapter creates authored example statuses/reasons and `illustrativeScenarios()`/`illustrativeTicks()` with pass/block verdicts and `open`/`skip` actions. It does not include observed market values. Its per-hook thresholds come from the configured Protective Put recipe assembled with example inputs; label these as example recipe settings if shown. `components/marketing/graph-flow.ts` marks scenarios with `source: "illustrative"` and visibly retains the canonical status in `raw` when it maps a recorded HookResult into a simplified visual verdict. These examples are not API responses, engine-run outputs, or Tape events. Keep them isolated from actual records and keep the **Illustrative only** label visible throughout the path. The marketing page currently calls the same `createPublicHandlers().tape()` implementation as `/api/public/v1/tape`; it returns no decisions. `scenarioFromDecision()` must only receive records from that public source, never authenticated per-agent Tape.
 
 ## Public/private boundary
 
@@ -244,14 +319,16 @@ The current `components/marketing/graph-data.ts` adapter creates `EXAMPLE_TEXT` 
 | Six-stage ordering/layout | Presentation model of PM taxonomy | Label as stage grouping or conceptual flow; do not claim literal evaluation chronology. |
 | Agent lifecycle state machine | Actual supported transitions, no public instance state | Label as lifecycle capability/model; do not show nodes as active user agents. |
 | Public Tape decisions | No actual records available | Keep empty state, or use the isolated illustrative shape below. |
-| Sample decision/evaluation animation | Illustrative only | Prominent `Illustrative only` label; no fabricated outcomes or values. |
-| Existing `EXAMPLE_TEXT` and `illustrativeScenarios()` in `components/marketing/graph-data.ts` | Frontend-authored illustration | Never represent the sample values, verdicts, or actions as engine-run evaluations or Tape records. If retained, keep a persistent visible illustration label and separate source/type from public Tape data. |
+| Sample decision/evaluation animation | Illustrative only | Prominent `Illustrative only` label; educational verdicts/actions are authored examples, never recorded outcomes. No invented observed market values or performance data. |
+| Existing `EXAMPLE_TEXT`, `illustrativeScenarios()` and `illustrativeTicks()` in `components/marketing/graph-data.ts` | Frontend-authored illustration | The adapter has no observed prices; sample verdicts/actions are not engine-run evaluations or Tape records. Recipe thresholds use an example recipe configuration. Keep a persistent visible label and a separate source/type. |
 | Historical candles/options activity | Not graph activity data | Underlying candle history is real only where coverage verifies; premiums are modeled. Never animate a candle or model value as a live/public trade. |
 | Agent-to-agent communication | Not a product relationship in this contract | Do not create or label such edges. |
 
 ## Missing information
 
 - The public template payload does not include hook membership or a full `RecipeV1`; the exported Protective Put hook-ID constant supplies membership without adding an endpoint.
+- `HouseAgentTemplate` exposes ID, name, availability, and reason, but no summary field. A short summary may remain authored product copy (as in the current `templateSummaries` map), with no implied user activity or unsupported execution claim. Preserve the API's `availability` and `reason` as the authority for readiness.
+- The public hook endpoint has full definitions for all 36 hooks, but the current landing adapter projects implemented recipe hooks to detail rows and catalog-only hooks to only `{ id, name, reason }`. If the graph detail panel needs descriptions, implementation notes, and parameter metadata for catalog-only hooks, map those fields from the existing `HookCatalogResponse`; no backend field or route is missing.
 - No public Tape/decision-trace records exist. Real `HookResult` evaluations are private to an owner’s Tape. A public actual trace would require a separately approved visibility/data product; it is outside this integration pass.
 - No public tick-evaluation API exists. The public hook catalog reports evaluator availability and descriptions; `POST /api/recipes/validate` checks recipe validity, not runtime outcomes. Do not manufacture a deterministic evaluation result from those metadata endpoints.
 - Preview templates expose their names and blocker reasons, not full recipe compositions. Do not draw inferred hook or option-leg memberships for them.
@@ -260,13 +337,16 @@ The current `components/marketing/graph-data.ts` adapter creates `EXAMPLE_TEXT` 
 
 ## Claude Code integration guidance
 
-1. Fetch templates and hooks from `/api/public/v1/templates` and `/api/public/v1/hooks`; validate them with `HouseAgentTemplateCatalogResponseSchema` and `HookCatalogResponseSchema` from `lib/domain/contracts.ts`.
-2. Build a small frontend adapter that maps the API data into the `AgentIntelligenceGraphData` contract above. Use API definitions as the only source for hook names, descriptions, stages, status, and template availability.
-3. Import `PAPER_PROTECTIVE_PUT_HOOK_IDS` for the supported recipe edges. Do not hardcode the 15 IDs in the graph component or infer recipe membership from matching hook names.
-4. Use the public Tape response as an empty state. The existing landing adapter contains sample values and pass/block/open/skip scenario content; those are frontend-authored illustrations, not public evaluator results. If retained, label the entire scenario and every sample value **Illustrative only** and keep its type/data path separate from Tape records. Do not use it to populate the actual decision trace.
-5. Use `Agent.status` and lifecycle handlers only to explain the lifecycle capability. Never fetch owner-specific agent/Tape/position routes from the public landing.
-6. Treat stage order as layout/storytelling. Hook evaluation outcomes come from a private Tape’s `hookResults` array and are unavailable to an anonymous landing page.
-7. Keep edges limited to stage membership, template/recipe membership, capability transitions, and explicitly illustrative rule references. Do not imply agent-to-agent communication.
-8. No backend route, schema, database, auth, engine, or API change is required for this graph data contract.
+1. Use `/api/public/v1/templates` and `/api/public/v1/hooks` in browser fetching. The marketing server page may reuse the same registries through `getGraphData()` and `createPublicHandlers()`; validate payloads with the shared schemas when consuming API responses.
+2. Set `rootAgentId` to `agent-template:protective_put`; the root represents the public House Agent template, never a user instance. Keep the three Preview templates as overview nodes without inferred recipes or hook edges.
+3. Build all six stage nodes and 36 hook nodes from the public hook catalog. Preserve `HookDefinition.availability`. Add evaluator-capability links from this status, not synthetic `HookResult` records.
+4. Preserve the complete catalog details (`summary`, `implementationNote`, `unavailableReason`, and `parameters`) for the hook detail model, including catalog-only hooks. The existing adapter currently discards most of those fields for locked rows; the public API already returns them.
+5. Import `PAPER_PROTECTIVE_PUT_HOOK_IDS` for the recipe edges and Breaker guard membership. Do not hardcode the 15 IDs or infer membership by matching names.
+6. Template API data has no descriptive summary. Keep any `product_copy` summary separate from API readiness/reason fields, and do not infer a Preview recipe from copy.
+7. Use the public Tape handler/endpoint as the trace source. It currently returns no decisions. Keep the actual trace empty; `scenarioFromDecision()` may only receive decisions from that public source. Never load authenticated per-agent Tape for the landing page.
+8. If retaining the authored pass/block/open/skip story, keep it typed as `kind: "illustrative"` and visibly labeled **Illustrative only** throughout. Its sample thresholds are example recipe settings; it has no observed market values. Do not present it as a deterministic engine run.
+9. Preserve canonical `HookResult.status` when simplifying visuals (the current helper retains it as `raw`). No public evaluation outcomes exist today; private `hookResults` are unavailable to the anonymous graph.
+10. Treat stage sequence as layout/storytelling and Breaker as a guard around entry, not a seventh stage or another agent. Do not imply House Agents communicate with one another.
+11. Keep all public/private boundaries intact. No backend route, schema, database, auth, engine, or API change is needed for this graph contract.
 
 Source files: `lib/domain/contracts.ts`, `lib/hooks/catalog.ts`, `lib/hooks/handlers.ts`, `lib/hooks/recipe-validator.ts`, `lib/public/handlers.ts`, `lib/paper/handlers.ts`, the corresponding routes under `app/api/public/v1/`, `app/api/hooks/`, `app/api/agents/templates/`, and `app/api/agents/[agentId]/`, plus the existing landing adapter `components/marketing/graph-data.ts` and illustrative flow helper `components/marketing/graph-flow.ts`.

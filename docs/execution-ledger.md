@@ -69,10 +69,45 @@ All commands run in the current workspace on 2026-11-12:
 - The feed fixture proves one AAPL window only. Runtime coverage for every symbol/window remains dynamic and must be read from `/api/backtests/coverage`.
 - Public agent and Tape endpoints remain empty until an explicit visibility model exists. The public claim manifest reports 36 catalog entries, 15 deterministic evaluators, 21 catalog-only entries, one paper-ready template, and L0/live-disabled status.
 
+## 2026-11-12 continuation — benchmark and graph integration contract
+
+### Step 05 benchmark decision
+
+**Question:** The PM asks Lab to compare the agent with holding and cash/USDG. The verified input is underlying share-normalized candle history; there is no USDG/USD history and no option quote history.
+
+**Decision:** Calculate buy-and-hold from the first to last of the 720 decision-candle `shareCloseUsd` values, investing the same initial USD capital and excluding dividends, fees, and slippage. Calculate cash as the same initial USD capital held flat with zero yield. Expose `cash.denomination: "USD"`, `cash.method: "flat_no_yield"`, and `cash.usdGPricePath: "not_modeled"`; `vsCashPct` is not a measured USDG return. These methods and the exact sample window are returned in `BacktestMetrics.benchmarks`.
+
+**Reason:** This is reproducible from verified data and does not fabricate a USDG price/yield path. The agent's total return and both benchmark returns share the same decision window. Invalid/nonpositive benchmark endpoint closes withhold metrics and keep the run unlaunchable.
+
+**Compatibility:** `benchmarks` is optional in `BacktestMetricsSchema` so previously persisted JSONB metrics remain parseable. No DB schema migration is required. UI integration is pending: it must consume server metrics and show unavailable when an older row lacks the field.
+
+**Evidence added:** `lib/backtest/run.ts`; `lib/domain/contracts.ts`; `tests/backtest/run.test.ts`; contract updates in `docs/api-contracts.md`, `docs/ui-handoff-contract.md`, and `docs/final-core-handoff.md`. The Lab UI is unchanged and still needs this data mapping.
+
+### Agent graph contract
+
+`docs/agent-graph-data-contract.md` defines a public capability adapter for the selected Protective Put template, six hook stages, 36 catalog entries, evaluator availability, five Breakers, paper-decision capability, and Tape destination. Existing endpoints and the shared `PAPER_PROTECTIVE_PUT_HOOK_IDS` constant are sufficient; no endpoint or backend change is called for. `/api/public/v1/tape` currently returns no decisions. Any authored sequence must remain visibly `Illustrative only`; public UI must never read owner Tape, strategies, positions, sessions, or user-specific agents. The landing graph source files are concurrently owned by Claude and were not changed in this pass.
+
+### Original ten-step status reconciliation
+
+See the detailed status/evidence matrix in `docs/tasks/optra-fullstack-progress.md`. Current statuses: Step 01 DONE; 02 PARTIAL; 03 PARTIAL; 04 DONE; 05 PARTIAL (benchmark API implemented, Lab display pending); 06 PARTIAL (manual ticks, no scheduler); 07 DONE for click-builder scope (AI is Planned); 08 PARTIAL; 09 PARTIAL; 10 PARTIAL pending coordinated final E2E/build QA.
+
+### Verification and coordination record
+
+- Focused benchmark test was red before implementation because `metrics.benchmarks` was absent; it passed after implementation. The invalid-zero-endpoint test was red before the guard, then passed after the guard.
+- `bun run test -- tests/backtest` — passed 5 files / 17 tests after the endpoint guard.
+- `bun run test -- tests/integration/paper-flow.test.ts` — passed 1 file / 1 test after the endpoint guard; now asserts the benchmark block survives the API response and JSONB persistence.
+- `bun run test -- tests/domain/contracts.test.ts` — passed 1 file / 6 tests; confirms stored runs without the optional benchmark block remain valid.
+- `bunx tsc --noEmit --incremental false` — passed without touching the concurrently modified `tsconfig.tsbuildinfo`.
+- `bun run lint` — passed with no findings.
+- An ad hoc Lab browser attempt against the isolated OPTRA dev server on port 3001 did not hydrate the current page and issued no API requests; browser logs showed an invalid HMR websocket response. No temporary E2E test remains in `tests/e2e/lab.spec.ts`. This is not evidence of a Lab feature failure; full E2E remains pending a coordinated stable dev server.
+- Removed only this pass's temporary files under `/tmp`: `optra-lab-e2e.config.mjs`, `optra-lab-response.html`, and the `optra-lab-e2e-results` directory. No repository screenshots, fixtures, or Claude-owned artifacts were deleted.
+- Do not run Playwright with the repository's default config: it reuses port 3000, which is currently owned by SENTERA (confirmed by the process working directory). Do not stop SENTERA. One OPTRA dev server is active on port 3001 and uses the repository `.next` directory; coordinate full Playwright/build verification after the concurrent landing edits settle.
+- No commit, push, deployment, or repository cleanup was performed.
+
 ## Remaining scope
 
 - Implement and source-verify the remaining 21 hooks and three House Agent recipes before advertising broader automation.
 - Obtain recorded options quotes/IV, venue contract specs, and fee schedules if venue-based pricing becomes required. Until then, retain modeled labels/assumptions and the simulated one-share limitation.
 - Validate availability and multiplier/corporate-action continuity for each additional underlying before enabling its backtest.
 - No scheduler is configured for unrelated hourly quote collection; the historical Crius feed is fetched directly by backtest/tick runtime.
-- No premium UI redesign has started. Claude Code may use `docs/ui-handoff-contract.md` and `docs/final-core-handoff.md`; backend, safety, tests, migration, and verification paths are protected there.
+- The premium application UI is documented in `docs/final-ui-handoff.md`; current marketing graph work is tracked as a separate in-progress UI integration. Claude Code may use `docs/ui-handoff-contract.md` and `docs/final-core-handoff.md`; backend, safety, tests, migration, and verification paths remain protected there.

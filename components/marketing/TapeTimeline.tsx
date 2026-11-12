@@ -2,14 +2,11 @@
 
 import { useState } from "react";
 import { Chip } from "../app/ui";
-import type { Tone } from "../app/ui";
 import type { GraphStage } from "./graph-data";
-import type { FlowScenario, Verdict } from "./graph-flow";
+import type { FlowScenario } from "./graph-flow";
 
 /* An event trail: each tick is one entry; open it to read the evaluation behind the decision.
    The three ticks are labeled illustrative. Hook reasons are the engine's own strings. */
-
-const tone: Record<Verdict, Tone> = { pass: "azure", select: "azure", size: "azure", action: "azure", block: "ember", noop: "neutral" };
 
 export function TapeTimeline({ ticks, stages }: { ticks: FlowScenario[]; stages: GraphStage[] }) {
   const [open, setOpen] = useState<string>(ticks[0]?.id ?? "");

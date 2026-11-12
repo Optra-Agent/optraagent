@@ -81,10 +81,35 @@ describe("historical paper backtest", () => {
       hourlyCoverageComplete: true,
     });
     expect(run.entryOrderCount).toBeGreaterThan(0);
-    expect(run.metrics).toEqual({ totalReturnPct: expect.any(String), maxDrawdownPct: expect.any(String), endingCashUsd: expect.any(String) });
+    expect(run.metrics).toMatchObject({ totalReturnPct: expect.any(String), maxDrawdownPct: expect.any(String), endingCashUsd: expect.any(String) });
+    const benchmarks = run.metrics?.benchmarks;
+    expect(benchmarks).toBeDefined();
+    const firstDecisionCandle = history.candles.at(-REQUIRED_HOURLY_SAMPLES)!;
+    const lastDecisionCandle = history.candles.at(-1)!;
+    const expectedHoldingReturnPct = (Number(lastDecisionCandle.shareCloseUsd) / Number(firstDecisionCandle.shareCloseUsd) - 1) * 100;
+    expect(benchmarks).toMatchObject({
+      window: { startAt: firstDecisionCandle.endAt, endAt: lastDecisionCandle.endAt, decisionSamples: REQUIRED_HOURLY_SAMPLES },
+      underlying: { symbol: "AAPL", method: "buy_and_hold_price_only", dividendsIncluded: false, feesIncluded: false },
+      cash: { returnPct: "0", endingValueUsd: "100000", denomination: "USD", method: "flat_no_yield", usdGPricePath: "not_modeled" },
+    });
+    expect(Number(benchmarks!.underlying.returnPct)).toBeCloseTo(expectedHoldingReturnPct, 5);
+    expect(Number(benchmarks!.vsHoldingPct)).toBeCloseTo(Number(run.metrics!.totalReturnPct) - expectedHoldingReturnPct, 5);
+    expect(benchmarks!.vsCashPct).toBe(run.metrics!.totalReturnPct);
     expect(run.historyDataHash).toMatch(/^sha256:[a-f0-9]{64}$/);
     expect(run.historyProvenance).toMatchObject({ provider: "Crius Robinhood Chain OHLCV", fill: false, multiplierStatus: "stable_verified" });
     expect(run.pricingAssumptions).toMatchObject({ model: "black_scholes_european_put", venueOptionQuote: false, venueFeesIncluded: false });
+  }, 20_000);
+
+  it("withholds metrics when the benchmark endpoint close is nonpositive", async () => {
+    const history = await capturedHistory();
+    const recipe = buildProtectivePutRecipe({ underlyingSymbol: "AAPL", protectedShares: "10", initialCapitalUsd: "100000" });
+    const invalidEndpoint = history.candles.map((candle, index) => index === history.candles.length - 1 ? { ...candle, shareCloseUsd: "0" } : candle);
+    const run = runBacktest({ runId: "test-invalid-benchmark", recipe, candles: invalidEndpoint, corporateActionDates: history.corporateActionDates, now: capture.capturedAt });
+
+    expect(run.entryOrderCount).toBeGreaterThan(0);
+    expect(run.status).toBe("failed");
+    expect(run.metrics).toBeNull();
+    expect(run.reason).toContain("invalid share-normalized close");
   }, 20_000);
 
   it("withholds metrics and launch proof when actual history produces no entry", async () => {

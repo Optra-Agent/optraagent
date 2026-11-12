@@ -4,14 +4,14 @@ Runtime schemas are defined in `lib/domain/contracts.ts`. Import the inferred Ty
 
 ## Shared TypeScript interfaces
 
-Use the Zod-inferred contracts: `AuthenticatedWalletUser`, `Session`, `ApiError`, `MarketAsset`, `MarketList`, `MarketSnapshot`, `MarketCandle`, `MarketHistoryCoverage`, `HookDefinition`, `HookCatalogResponse`, `HookResult`, `RecipeV1`, `RecipeValidationResult`, `Agent`, `AgentDetail`, `AgentListResponse`, `AgentDecision`, `PaperOrder`, `PaperPosition`, `PaperTickResponse`, `TapeResponse`, `PaperPositionsResponse`, `BacktestCoverage`, `BacktestRun`, `BacktestMetrics`, `HouseAgentTemplate`, `HouseAgentTemplateCatalogResponse`, `PublicAgentsResponse`, `PublicTapeResponse`, `PublicClaim`, and `PublicVerification`.
+Use the Zod-inferred contracts: `AuthenticatedWalletUser`, `Session`, `ApiError`, `MarketAsset`, `MarketList`, `MarketSnapshot`, `MarketCandle`, `MarketHistoryCoverage`, `HookDefinition`, `HookCatalogResponse`, `HookResult`, `RecipeV1`, `RecipeValidationResult`, `Agent`, `AgentDetail`, `AgentListResponse`, `AgentDecision`, `PaperOrder`, `PaperPosition`, `PaperTickResponse`, `TapeResponse`, `PaperPositionsResponse`, `BacktestCoverage`, `BacktestRun`, `BacktestMetrics`, `BacktestBenchmarks`, `HouseAgentTemplate`, `HouseAgentTemplateCatalogResponse`, `PublicAgentsResponse`, `PublicTapeResponse`, `PublicClaim`, and `PublicVerification`.
 
 Important discriminators:
 
 - Every paper execution response is labeled `executionMode: "PAPER"`.
 - Paper orders and positions use `instrumentType: "modeled_option"`, `optionType: "put"`, `modelName: "black_scholes_european_put"`, and `premiumSource: "modeled"`.
 - Hook availability is `implemented` or `catalog_only`. Hook results retain the core `pass|block|select|size|action|noop|error` trace statuses (the shared schema also accepts legacy `skip`).
-- `BacktestRun.metrics` is null unless actual verified source history produces at least one modeled entry.
+- `BacktestRun.metrics` is null unless actual verified source history produces at least one modeled entry. New completed runs include same-window benchmark fields; older persisted metrics may omit them.
 
 ## Wallet authentication
 
@@ -45,6 +45,35 @@ The runtime historical adapter uses Crius Robinhood Chain hourly token OHLCV, no
 | `POST /api/agents/{agentId}/launch` | Session + owner | `{ backtestRunId }`; launches only a draft agent whose recipe hash matches a complete run with >=720 decisions, >=1 entry, source/history hash, provenance, pricing assumptions, and metrics. A missing/invalid proof returns a blocked response. |
 
 The persisted backtest retains its exact normalized candle snapshot, SHA-256 history hash (excluding local `receivedAt`), provider provenance, corporate-action dates, pricing assumptions, and entry/exit counts. A launch verifies the stored snapshot against the hash before changing agent status.
+
+`BacktestMetrics.benchmarks` is optional for backwards compatibility with historical JSONB rows. New completed runs include:
+
+```ts
+type BacktestBenchmarks = {
+  window: { startAt: string; endAt: string; decisionSamples: number };
+  underlying: {
+    symbol: string;
+    startingValueUsd: string;
+    endingValueUsd: string;
+    returnPct: string;
+    method: "buy_and_hold_price_only";
+    dividendsIncluded: false;
+    feesIncluded: false;
+  };
+  cash: {
+    startingValueUsd: string;
+    endingValueUsd: string;
+    returnPct: string;
+    denomination: "USD";
+    method: "flat_no_yield";
+    usdGPricePath: "not_modeled";
+  };
+  vsHoldingPct: string;
+  vsCashPct: string;
+}
+```
+
+Both comparisons use the exact 720 decision candles after the 721-candle warmup. Buy-and-hold invests the initial capital at the first decision candle's verified share-normalized close and values it at the last decision close; it is price-only, with no dividends, fees, or slippage. Cash holds the same initial USD amount flat with zero yield. `vsCashPct` therefore compares the agent with a USD accounting baseline; it is **not** a measured USDG return because no USDG/USD price path is modeled. The benchmark is omitted when decision-window endpoint closes are non-finite or nonpositive; such a run fails closed with null metrics and cannot launch. Do not calculate missing benchmark values in the client. No database migration is needed because metrics are already stored as JSONB; existing rows remain valid without `benchmarks`.
 
 ## Agents and paper execution
 

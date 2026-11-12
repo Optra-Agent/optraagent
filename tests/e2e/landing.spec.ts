@@ -28,8 +28,7 @@ test("landing capability claims match the catalog and roadmap items are not pres
   await expect(status.getByRole("row", { name: /AI composition/ })).toContainText("Coming soon");
   await expect(status.getByRole("row", { name: /Other House Agents/ })).toContainText("Preview");
   await expect(status.getByRole("row", { name: /Session choices, Listing, Floor, MCP, x402/ })).toContainText("Planned");
-  await expect(page.locator("#agents").getByText("Not yet available").first()).toBeVisible();
-  await expect(page.locator("#agents").getByText("Preview", { exact: true })).toHaveCount(3);
+    await expect(page.locator("#agents .pn-agents").getByText("Preview", { exact: true })).toHaveCount(3);
 });
 
 test("every landing navigation anchor resolves to a section that exists", async ({ page }) => {
@@ -135,13 +134,14 @@ test("scroll-driven reveals settle to full opacity, and revisiting a section rep
   }
   await goTo("agents");
   expect(await headOpacity("agents"), "agents on the way back up").toBeGreaterThanOrEqual(0.95);
-  const cards = await page.locator("#agents .agent-board > *").count();
+  const cards = await page.locator("#lab .lp > *").count();
+  expect(cards).toBe(4);
   for (let index = 0; index < cards; index += 1) {
-    await page.locator("#agents .agent-board > *").nth(index).scrollIntoViewIfNeeded();
-    await page.evaluate((i) => document.querySelectorAll("#agents .agent-board > *")[i].scrollIntoView({ block: "center" }), index);
+    await page.locator("#lab .lp > *").nth(index).scrollIntoViewIfNeeded();
+    await page.evaluate((i) => document.querySelectorAll("#lab .lp > *")[i].scrollIntoView({ block: "center" }), index);
     await page.waitForTimeout(300);
-    const opacity = await page.evaluate((i) => parseFloat(getComputedStyle(document.querySelectorAll("#agents .agent-board > *")[i]).opacity), index);
-    expect(opacity, `agent card ${index} once in view`).toBeGreaterThanOrEqual(0.95);
+    const opacity = await page.evaluate((i) => parseFloat(getComputedStyle(document.querySelectorAll("#lab .lp > *")[i]).opacity), index);
+    expect(opacity, `lab step ${index} once in view`).toBeGreaterThanOrEqual(0.95);
   }
 });
 
@@ -153,11 +153,16 @@ test("reduced motion shows every section at full opacity without scrolling", asy
   expect(Math.min(...opacities)).toBe(1);
 });
 
-test("the hook stage visual keeps the true counts and separates implemented from catalog-only", async ({ page }) => {
+test("the hook workbench keeps the true counts and separates implemented from catalog-only", async ({ page }) => {
   await page.goto("/");
-  const stages = page.getByRole("group", { name: "Hook stages and coverage" });
-  await expect(stages.getByText("3 of 10 implemented", { exact: true })).toBeVisible();
-  await expect(stages.getByText("5 of 5 implemented", { exact: true })).toBeVisible();
-  await expect(stages.getByText("Always on", { exact: true })).toBeVisible();
+  const ruler = page.getByRole("tablist", { name: "Hook stages" });
+  await expect(ruler.getByRole("tab", { name: /GATE.*3 of 10/ })).toBeVisible();
+  await expect(ruler.getByRole("tab", { name: /BREAKER.*5 of 5/ })).toBeVisible();
+  await expect(ruler.getByText("Runs on every tick. Can stop new entries.")).toBeVisible();
   await expect(page.getByText("Catalog only, locked (21 hooks)")).toBeVisible();
+  // A locked hook is readable but never presented as implemented.
+  await page.locator("#hooks").getByRole("button", { name: /Volra/ }).click();
+  const detail = page.getByRole("region", { name: "Volra details" });
+  await expect(detail.getByText("Catalog only, locked", { exact: true })).toBeVisible();
+  await expect(detail.getByText("Why it is locked.")).toBeVisible();
 });

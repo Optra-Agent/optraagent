@@ -114,10 +114,31 @@ describe("wallet-to-paper API integration with captured provider data and databa
         method: "POST", headers: { cookie: cookie!, "content-type": "application/json" }, body: JSON.stringify({ recipe }),
       }));
       expect(backtestResponse.status).toBe(201);
-      const backtest = await backtestResponse.json() as { id: string; status: string; entryOrderCount: number; historyDataHash: string; metrics: unknown };
+      const backtest = await backtestResponse.json() as {
+        id: string;
+        status: string;
+        entryOrderCount: number;
+        historyDataHash: string;
+        metrics: {
+          benchmarks?: {
+            window: { decisionSamples: number };
+            underlying: { method: string; dividendsIncluded: boolean; feesIncluded: boolean };
+            cash: { denomination: string; method: string; usdGPricePath: string };
+          };
+        };
+      };
       expect(backtest).toMatchObject({ status: "complete", entryOrderCount: expect.any(Number), historyDataHash: expect.stringMatching(/^sha256:/), metrics: expect.any(Object) });
       expect(backtest.entryOrderCount).toBeGreaterThan(0);
-      expect(await backtestRepository.getBacktestRun(session.user.id, backtest.id)).toMatchObject({ status: "complete", historyDataHash: backtest.historyDataHash });
+      expect(backtest.metrics.benchmarks).toMatchObject({
+        window: { decisionSamples: 720 },
+        underlying: { method: "buy_and_hold_price_only", dividendsIncluded: false, feesIncluded: false },
+        cash: { denomination: "USD", method: "flat_no_yield", usdGPricePath: "not_modeled" },
+      });
+      expect(await backtestRepository.getBacktestRun(session.user.id, backtest.id)).toMatchObject({
+        status: "complete",
+        historyDataHash: backtest.historyDataHash,
+        metrics: { benchmarks: { window: { decisionSamples: 720 }, cash: { usdGPricePath: "not_modeled" } } },
+      });
       const persistedHistory = await backtestRepository.getBacktestHistory(session.user.id, backtest.id);
       expect(persistedHistory).toHaveLength(history.candles.length);
       expect(persistedHistory).toHaveLength(1499);

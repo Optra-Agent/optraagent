@@ -41,7 +41,7 @@ export function getExplorerData(): ExplorerStage[] {
       question: STAGE_QUESTION[stage],
       live: hooks.filter((hook) => hook.availability === "implemented").length,
       total: hooks.length,
-      hooks: hooks.map((hook) => ({
+      hooks: [...hooks].sort((a, b) => Number(b.availability === "implemented") - Number(a.availability === "implemented")).map((hook) => ({
         id: hook.id,
         name: hook.name,
         live: hook.availability === "implemented",
@@ -124,6 +124,7 @@ export function getApiSample(): string {
   const catalog = getHookCatalog();
   const first = catalog.definitions.find((hook) => hook.id === "calmo");
   const body = JSON.stringify({ coverage: catalog.coverage, definitions: first ? [first] : [] }, null, 2);
-  const trimmed = body.replace(/\n {2}\]\n\}$/, `,\n    …${catalog.definitions.length - 1} more\n  ]\n}`);
+  const flat = body.replace(/"expectedByStage": \{[^}]*\}/, `"expectedByStage": ${JSON.stringify(catalog.coverage.expectedByStage)}`);
+  const trimmed = flat.replace(/\n {2}\]\n\}$/, `,\n    …${catalog.definitions.length - 1} more\n  ]\n}`);
   return trimmed;
 }

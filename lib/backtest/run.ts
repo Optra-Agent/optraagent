@@ -180,6 +180,10 @@ export function runBacktest(input: {
     slippageBps: 50,
     venueFeesIncluded: false,
     venueOptionQuote: false,
+    benchmarks: {
+      underlying: "buy initial USD capital at the first decision candle's share-normalized close and hold to the final decision candle close; price-only, no dividends, fees, or slippage",
+      cash: "flat USD-denominated initial capital with zero yield; no USDG/USD market price path is modeled",
+    },
   };
   const validation = validateRecipe(input.recipe);
   let status: BacktestRun["status"] = "insufficient_data";
@@ -227,20 +231,59 @@ export function runBacktest(input: {
     }
     sampleCount = REQUIRED_HOURLY_SAMPLES;
     if (entryOrderCount > 0) {
-      let peak = initialCapital;
-      let maxDrawdownPct = 0;
-      for (const equity of equitySeries) {
-        peak = Math.max(peak, equity);
-        if (peak > 0) maxDrawdownPct = Math.max(maxDrawdownPct, (peak - equity) / peak * 100);
+      const decisionCandles = candles.slice(decisionStart);
+      const startingSharePrice = Number(decisionCandles[0]!.shareCloseUsd);
+      const endingSharePrice = Number(decisionCandles.at(-1)!.shareCloseUsd);
+      const benchmarkPricesValid = Number.isFinite(startingSharePrice) && startingSharePrice > 0
+        && Number.isFinite(endingSharePrice) && endingSharePrice > 0;
+      if (!benchmarkPricesValid) {
+        status = "failed";
+        reason = "The first or last decision candle has an invalid share-normalized close; no performance metrics are reported and launch remains blocked.";
+      } else {
+        let peak = initialCapital;
+        let maxDrawdownPct = 0;
+        for (const equity of equitySeries) {
+          peak = Math.max(peak, equity);
+          if (peak > 0) maxDrawdownPct = Math.max(maxDrawdownPct, (peak - equity) / peak * 100);
+        }
+        const endingEquity = equitySeries.at(-1) ?? initialCapital;
+        const totalReturnPct = (endingEquity - initialCapital) / initialCapital * 100;
+        const underlyingEndingValue = initialCapital * endingSharePrice / startingSharePrice;
+        const underlyingReturnPct = (underlyingEndingValue - initialCapital) / initialCapital * 100;
+        metrics = {
+          totalReturnPct: formatMetric(totalReturnPct),
+          maxDrawdownPct: formatMetric(maxDrawdownPct),
+          endingCashUsd: formatMetric(Number(account.cashUsd)),
+          benchmarks: {
+            window: {
+              startAt: decisionCandles[0]!.endAt,
+              endAt: decisionCandles.at(-1)!.endAt,
+              decisionSamples: decisionCandles.length,
+            },
+            underlying: {
+              symbol: input.recipe.underlyingSymbol,
+              startingValueUsd: formatMetric(initialCapital),
+              endingValueUsd: formatMetric(underlyingEndingValue),
+              returnPct: formatMetric(underlyingReturnPct),
+              method: "buy_and_hold_price_only",
+              dividendsIncluded: false,
+              feesIncluded: false,
+            },
+            cash: {
+              startingValueUsd: formatMetric(initialCapital),
+              endingValueUsd: formatMetric(initialCapital),
+              returnPct: "0",
+              denomination: "USD",
+              method: "flat_no_yield",
+              usdGPricePath: "not_modeled",
+            },
+            vsHoldingPct: formatMetric(totalReturnPct - underlyingReturnPct),
+            vsCashPct: formatMetric(totalReturnPct),
+          },
+        };
+        status = "complete";
+        reason = `Replayed ${sampleCount} provider candles through the shared engine; ${entryOrderCount} modeled entry fills and ${exitOrderCount} modeled exits were applied with disclosed 50 bp slippage and no venue fees.`;
       }
-      const endingEquity = equitySeries.at(-1) ?? initialCapital;
-      metrics = {
-        totalReturnPct: formatMetric((endingEquity - initialCapital) / initialCapital * 100),
-        maxDrawdownPct: formatMetric(maxDrawdownPct),
-        endingCashUsd: formatMetric(Number(account.cashUsd)),
-      };
-      status = "complete";
-      reason = `Replayed ${sampleCount} provider candles through the shared engine; ${entryOrderCount} modeled entry fills and ${exitOrderCount} modeled exits were applied with disclosed 50 bp slippage and no venue fees.`;
     } else {
       status = "failed";
       reason = "The complete historical window produced no modeled entry fills; no performance metrics are reported and launch remains blocked.";

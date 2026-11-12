@@ -107,7 +107,7 @@ Environment note (corrected): port 3000 on this machine was held by a `next star
 
 ## FILES CHANGED
 
-Added: `app/(marketing)/` (layout, page, `marketing.css`), `app/(app)/verify/page.tsx`, `components/marketing/` (`HeroStage`, `MarketingNav`, `sections`, `data`), `components/app/ui.tsx`, `components/app/paper.tsx`, `components/app/format.ts`, `components/app/verify/VerifyScreen.tsx`, `components/LaserFlow.tsx`, `components/LaserFlow.css`, `components.json`, `tests/e2e/landing.spec.ts`, `tests/e2e/verify.spec.ts`, `docs/final-ui-handoff.md`, `docs/ui-integration-requests.md`, `docs/ui-screenshots/`.
+Added: `app/(marketing)/` (layout, page, `marketing.css`), `app/(app)/verify/page.tsx`, `components/marketing/` (`HeroStage`, `MarketingNav`, `sections`, `data`), `components/app/ui.tsx`, `components/app/paper.tsx`, `components/app/format.ts`, `components/app/verify/VerifyScreen.tsx`, `components/LaserFlow.tsx`, `components/LaserFlow.css`, `components.json`, `tests/e2e/landing.spec.ts`, `tests/e2e/verify.spec.ts`, `docs/final-ui-handoff.md`, `docs/ui-integration-requests.md`.
 
 Rewritten or restyled: `app/globals.css`, `app/layout.tsx` (fonts, metadata), `app/(app)/layout.tsx`, every `app/(app)/*/page.tsx` (titles; `/lab` reads `?agent=`), `components/app/AppNav.tsx`, `WalletSession.tsx`, `AuthSessionProvider.tsx` (menu state only), and the agents, forge, hooks, lab, market and tape screens. `docs/landing-content-contract.md` updated to the shipped copy.
 
