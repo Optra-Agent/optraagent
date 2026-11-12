@@ -3,8 +3,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { ApiErrorSchema, HookCatalogResponseSchema } from "../../../lib/domain/contracts";
 import type { HookCatalogResponse, HookStage } from "../../../lib/domain/contracts";
-import { Chip, PageHeader, StateBlock } from "../ui";
+import { Chip, PageHeader, StateBlock, Panel } from "../ui";
 import { errorText } from "../format";
+import { NativeSelect } from "@/components/ui/native-select";
+import { Label } from "@/components/ui/label";
 
 const STAGES: HookStage[] = ["gate", "strike", "size", "pulse", "expiry", "breaker"];
 const stageLabel = (stage: HookStage) => stage.charAt(0).toUpperCase() + stage.slice(1);
@@ -61,7 +63,7 @@ export function HookCatalogScreen() {
       {status === "error" ? <StateBlock kind="error" title="Hook catalog unavailable"><p>{error}</p></StateBlock> : null}
       {catalog ? (
         <>
-          <section className="panel" aria-label="Hook catalog coverage">
+          <Panel  aria-label="Hook catalog coverage">
             <div className="panel-head">
               <strong className="coverage-title">{catalog.coverage.registeredCount} definitions registered</strong>
               <span className="coverage-sub">{catalog.coverage.expectedCount} expected in the PM brief</span>
@@ -89,14 +91,14 @@ export function HookCatalogScreen() {
               })}
             </div>
             <div className="hook-filter-controls">
-              <label htmlFor="hook-stage-filter">Filter by stage</label>
-              <select id="hook-stage-filter" value={stageFilter} onChange={(event) => setStageFilter(event.target.value as HookStage | "all")}>
+              <Label htmlFor="hook-stage-filter">Filter by stage</Label>
+              <NativeSelect id="hook-stage-filter" className="hook-select" value={stageFilter} onChange={(event) => setStageFilter(event.target.value as HookStage | "all")}>
                 <option value="all">All stages</option>
                 {STAGES.map((stage) => <option key={stage} value={stage}>{stage}</option>)}
-              </select>
+              </NativeSelect>
               <span className="coverage-sub">{definitions.length} shown</span>
             </div>
-          </section>
+          </Panel>
 
           <div className="hook-grid">
             {definitions.map((definition) => (

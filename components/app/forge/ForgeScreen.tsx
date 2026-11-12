@@ -13,7 +13,11 @@ import {
 } from "../../../lib/domain/contracts";
 import type { HookCatalogResponse, HookDefinition, HookStage, MarketAsset, RecipeValidationResult } from "../../../lib/domain/contracts";
 import { shortHash, titleCase, errorText } from "../format";
-import { Chip, PageHeader, StateBlock } from "../ui";
+import { Chip, PageHeader, StateBlock, Panel } from "../ui";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 type LoadState = "loading" | "ready" | "error";
 const templateOptions = [
@@ -164,24 +168,30 @@ export function ForgeScreen() {
       {loadState === "error" ? <StateBlock kind="error" title="Forge is unavailable"><p>{loadError}</p></StateBlock> : null}
       {loadState === "ready" && catalog ? (
         <div className="forge-layout">
-          <section className="panel forge-form" aria-label="Recipe builder">
+          <Panel className="forge-form" aria-label="Recipe builder">
             <div className="panel-head"><h2>Recipe details</h2></div>
             <div className="forge-basics">
               <div className="field">
-                <label htmlFor="forge-name">Agent name</label>
-                <input id="forge-name" maxLength={80} value={name} onChange={(event) => { setName(event.target.value); invalidateValidation(); }} />
+                <Label htmlFor="forge-name">Agent name</Label>
+                <Input id="forge-name" maxLength={80} value={name} onChange={(event) => { setName(event.target.value); invalidateValidation(); }} />
               </div>
               <div className="field">
-                <label htmlFor="forge-template">Strategy template</label>
-                <select id="forge-template" value={templateId} onChange={(event) => { setTemplateId(event.target.value as typeof templateId); invalidateValidation(); }}>
-                  {templateOptions.map(([id, label]) => <option key={id} value={id}>{label}</option>)}
-                </select>
+                <Label htmlFor="forge-template">Strategy template</Label>
+                <Select value={templateId} onValueChange={(value) => { setTemplateId(value as typeof templateId); invalidateValidation(); }}>
+                  <SelectTrigger id="forge-template" className="w-full"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {templateOptions.map(([id, label]) => <SelectItem key={id} value={id}>{label}</SelectItem>)}
+                  </SelectContent>
+                </Select>
               </div>
               <div className="field">
-                <label htmlFor="forge-symbol">Underlying market</label>
-                <select id="forge-symbol" value={symbol} onChange={(event) => { setSymbol(event.target.value); invalidateValidation(); }} disabled={markets.length === 0}>
-                  {markets.map((market) => <option key={market.symbol} value={market.symbol}>{market.symbol} · {market.name}</option>)}
-                </select>
+                <Label htmlFor="forge-symbol">Underlying market</Label>
+                <Select value={symbol || undefined} onValueChange={(value) => { setSymbol(value); invalidateValidation(); }} disabled={markets.length === 0}>
+                  <SelectTrigger id="forge-symbol" className="w-full"><SelectValue placeholder="No markets available" /></SelectTrigger>
+                  <SelectContent>
+                    {markets.map((market) => <SelectItem key={market.symbol} value={market.symbol}>{market.symbol} · {market.name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
               </div>
             </div>
 
@@ -222,8 +232,8 @@ export function ForgeScreen() {
             </fieldset>
 
             <div className="forge-actions">
-              <button className="button button-secondary" type="button" disabled={busy || markets.length === 0} onClick={() => void validate()}>Validate recipe</button>
-              <button className="button button-primary" type="button" disabled={busy || !validation?.valid} onClick={() => void saveDraft()}>Save draft</button>
+              <Button variant="outline" type="button" disabled={busy || markets.length === 0} onClick={() => void validate()}>Validate recipe</Button>
+              <Button  type="button" disabled={busy || !validation?.valid} onClick={() => void saveDraft()}>Save draft</Button>
               {!validation?.valid ? <span className="action-note">Save unlocks after the server validates the recipe.</span> : null}
             </div>
             {validationError ? <p className="form-error forge-error" role="alert">{validationError}</p> : null}
@@ -234,10 +244,10 @@ export function ForgeScreen() {
                 {validation.issues.length ? <ul>{validation.issues.map((issue, index) => <li key={`${issue.code}:${issue.hookId ?? index}`}>{issue.message}</li>)}</ul> : null}
               </section>
             ) : null}
-          </section>
+          </Panel>
 
           <aside className="forge-aside" aria-label="Recipe outline and capability">
-            <section className="panel">
+            <Panel>
               <div className="panel-head"><h2>Recipe outline</h2><Chip>{hookIds.length} selected</Chip></div>
               <ol className="stage-outline">
                 {STAGES.map((stage) => {
@@ -251,8 +261,8 @@ export function ForgeScreen() {
                 })}
               </ol>
               <p className="panel-note">{templateId === "custom" ? "Custom" : titleCase(templateId)} on {symbol || "no market"}. {validation?.recipeHash ? `Hash ${shortHash(validation.recipeHash, 14, 6)}` : "Not validated yet."}</p>
-            </section>
-            <section className="panel forge-status">
+            </Panel>
+            <Panel className="forge-status">
               <p className="eyebrow">CAPABILITY</p>
               <h2>AI composition is planned</h2>
               <p>No verified AI provider is configured, so this builder does not generate recipes. Rules decide; the editor is click-only today.</p>
@@ -260,7 +270,7 @@ export function ForgeScreen() {
               <p>Market symbols: {markets.length}</p>
               <p className="panel-note"><strong>Fastest supported path.</strong> Only the Protective Put composition can be validated and launched on paper. <Link href="/agents#configure">Create that draft on Agents</Link>.</p>
               <Link href="/hooks">Review hook capability</Link>
-            </section>
+            </Panel>
           </aside>
         </div>
       ) : null}

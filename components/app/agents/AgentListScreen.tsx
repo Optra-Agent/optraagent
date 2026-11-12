@@ -6,9 +6,11 @@ import { ApiErrorSchema, AgentListResponseSchema } from "../../../lib/domain/con
 import type { Agent } from "../../../lib/domain/contracts";
 import { useAuthSession } from "../AuthSessionProvider";
 import { formatUtc, shortHash, titleCase, errorText } from "../format";
-import { JourneyRail, PageHeader, Skeleton, StateBlock } from "../ui";
+import { JourneyRail, PageHeader, Skeleton, StateBlock, Panel } from "../ui";
 import { TemplateCatalog } from "./TemplateCatalog";
 import { HouseAgentCreator } from "./HouseAgentCreator";
+import { Button, buttonVariants } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 
 async function responseMessage(response: Response): Promise<string> {
   try {
@@ -62,7 +64,7 @@ export function AgentListScreen() {
         eyebrow="PAPER ONLY"
         title="Agents"
         description="Rule-driven strategies with recorded inputs and explainable decisions. Start from a House Agent, backtest it, then run it on paper."
-        actions={status === "signed_in" ? <button className="button button-secondary" type="button" disabled={loadStatus === "loading"} onClick={() => setReload((value) => value + 1)}>Refresh</button> : null}
+        actions={status === "signed_in" ? <Button variant="outline" type="button" disabled={loadStatus === "loading"} onClick={() => setReload((value) => value + 1)}>Refresh</Button> : null}
       />
       <JourneyRail step={journeyStep} />
 
@@ -72,7 +74,7 @@ export function AgentListScreen() {
         <StateBlock
           kind="info"
           title="No agent session"
-          action={<button className="button button-secondary" type="button" onClick={() => { setWalletMenuOpen(true); window.scrollTo({ top: 0, behavior: "smooth" }); }}>Choose a wallet</button>}
+          action={<Button variant="outline" type="button" onClick={() => { setWalletMenuOpen(true); window.scrollTo({ top: 0, behavior: "smooth" }); }}>Choose a wallet</Button>}
         >
           <p>Connect a wallet to view your agents.</p>
           <p className="subtle">Supported: MetaMask and Phantom EVM on Robinhood Chain. Signing in proves wallet ownership only and never sends a transaction.</p>
@@ -86,7 +88,7 @@ export function AgentListScreen() {
             {loadStatus === "ready" && agents.length > 0 ? <span>{agents.length} saved</span> : null}
           </div>
           {loadStatus === "loading" ? <div className="state-panel" role="status"><Skeleton lines={3} /></div> : null}
-          {loadStatus === "error" ? <StateBlock kind="error" title="Agents could not be loaded" action={<button className="button button-secondary" type="button" onClick={() => setReload((value) => value + 1)}>Retry</button>}>{error}</StateBlock> : null}
+          {loadStatus === "error" ? <StateBlock kind="error" title="Agents could not be loaded" action={<Button variant="outline" type="button" onClick={() => setReload((value) => value + 1)}>Retry</Button>}>{error}</StateBlock> : null}
           {loadStatus === "ready" && agents.length === 0 ? (
             <StateBlock kind="empty" title="No saved agents">
               <p>Create the paper-ready Protective Put draft below, then run its verified backtest in Lab before launch.</p>
@@ -96,7 +98,7 @@ export function AgentListScreen() {
           {loadStatus === "ready" && agents.length > 0 ? (
             <div className="agent-grid">
               {agents.map((agent) => (
-                <article className="agent-card" key={agent.id}>
+                <Card className="agent-card" key={agent.id}>
                   <div className="agent-card-head">
                     <div><p className="eyebrow">{titleCase(agent.templateId)}</p><h2>{agent.name}</h2></div>
                     <span className={`agent-status agent-status-${agent.status}`}>{agent.status}</span>
@@ -107,10 +109,10 @@ export function AgentListScreen() {
                     <div><dt>Updated</dt><dd className="mono"><time dateTime={agent.updatedAt}>{formatUtc(agent.updatedAt)}</time></dd></div>
                   </dl>
                   <div className="agent-card-actions">
-                    <Link className="button button-secondary" href={`/agents/${encodeURIComponent(agent.id)}`}>Open agent</Link>
-                    {agent.status === "draft" ? <Link className="button button-primary" href={`/lab?agent=${encodeURIComponent(agent.id)}`}>Backtest in Lab</Link> : null}
+                    <Link className={buttonVariants({ variant: "outline" })} href={`/agents/${encodeURIComponent(agent.id)}`}>Open agent</Link>
+                    {agent.status === "draft" ? <Link className={buttonVariants({ variant: "default" })} href={`/lab?agent=${encodeURIComponent(agent.id)}`}>Backtest in Lab</Link> : null}
                   </div>
-                </article>
+                </Card>
               ))}
             </div>
           ) : null}
@@ -120,10 +122,10 @@ export function AgentListScreen() {
       <div className="agents-layout">
         <TemplateCatalog />
         {status === "signed_in" ? <HouseAgentCreator /> : (
-          <section className="panel creator creator-locked" id="configure" aria-label="Configure Protective Put draft">
+          <Panel className="creator creator-locked" id="configure" aria-label="Configure Protective Put draft">
             <div className="panel-head"><div><p className="eyebrow">STEP 2 · CONFIGURE</p><h2>Protective Put draft</h2></div></div>
             <p className="panel-lede">Sign in with a wallet to set the underlying, virtual reference shares and paper capital. Your draft is saved to your account only.</p>
-          </section>
+          </Panel>
         )}
       </div>
     </main>

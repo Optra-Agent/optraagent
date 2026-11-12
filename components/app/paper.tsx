@@ -1,13 +1,15 @@
 import type { AgentDecision, PaperOrder, PaperPosition } from "../../lib/domain/contracts";
 import { formatUsd, formatUtc, shortHash, signedTone } from "./format";
 import { actionTone, Chip, DecisionTrace } from "./ui";
+import { Card } from "@/components/ui/card";
+import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
 export function PositionGrid({ positions }: { positions: PaperPosition[] }) {
   if (positions.length === 0) return <p className="empty-line">No paper positions.</p>;
   return (
     <div className="position-grid">
       {positions.map((position) => (
-        <article className="position-card" key={position.id}>
+        <Card className="position-card" key={position.id}>
           <div className="position-head">
             <strong>{position.symbol} {position.optionType.toUpperCase()} · {formatUsd(position.strikeUsd)}</strong>
             <Chip tone={position.status === "open" ? "azure" : "neutral"}>{position.status}</Chip>
@@ -21,7 +23,7 @@ export function PositionGrid({ positions }: { positions: PaperPosition[] }) {
             <div><dt>Expiry</dt><dd className="mono">{formatUtc(position.expiryAt)}</dd></div>
           </dl>
           <p className="position-foot">Modeled premium · Black–Scholes · IV {position.impliedVolatility}</p>
-        </article>
+        </Card>
       ))}
     </div>
   );
@@ -30,27 +32,30 @@ export function PositionGrid({ positions }: { positions: PaperPosition[] }) {
 export function OrdersTable({ orders }: { orders: PaperOrder[] }) {
   if (orders.length === 0) return <p className="empty-line">No paper orders.</p>;
   return (
-    <div className="table-scroll">
-      <table className="data-table">
-        <caption className="sr-only">Modeled paper orders</caption>
-        <thead>
-          <tr><th scope="col">Order</th><th scope="col">Strike</th><th scope="col">Expiry</th><th scope="col">Model premium</th><th scope="col">Paper fill</th><th scope="col">Slippage</th><th scope="col">Status</th></tr>
-        </thead>
-        <tbody>
-          {orders.map((order) => (
-            <tr key={order.id}>
-              <th scope="row">{order.side.toUpperCase()} {order.quantity} {order.symbol} {order.optionType.toUpperCase()}<span className="cell-sub">IV {order.impliedVolatility} · venue fees excluded</span></th>
-              <td className="mono">{formatUsd(order.strikeUsd)}</td>
-              <td className="mono">{formatUtc(order.expiryAt)}</td>
-              <td className="mono">{formatUsd(order.modelPremiumUsd, 4)}</td>
-              <td className="mono">{formatUsd(order.priceUsd, 4)}</td>
-              <td className="mono">{order.slippageBps} bp</td>
-              <td>{order.status}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+    <Table>
+      <TableCaption className="sr-only">Modeled paper orders</TableCaption>
+      <TableHeader>
+        <TableRow>
+          <TableHead>Order</TableHead><TableHead>Strike</TableHead><TableHead>Expiry</TableHead><TableHead>Model premium</TableHead><TableHead>Paper fill</TableHead><TableHead>Slippage</TableHead><TableHead>Status</TableHead>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {orders.map((order) => (
+          <TableRow key={order.id}>
+            <TableCell className="min-w-52 font-medium whitespace-normal">
+              {order.side.toUpperCase()} {order.quantity} {order.symbol} {order.optionType.toUpperCase()}
+              <span className="cell-sub">IV {order.impliedVolatility} · venue fees excluded</span>
+            </TableCell>
+            <TableCell className="mono">{formatUsd(order.strikeUsd)}</TableCell>
+            <TableCell className="mono">{formatUtc(order.expiryAt)}</TableCell>
+            <TableCell className="mono">{formatUsd(order.modelPremiumUsd, 4)}</TableCell>
+            <TableCell className="mono">{formatUsd(order.priceUsd, 4)}</TableCell>
+            <TableCell className="mono">{order.slippageBps} bp</TableCell>
+            <TableCell>{order.status}</TableCell>
+          </TableRow>
+        ))}
+      </TableBody>
+    </Table>
   );
 }
 

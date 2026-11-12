@@ -5,8 +5,12 @@ import type { FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { AgentDetailSchema, ApiErrorSchema, MarketListSchema } from "../../../lib/domain/contracts";
 import { buildProtectivePutRecipe } from "../../../lib/hooks/catalog";
-import { Chip } from "../ui";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Chip, Panel } from "../ui";
 import { errorText } from "../format";
+import { Button } from "@/components/ui/button";
 
 function responseError(body: unknown, fallback: string): string {
   const parsed = ApiErrorSchema.safeParse(body);
@@ -77,31 +81,35 @@ export function HouseAgentCreator() {
   }
 
   return (
-    <section className="panel creator" id="configure" aria-label="Create Protective Put House Agent">
+    <Panel className="creator" id="configure" aria-label="Create Protective Put House Agent">
       <div className="panel-head">
         <div><p className="eyebrow">STEP 2 · CONFIGURE</p><h2>Protective Put draft</h2></div>
         <Chip tone="azure">Paper ready</Chip>
       </div>
       <p className="panel-lede">Creates one deterministic recipe. Reference shares and capital are virtual simulation inputs: nothing is read from, or locked in, your wallet.</p>
-      <form className="creator-form" onSubmit={(event) => void createDraft(event)}>
+      <form className="creator-form" onSubmit={(event) => void createDraft(event)} noValidate={false}>
         <div className="field">
-          <label htmlFor="house-agent-symbol">Underlying</label>
-          <select id="house-agent-symbol" value={symbol} onChange={(event) => setSymbol(event.target.value)} disabled={busy || symbols.length === 0}>
-            {marketsLoading ? <option value="">Loading markets…</option> : null}
-            {symbols.map((item) => <option key={item} value={item}>{item}</option>)}
-          </select>
+          <Label htmlFor="house-agent-symbol">Underlying</Label>
+          <Select value={symbol} onValueChange={setSymbol} disabled={busy || symbols.length === 0}>
+            <SelectTrigger id="house-agent-symbol" className="w-full">
+              <SelectValue placeholder={marketsLoading ? "Loading markets…" : "No markets available"} />
+            </SelectTrigger>
+            <SelectContent>
+              {symbols.map((item) => <SelectItem key={item} value={item}>{item}</SelectItem>)}
+            </SelectContent>
+          </Select>
         </div>
         <div className="field">
-          <label htmlFor="house-agent-shares">Virtual reference shares</label>
-          <input id="house-agent-shares" type="number" min="1" step="1" inputMode="numeric" value={shares} onChange={(event) => setShares(event.target.value)} required />
+          <Label htmlFor="house-agent-shares">Virtual reference shares</Label>
+          <Input id="house-agent-shares" type="number" min="1" step="1" inputMode="numeric" value={shares} onChange={(event) => setShares(event.target.value)} required />
           <span className="field-hint">Shares the put is sized to protect.</span>
         </div>
         <div className="field">
-          <label htmlFor="house-agent-capital">Paper capital (USD)</label>
-          <input id="house-agent-capital" type="number" min="100" step="100" inputMode="numeric" value={capital} onChange={(event) => setCapital(event.target.value)} required />
+          <Label htmlFor="house-agent-capital">Paper capital (USD)</Label>
+          <Input id="house-agent-capital" type="number" min="100" step="100" inputMode="numeric" value={capital} onChange={(event) => setCapital(event.target.value)} required />
           <span className="field-hint">Virtual cash that pays premiums.</span>
         </div>
-        <button className="button button-primary creator-submit" type="submit" disabled={busy || marketsLoading || symbols.length === 0}>{busy ? "Creating…" : "Create paper draft"}</button>
+        <Button type="submit" size="lg" className="w-full" disabled={busy || marketsLoading || symbols.length === 0}>{busy ? "Creating…" : "Create paper draft"}</Button>
       </form>
       {error ? <p role="alert" className="form-error">{error}</p> : null}
       {!marketsLoading && symbols.length === 0 && !error ? <p className="form-hint">No active markets were returned, so a draft cannot be created right now.</p> : null}
@@ -117,6 +125,6 @@ export function HouseAgentCreator() {
           ))}
         </ol>
       </div>
-    </section>
+    </Panel>
   );
 }
