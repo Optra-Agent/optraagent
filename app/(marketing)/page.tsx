@@ -3,6 +3,7 @@ import { PublicTapeResponseSchema, PublicVerificationSchema } from "../../lib/do
 import { createPublicHandlers } from "../../lib/public/handlers";
 import { getLandingFacts } from "../../components/marketing/data";
 import { getGraphData } from "../../components/marketing/graph-data";
+import { getApiSample, getExplorerData, getForgeDemo, getRiskRails } from "../../components/marketing/section-data";
 import { scenarioFromDecision } from "../../components/marketing/graph-flow";
 import { Developers, DualMode, Faq, FinalCta, Forge, Hero, Hooks, HouseAgents, HowItWorks, LabSection, Sessions, Status, TapeSection } from "../../components/marketing/sections";
 
@@ -25,14 +26,14 @@ export default async function LandingPage() {
     <>
       <Hero facts={facts} />
       <HouseAgents facts={facts} graph={graph} recorded={recorded} />
-      <Forge facts={facts} />
-      <Hooks facts={facts} />
+      <Forge facts={facts} forge={getForgeDemo()} />
+      <Hooks facts={facts} explorer={getExplorerData()} />
       <HowItWorks />
-      <TapeSection />
-      <LabSection />
-      <Sessions />
+      <TapeSection graph={graph} />
+      <LabSection facts={facts} />
+      <Sessions rails={getRiskRails()} />
       <DualMode />
-      <Developers />
+      <Developers sample={getApiSample()} />
       <Status verification={verification} />
       <Faq facts={facts} />
       <FinalCta />

@@ -6,9 +6,9 @@ import type { FlowScenario, Verdict } from "./graph-flow";
 
 /* Data for the Optra Agent Intelligence Graph. Everything here is derived from the same registries the API serves:
    the hook catalog, the House Agent template catalog and the Protective Put recipe builder. Nothing is invented
-   except the clearly labeled illustrative evaluation outputs, whose wording is copied from the engine. */
+   except the clearly labeled illustrative evaluation text, whose wording is copied from the engine. */
 
-export type HookExample = { status: Verdict; reason: string; value?: string; threshold?: string; unit?: string };
+export type HookExample = { status: Verdict; reason: string; threshold?: string; unit?: string };
 
 export type GraphHook = {
   id: string;
@@ -20,7 +20,8 @@ export type GraphHook = {
   example: HookExample;
 };
 
-export type GraphStage = { stage: HookStage; label: string; question: string; hooks: GraphHook[]; live: number; total: number };
+export type LockedHook = { id: string; name: string; reason: string };
+export type GraphStage = { stage: HookStage; label: string; question: string; hooks: GraphHook[]; locked: LockedHook[]; live: number; total: number };
 
 export type GraphAgent = {
   id: "protective_put" | "covered_call" | "cash_secured_put" | "earnings_straddle";
@@ -31,23 +32,23 @@ export type GraphAgent = {
 };
 
 /** What each hook returns on a typical pass. Reason text is the engine's own string (lib/engine/run-tick.ts);
- *  threshold is read from the recipe. Observed values are examples only and are labeled as such in the UI. */
-const EXAMPLE_TEXT: Record<string, { status: Verdict; reason: string; value?: string; unit?: string }> = {
-  calmo: { status: "pass", reason: "RVfast/RV30 is calm and the latest hourly price change is bounded.", value: "0.94", unit: "RV ratio" },
-  corpax: { status: "pass", reason: "No known corporate action is inside the configured pause window.", value: "none", unit: "hours" },
+ *  threshold is read from the recipe. No observed values are shown. */
+const EXAMPLE_TEXT: Record<string, { status: Verdict; reason: string; unit?: string }> = {
+  calmo: { status: "pass", reason: "RVfast/RV30 is calm and the latest hourly price change is bounded.", unit: "RV ratio" },
+  corpax: { status: "pass", reason: "No known corporate action is inside the configured pause window.", unit: "hours" },
   sessia: { status: "pass", reason: "Entry timestamp falls inside the regular US equity session.", unit: "local market time" },
   percy: { status: "select", reason: "Selected the configured theoretical out-of-the-money put strike; this is not a listed venue contract.", unit: "% OTM" },
-  tenora: { status: "select", reason: "Selected exact calendar-day model tenor; no exchange expiry calendar was inferred.", value: "30", unit: "calendar days" },
+  tenora: { status: "select", reason: "Selected exact calendar-day model tenor; no exchange expiry calendar was inferred.", unit: "calendar days" },
   coverix: { status: "size", reason: "Configured virtual reference shares determine one-share model units; no wallet balance is read or locked.", unit: "% coverage" },
   capra: { status: "size", reason: "Option-unit quantity fits the reference-holding premium cap, virtual coverage, one-position limit, and paper cash.", unit: "% of holding" },
   trailo: { status: "noop", reason: "No open model position exists to trail." },
   lastra: { status: "noop", reason: "No open model position exists to close before expiry." },
   nextra: { status: "pass", reason: "A new modeled protection cycle may be considered; all Gates and Breakers are still evaluated." },
-  haltr: { status: "pass", reason: "Current quote/candle is fresh, not halted, and the prior-hour move is within the configured bound.", value: "0.8", unit: "%" },
-  daylo: { status: "pass", reason: "Daily realized and marked paper loss is below the configured limit.", value: "0", unit: "%" },
-  drawra: { status: "pass", reason: "Paper equity drawdown is below the configured limit.", value: "0", unit: "%" },
-  exposa: { status: "pass", reason: "Configured reference-share notional is within the paper capital exposure cap.", value: "12", unit: "%" },
-  venux: { status: "pass", reason: "Underlying data and the disclosed premium model are available; no option venue quote or fee schedule is represented.", value: "modeled" },
+  haltr: { status: "pass", reason: "Current quote/candle is fresh, not halted, and the prior-hour move is within the configured bound.", unit: "%" },
+  daylo: { status: "pass", reason: "Daily realized and marked paper loss is below the configured limit.", unit: "%" },
+  drawra: { status: "pass", reason: "Paper equity drawdown is below the configured limit.", unit: "%" },
+  exposa: { status: "pass", reason: "Configured reference-share notional is within the paper capital exposure cap.", unit: "%" },
+  venux: { status: "pass", reason: "Underlying data and the disclosed premium model are available; no option venue quote or fee schedule is represented." },
 };
 
 /** The threshold shown beside the example comes from the recipe, so it cannot drift from the real defaults. */
@@ -101,7 +102,8 @@ export function getGraphData(): GraphData {
   const stageOf = (stage: HookStage): GraphStage => {
     const all = catalog.definitions.filter((hook) => hook.stage === stage);
     const used = PAPER_PROTECTIVE_PUT_HOOK_IDS.filter((id) => catalog.definitions.find((hook) => hook.id === id)?.stage === stage);
-    return { stage, label: stageLabel(stage), question: STAGE_QUESTION[stage], hooks: used.map(toHook), live: all.filter((hook) => hook.availability === "implemented").length, total: all.length };
+    const locked = all.filter((hook) => hook.availability !== "implemented").map((hook) => ({ id: hook.id, name: hook.name, reason: hook.unavailableReason ?? "No verified evaluator." }));
+    return { stage, label: stageLabel(stage), question: STAGE_QUESTION[stage], hooks: used.map(toHook), locked, live: all.filter((hook) => hook.availability === "implemented").length, total: all.length };
   };
 
   const order = (id: string) => ["gate", "strike", "size", "pulse", "expiry"].indexOf(id);

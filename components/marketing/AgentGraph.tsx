@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, KeyboardEvent, ReactNode } from "react";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -10,702 +10,627 @@ import type { Tone } from "../app/ui";
 import { FLOW_STEPS, STEP_LABEL } from "./graph-flow";
 import type { FlowScenario, FlowStep, Verdict } from "./graph-flow";
 import type { GraphAgent, GraphData, GraphHook, GraphStage } from "./graph-data";
+import { buildLayout, PHASE_COPY, PHASES, VIEW } from "./network-layout";
+import type { LayoutEdge, LayoutNode, Phase } from "./network-layout";
 
-/* The Optra Agent Intelligence Graph.
-   One SVG canvas (viewBox units, so it scales as a whole), HTML for the detail panel.
-   Nodes are persistent: selection only changes data attributes, and CSS transitions move, fade and draw them.
-   No physics, no canvas, no animation library, no per-frame JavaScript. Idle motion is a few CSS dash pulses. */
+/* Optra Agent Network.
+   One agent grows outward into its rule system: stages, then hooks, with the Breaker closing around everything as an
+   always-on guard, and the paper decision and Optra Tape at the end. Geometry lives in network-layout.ts. This file
+   renders it. Nodes are persistent; a phase only changes where they sit (from their parent to their own spot) and
+   whether they are visible, so CSS transitions make the network visibly grow. No physics, no animation library. */
 
 type AgentId = GraphAgent["id"];
-type Selection = { kind: "stage"; id: string } | { kind: "hook"; id: string } | null;
 
-const W = 1000;
-const H = 520;
-const COL = [330, 470, 610, 750, 890];
-const STAGE_Y = 120;
-const HOOK_Y0 = 200;
-const HOOK_DY = 38;
-const BAND = { x: 210, y: 322, w: 752, h: 90 };
-const BREAKER_Y = 384;
-const DECISION = { x: 500, y: 468 };
-const TAPE = { x: 780, y: 468 };
-
-const OVERVIEW: Record<AgentId, { x: number; y: number }> = {
-  protective_put: { x: 210, y: 150 },
-  covered_call: { x: 790, y: 150 },
-  cash_secured_put: { x: 210, y: 370 },
-  earnings_straddle: { x: 790, y: 370 },
-};
-const HUB = { x: 500, y: 260 };
-const FOCUS = { x: 100, y: STAGE_Y };
-const DOCK: Record<Exclude<AgentId, "protective_put">, { x: number; y: number }> = {
-  covered_call: { x: 100, y: 214 },
-  cash_secured_put: { x: 100, y: 258 },
-  earnings_straddle: { x: 100, y: 302 },
-};
-
-/** Payoff-diagram glyphs: the shape of each strategy's profit and loss at expiry (flat floor, capped gain, V). */
 const PAYOFF: Record<AgentId, string> = {
+  protective_put: "M-24 12 H-6 L24 -14",
+  covered_call: "M-24 14 L2 -10 H24",
+  cash_secured_put: "M-24 10 L-6 -6 H24",
+  earnings_straddle: "M-24 -14 L0 14 L24 -14",
+};
+const SMALL_PAYOFF: Record<AgentId, string> = {
   protective_put: "M2 22 H12 L36 4",
   covered_call: "M2 24 L22 6 H36",
   cash_secured_put: "M2 22 L14 10 H36",
   earnings_straddle: "M2 4 L19 24 L36 4",
 };
 
-const at = (delay: number): CSSProperties => ({ "--d": `${delay}ms` }) as CSSProperties;
+/** Hold time before the next phase while auto-playing, in milliseconds. */
+const PHASE_HOLD: Record<Phase, number> = { 0: 150, 1: 3000, 2: 3400, 3: 4200, 4: 1500 };
+const FLOW_HOLD = 1000;
+
 const reduced = () => typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+const tone: Record<Verdict, Tone> = { pass: "azure", select: "azure", size: "azure", action: "azure", block: "ember", noop: "neutral" };
+const px = (value: number) => `${value}px`;
 
-function Glyph({ id, x = 0, y = 0 }: { id: AgentId; x?: number; y?: number }) {
-  return (
-    <g className="gx-glyph" transform={`translate(${x} ${y})`} aria-hidden="true">
-      <path d={PAYOFF[id]} />
-    </g>
-  );
-}
+/* ───────────── SVG pieces ───────────── */
 
-function Edge({ d, show, delay = 0, kind = "solid", pulse, hot, done, dim }: { d: string; show: boolean; delay?: number; kind?: "solid" | "dashed" | "guard"; pulse?: { name: string; delay: number }; hot?: boolean; done?: boolean; dim?: boolean }) {
+function Edge({ edge, show, hot, done, dim, pulse }: { edge: LayoutEdge; show: boolean; hot?: boolean; done?: boolean; dim?: boolean; pulse?: number }) {
+  const solid = edge.kind !== "lock";
   return (
-    <g className="gx-edge" data-kind={kind} data-show={show ? "1" : "0"} data-hot={hot ? "1" : "0"} data-done={done ? "1" : "0"} data-dim={dim ? "1" : "0"} style={at(delay)} aria-hidden="true">
-      <path className="gx-line" d={d} pathLength={kind === "solid" ? 1 : undefined} />
-      {pulse && show ? <path className={`gx-pulse gx-pulse-${pulse.name}`} d={d} pathLength={1} style={{ animationDelay: `calc(var(--d, 0ms) + ${700 + pulse.delay}ms)` }} /> : null}
+    <g className="pn-edge" data-kind={edge.kind} data-show={show ? "1" : "0"} data-hot={hot ? "1" : "0"} data-done={done ? "1" : "0"} data-dim={dim ? "1" : "0"} style={{ "--d": `${edge.delay}ms` } as CSSProperties} aria-hidden="true">
+      <path className="pn-line" d={edge.d} pathLength={solid ? 1 : undefined} />
+      {pulse !== undefined && show ? <path className="pn-pulse" d={edge.d} pathLength={1} style={{ animationDelay: `calc(var(--d, 0ms) + ${900 + pulse}ms)` }} /> : null}
     </g>
   );
 }
 
 type NodeProps = {
-  x: number;
-  y: number;
+  node: LayoutNode;
   show: boolean;
-  delay?: number;
-  scale?: number;
-  className?: string;
   label?: string;
   pressed?: boolean;
   onActivate?: () => void;
   state?: Record<string, string | undefined>;
+  className?: string;
   children: ReactNode;
 };
 
-function Node({ x, y, show, delay = 0, scale = 1, className, label, pressed, onActivate, state, children }: NodeProps) {
+function Node({ node, show, label, pressed, onActivate, state, className, children }: NodeProps) {
   const interactive = Boolean(onActivate);
+  const cx = show ? node.x : node.from.x;
+  const cy = show ? node.y : node.from.y;
+  const data = Object.fromEntries(Object.entries(state ?? {}).filter(([, value]) => value !== undefined).map(([key, value]) => [`data-${key}`, value]));
   const onKey = (event: KeyboardEvent<SVGGElement>) => {
     if (event.key === "Enter" || event.key === " ") {
       event.preventDefault();
       onActivate?.();
     }
   };
-  const data = Object.fromEntries(Object.entries(state ?? {}).filter(([, value]) => value !== undefined).map(([key, value]) => [`data-${key}`, value]));
   return (
     <g
-      className={cn("gx-n", interactive && "gx-btn", className)}
-      style={{ transform: `translate(${x}px, ${y}px)` }}
+      className={cn("pn-n", interactive && "pn-btn", className)}
+      style={{ "--cx": px(cx), "--cy": px(cy), "--ox": px(node.x), "--oy": px(node.y), "--d": `${node.delay}ms` } as CSSProperties}
       data-show={show ? "1" : "0"}
+      data-kind={node.kind}
       {...data}
-      {...(interactive ? { role: "button", tabIndex: show ? 0 : -1, "aria-label": label, "aria-pressed": pressed, onClick: onActivate, onKeyDown: onKey } : {})}
+      {...(interactive ? { role: "button", tabIndex: 0, "aria-label": label, "aria-pressed": pressed, onClick: onActivate, onKeyDown: onKey } : {})}
     >
-      <g className="gx-in" style={at(delay)}>
-        <g className="gx-s" style={{ transform: `scale(${scale})` }}>{children}</g>
-      </g>
+      <g className="pn-in">{children}</g>
     </g>
   );
 }
 
-/* ───────────── Panel ───────────── */
+function Glyph({ id, ready }: { id: AgentId; ready: boolean }) {
+  return (
+    <g className="pn-glyph" data-ready={ready ? "1" : "0"} aria-hidden="true">
+      <path d={PAYOFF[id]} />
+    </g>
+  );
+}
 
-const verdictTone: Record<Verdict, Tone> = { pass: "azure", select: "azure", size: "azure", action: "azure", block: "ember", noop: "neutral" };
+/* ───────────── Detail card ───────────── */
 
 function HookOutput({ hook }: { hook: GraphHook }) {
   const { example } = hook;
   return (
-    <div className="gx-out" role="group" aria-label="Illustrative evaluation output">
-      <p className="gx-out-label">Illustrative output. Example values, not a recorded decision.</p>
-      <div className="gx-out-row">
-        <span className="gx-out-stage mono">{hook.stage}</span>
-        <b className="mono">{hook.id}</b>
-        <Chip tone={verdictTone[example.status]}>{example.status}</Chip>
+    <div className="pn-out" role="group" aria-label="Illustrative evaluation text">
+      <p className="pn-out-label"><b>Illustrative only.</b> Engine wording for a typical result. Not a Tape record.</p>
+      <div className="pn-out-row">
+        <span className="pn-mono pn-dim">{hook.stage}</span>
+        <b className="pn-mono">{hook.id}</b>
+        <Chip tone={tone[example.status]}>{example.status}</Chip>
       </div>
-      <p className="gx-out-reason">{example.reason}</p>
-      {example.value !== undefined || example.threshold !== undefined ? (
-        <p className="gx-out-meta mono">
-          {example.value !== undefined ? `value ${example.value}${example.unit ? ` ${example.unit}` : ""}` : ""}
-          {example.value !== undefined && example.threshold !== undefined ? " · " : ""}
-          {example.threshold !== undefined ? `limit ${example.threshold}${example.value === undefined && example.unit ? ` ${example.unit}` : ""}` : ""}
-        </p>
-      ) : null}
+      <p className="pn-out-reason">{example.reason}</p>
+      {example.threshold !== undefined ? <p className="pn-out-meta pn-mono">limit {example.threshold}{example.unit ? ` ${example.unit}` : ""}</p> : null}
     </div>
   );
 }
 
-type Controller = {
+type Ctl = {
   data: GraphData;
-  agent: AgentId | null;
-  sel: Selection;
+  agent: GraphAgent;
+  phase: Phase;
+  sel: string | null;
+  collapsed: string[];
   flow: FlowScenario | null;
   step: number;
-  playing: boolean;
   scenarios: FlowScenario[];
-  pickAgent: (id: AgentId) => void;
-  pickStage: (id: string) => void;
-  pickHook: (id: string) => void;
+  select: (id: string | null) => void;
+  toggleCollapse: (stage: string) => void;
   startFlow: (scenario: FlowScenario) => void;
-  stepFlow: () => void;
   closeFlow: () => void;
-  back: () => void;
+  explore: () => void;
 };
 
-function Panel({ c }: { c: Controller }) {
+function Card({ c }: { c: Ctl }) {
   const { data, agent, sel, flow } = c;
   const allHooks = [...data.stages.flatMap((stage) => stage.hooks), ...data.breaker.hooks];
-  const selectedAgent = data.agents.find((row) => row.id === agent) ?? null;
+  const stages = [...data.stages, data.breaker];
 
-  if (flow && selectedAgent) return <FlowPanel c={c} scenario={flow} />;
+  if (!agent.ready) {
+    return (
+      <div className="pn-card" key={`preview-${agent.id}`}>
+        <p className="pn-kicker">House Agent</p>
+        <h3>{agent.name}</h3>
+        <div className="pn-chips"><Chip>Preview</Chip><Chip>Not yet available</Chip></div>
+        <p className="pn-lead">{agent.summary}</p>
+        <p className="pn-note">{agent.reason}</p>
+        <p className="pn-hint">No recipe exists for this agent, so there is no network to grow. It cannot be created until its venue and data requirements are verified.</p>
+      </div>
+    );
+  }
 
-  if (sel?.kind === "hook") {
-    const hook = allHooks.find((row) => row.id === sel.id);
+  if (sel?.startsWith("hook:")) {
+    const hook = allHooks.find((row) => `hook:${row.id}` === sel);
     if (hook) {
       return (
-        <div className="gx-card" key={`hook-${hook.id}`}>
-          <p className="gx-kicker mono">{hook.stage} hook</p>
+        <div className="pn-card" key={sel}>
+          <p className="pn-kicker">{hook.stage} hook</p>
           <h3>{hook.name}</h3>
-          <div className="gx-chips"><Chip tone="azure">Implemented</Chip><Chip>{selectedAgent?.name} recipe</Chip></div>
-          <p className="gx-lead">{hook.summary}</p>
+          <div className="pn-chips"><Chip tone="azure">Implemented</Chip><Chip>Protective Put recipe</Chip></div>
+          <p className="pn-lead">{hook.summary}</p>
           {hook.params.length ? (
-            <dl className="gx-params" aria-label={`${hook.name} parameters in this recipe`}>
-              {hook.params.map((param) => <div key={param.key}><dt className="mono">{param.key}</dt><dd className="mono">{param.value}</dd></div>)}
+            <dl className="pn-params" aria-label={`${hook.name} parameters in this recipe`}>
+              {hook.params.map((param) => <div key={param.key}><dt className="pn-mono">{param.key}</dt><dd className="pn-mono">{param.value}</dd></div>)}
             </dl>
           ) : null}
           <HookOutput hook={hook} />
-          {hook.note ? <p className="gx-note">{hook.note}</p> : null}
+          {hook.note ? <p className="pn-note">{hook.note}</p> : null}
         </div>
       );
     }
   }
 
-  if (sel?.kind === "stage") {
-    const stage = [...data.stages, data.breaker].find((row) => row.stage === sel.id);
+  if (sel?.startsWith("locked:")) {
+    const stage = stages.find((row) => `locked:${row.stage}` === sel);
     if (stage) {
-      const locked = stage.total - stage.live;
       return (
-        <div className="gx-card" key={`stage-${stage.stage}`}>
-          <p className="gx-kicker mono">{stage.stage === "breaker" ? "Risk guard" : "Stage"}</p>
-          <h3>{stage.label}</h3>
-          <p className="gx-lead">{stage.question}{stage.stage === "breaker" ? " It checks every tick and can stop new entries. Exits keep running." : ""}</p>
-          <div className="gx-chips"><Chip tone="azure">{stage.live} of {stage.total} implemented</Chip>{locked > 0 ? <Chip>{locked} catalog only</Chip> : null}</div>
-          <p className="gx-label">Used by this recipe</p>
-          <ul className="gx-hooklist">{stage.hooks.map((hook) => <li key={hook.id}><b>{hook.name}</b><span>{hook.summary}</span></li>)}</ul>
+        <div className="pn-card" key={sel}>
+          <p className="pn-kicker">{stage.stage} stage</p>
+          <h3>{stage.locked.length} catalog-only hooks</h3>
+          <div className="pn-chips"><Chip>Locked</Chip><Chip tone="azure">{stage.live} of {stage.total} implemented</Chip></div>
+          <p className="pn-lead">These hooks are in the library but have no verified evaluator, so they cannot take part in an evaluation. Forge blocks recipes that use them.</p>
+          <ul className="pn-locklist">
+            {stage.locked.map((hook) => <li key={hook.id}><b>{hook.name}</b><span>{hook.reason}</span></li>)}
+          </ul>
         </div>
       );
     }
   }
 
-  if (selectedAgent?.ready) {
-    return (
-      <div className="gx-card" key="agent-pp">
-        <p className="gx-kicker mono">House Agent</p>
-        <h3>{selectedAgent.name}</h3>
-        <div className="gx-chips"><Chip tone="azure">Paper ready</Chip><Chip tone="ember">Modeled premiums</Chip></div>
-        <p className="gx-lead">{selectedAgent.summary}</p>
-        <dl className="gx-facts">
-          <div><dt>Hooks used</dt><dd className="mono">{data.stages.reduce((n, s) => n + s.hooks.length, 0) + data.breaker.hooks.length} of {data.hookTotal}</dd></div>
-          <div><dt>Stages</dt><dd className="mono">6</dd></div>
-        </dl>
-        <p className="gx-hint">Select a stage or a hook to read its rule. The Breaker runs beneath all of them.</p>
-        <div className="gx-actions">
-          <button type="button" className={buttonVariants({ size: "sm" })} onClick={() => c.startFlow(c.scenarios[0]!)}>View decision flow</button>
-          <Link className={buttonVariants({ variant: "outline", size: "sm" })} href="/agents#configure">Configure this agent</Link>
-          <button type="button" className={buttonVariants({ variant: "ghost", size: "sm" })} onClick={c.back}>Back to overview</button>
+  if (sel?.startsWith("stage:")) {
+    const stage = stages.find((row) => `stage:${row.stage}` === sel);
+    if (stage) {
+      const hidden = c.collapsed.includes(stage.stage);
+      return (
+        <div className="pn-card" key={sel}>
+          <p className="pn-kicker">{stage.stage === "breaker" ? "Risk guard" : "Stage"}</p>
+          <h3>{stage.label}</h3>
+          <p className="pn-lead">{stage.question}{stage.stage === "breaker" ? " It is checked on every tick and can stop new entries. Exits keep running." : ""}</p>
+          <div className="pn-chips"><Chip tone="azure">{stage.live} of {stage.total} implemented</Chip>{stage.locked.length ? <Chip>{stage.locked.length} catalog only</Chip> : null}</div>
+          <p className="pn-label">Used by this recipe</p>
+          <ul className="pn-locklist">
+            {stage.hooks.map((hook) => <li key={hook.id}><button type="button" className="pn-link" onClick={() => c.select(`hook:${hook.id}`)}>{hook.name}</button><span>{hook.summary}</span></li>)}
+          </ul>
+          <div className="pn-actions">
+            <button type="button" className={buttonVariants({ variant: "outline", size: "sm" })} onClick={() => c.toggleCollapse(stage.stage)}>{hidden ? "Show its hooks" : "Hide its hooks"}</button>
+          </div>
         </div>
-      </div>
-    );
+      );
+    }
   }
 
-  if (selectedAgent) {
-    return (
-      <div className="gx-card" key={`agent-${selectedAgent.id}`}>
-        <p className="gx-kicker mono">House Agent</p>
-        <h3>{selectedAgent.name}</h3>
-        <div className="gx-chips"><Chip>Preview</Chip><Chip>Not yet available</Chip></div>
-        <p className="gx-lead">{selectedAgent.summary}</p>
-        <p className="gx-note">{selectedAgent.reason}</p>
-        <p className="gx-hint">No recipe exists for this agent, so there is no hook graph to expand. It cannot be created until its venue and data requirements are verified.</p>
-        <div className="gx-actions">
-          <button type="button" className={buttonVariants({ variant: "outline", size: "sm" })} onClick={c.back}>Back to overview</button>
-        </div>
-      </div>
-    );
-  }
+  if (flow && c.phase === 4) return <FlowCard c={c} scenario={flow} />;
 
   return (
-    <div className="gx-card" key="overview">
-      <p className="gx-kicker mono">Optra Agent</p>
-      <h3>Pick an agent to see how it decides.</h3>
-      <p className="gx-lead">Every House Agent is a recipe of hooks. Each tick the engine runs the rules, checks risk, records a paper decision and writes it to Optra Tape.</p>
-      <ul className="gx-roster" aria-label="House Agents">
-        {data.agents.map((row) => (
-          <li key={row.id}>
-            <button type="button" onClick={() => c.pickAgent(row.id)} aria-pressed={agent === row.id}>
-              <svg className="gx-roster-glyph" data-ready={row.ready ? "1" : "0"} viewBox="0 0 38 28" aria-hidden="true"><path d={PAYOFF[row.id]} /></svg>
-              <span>{row.name}</span>
-              <Chip tone={row.ready ? "azure" : "neutral"}>{row.ready ? "Paper ready" : "Preview"}</Chip>
-            </button>
-          </li>
-        ))}
-      </ul>
-      <p className="gx-note">Only Protective Put can be created today. The others stay in Preview and never appear paper ready.</p>
+    <div className="pn-card" key="agent">
+      <p className="pn-kicker">House Agent</p>
+      <h3>{agent.name}</h3>
+      <div className="pn-chips"><Chip tone="azure">Paper ready</Chip><Chip tone="ember">Modeled premiums</Chip></div>
+      <p className="pn-lead">{agent.summary}</p>
+      <dl className="pn-facts">
+        <div><dt>Hooks used</dt><dd className="pn-mono">{data.stages.reduce((n, s) => n + s.hooks.length, 0) + data.breaker.hooks.length} of {data.hookTotal}</dd></div>
+        <div><dt>Stages</dt><dd className="pn-mono">6</dd></div>
+      </dl>
+      <div className="pn-actions">
+        {c.phase === 0 ? <button type="button" className={buttonVariants({ size: "sm" })} onClick={c.explore}>Explore agent</button> : null}
+        <button type="button" className={buttonVariants({ variant: c.phase === 0 ? "outline" : "default", size: "sm" })} onClick={() => c.startFlow(c.scenarios[0]!)}>View decision flow</button>
+        <Link className={buttonVariants({ variant: "outline", size: "sm" })} href="/agents#configure">Configure this agent</Link>
+      </div>
     </div>
   );
 }
 
-function FlowPanel({ c, scenario }: { c: Controller; scenario: FlowScenario }) {
+function FlowCard({ c, scenario }: { c: Ctl; scenario: FlowScenario }) {
   const { data, step } = c;
-  const done = step >= FLOW_STEPS.length - 1;
-  const stageByStep = (name: FlowStep): GraphStage | undefined => [...data.stages, data.breaker].find((row) => row.stage === name);
+  const lookup = (name: FlowStep): GraphStage | undefined => [...data.stages, data.breaker].find((row) => row.stage === name);
+  const recorded = scenario.source === "recorded";
   return (
-    <div className="gx-card" key="flow">
-      <p className="gx-kicker mono">Decision flow</p>
-      <h3>{scenario.source === "recorded" ? "A recorded decision" : "How one tick becomes a decision"}</h3>
-      <div className="gx-chips">
-        <Chip tone={scenario.source === "recorded" ? "azure" : "ember"}>{scenario.source === "recorded" ? "Public Tape record" : "Illustrative example"}</Chip>
+    <div className="pn-card" key="flow">
+      <p className="pn-kicker">Decision flow</p>
+      <h3>{recorded ? "A public Tape record" : "How one tick becomes a decision"}</h3>
+      <div className="pn-chips">
+        <Chip tone={recorded ? "azure" : "ember"}>{recorded ? "Public Tape record" : "Illustrative only"}</Chip>
         <Chip>Paper</Chip>
       </div>
-      <div className="gx-seg" role="group" aria-label="Example">
-        {c.scenarios.map((row) => (
-          <button key={row.id} type="button" aria-pressed={row.id === scenario.id} onClick={() => c.startFlow(row)}>{row.label}</button>
-        ))}
+      <div className="pn-seg" role="group" aria-label="Example">
+        {c.scenarios.map((row) => <button key={row.id} type="button" aria-pressed={row.id === scenario.id} onClick={() => c.startFlow(row)}>{row.label}</button>)}
       </div>
-      <ol className="gx-steps" aria-label="Evaluation order">
+      <ol className="pn-steps" aria-label="Evaluation order">
         {FLOW_STEPS.map((name, index) => {
           const reached = step >= index;
-          const stage = stageByStep(name);
-          const state = step === index ? "active" : reached ? "done" : "pending";
+          const stage = lookup(name);
           return (
-            <li key={name} data-state={state}>
-              <p className="gx-step-title">{STEP_LABEL[name]}</p>
+            <li key={name} data-state={step === index ? "active" : reached ? "done" : "pending"}>
+              <p className="pn-step-title">{STEP_LABEL[name]}</p>
               {reached && stage ? (
-                <ul className="gx-step-hooks">
+                <ul className="pn-step-hooks">
                   {stage.hooks.map((hook) => {
                     const verdict = scenario.verdicts[hook.id];
-                    if (!verdict) return null;
-                    return (
-                      <li key={hook.id}>
-                        <b>{hook.name}</b> <Chip tone={verdictTone[verdict.status]}>{verdict.status}</Chip>
-                        {verdict.status === "block" ? <span className="gx-step-why">{verdict.reason}</span> : null}
-                      </li>
-                    );
+                    return verdict ? <li key={hook.id}><b>{hook.name}</b> <Chip tone={tone[verdict.status]}>{verdict.raw ?? verdict.status}</Chip>{verdict.status === "block" ? <span className="pn-step-why">{verdict.reason}</span> : null}</li> : null;
                   })}
                 </ul>
               ) : null}
-              {reached && name === "decision" ? (
-                <p className="gx-step-result"><Chip tone={scenario.action === "open" ? "azure" : "neutral"}>{scenario.action}</Chip> {scenario.reason}</p>
-              ) : null}
-              {reached && name === "tape" ? <p className="gx-step-why">The decision, every hook verdict and the recipe hash are appended to the agent&apos;s Tape.</p> : null}
+              {reached && name === "decision" ? <p className="pn-step-result"><Chip tone={scenario.action === "open" ? "azure" : "neutral"}>{scenario.action}</Chip> {scenario.reason}</p> : null}
+              {reached && name === "tape" ? <p className="pn-step-why">The decision, every hook verdict and the recipe hash are appended to the agent&apos;s Tape.</p> : null}
             </li>
           );
         })}
       </ol>
-      <p className="gx-note">
-        {scenario.source === "recorded" ? "From the public Tape." : "Illustrative example. Not a recorded trade, and nothing is sent onchain."} The engine evaluates every hook each tick and combines the verdicts: any Gate or Breaker block stops a new entry.
+      <p className="pn-note">
+        {recorded ? "From the public Tape." : "Illustrative only. Not a recorded trade, and nothing is sent onchain."} The engine evaluates every hook each tick and combines the verdicts: any Gate or Breaker block stops a new entry.
       </p>
-      <div className="gx-actions">
-        <button type="button" className={buttonVariants({ size: "sm" })} onClick={() => c.startFlow(scenario)}>Replay</button>
-        {!done && !c.playing ? <button type="button" className={buttonVariants({ variant: "outline", size: "sm" })} onClick={c.stepFlow}>Next step</button> : null}
-        <button type="button" className={buttonVariants({ variant: "ghost", size: "sm" })} onClick={c.closeFlow}>Close flow</button>
+      <div className="pn-actions">
+        <button type="button" className={buttonVariants({ size: "sm" })} onClick={() => c.startFlow(scenario)}>Replay example</button>
+        <button type="button" className={buttonVariants({ variant: "ghost", size: "sm" })} onClick={c.closeFlow}>Close</button>
       </div>
     </div>
   );
 }
 
-/* ───────────── Canvas ───────────── */
+/* ───────────── Main ───────────── */
 
-function Hub({ expanded }: { expanded: boolean }) {
-  return (
-    <Node x={expanded ? FOCUS.x : HUB.x} y={expanded ? 36 : HUB.y} show scale={expanded ? 0.5 : 1.15} className="gx-hubnode">
-      <circle className="gx-hub-ring" r="42" />
-      <circle className="gx-hub" r="34" />
-      <g className="gx-mark" aria-hidden="true">
-        <circle r="13" />
-        <path d="M-22 0 H22" />
-        <circle className="gx-mark-dot" cx="13" r="3.4" />
-      </g>
-      <text className="gx-hub-label" y="64" textAnchor="middle" data-hide={expanded ? "1" : "0"}>OPTRA</text>
-    </Node>
-  );
-}
+export type GraphProps = { data: GraphData; recorded?: FlowScenario | null };
 
-export type GraphProps = { data: GraphData; recorded?: FlowScenario | null; initialAgent?: AgentId | null };
+export function AgentGraph({ data, recorded = null }: GraphProps) {
+  const layout = useMemo(() => buildLayout(data), [data]);
+  const scenarios = useMemo(() => (recorded ? [...data.scenarios, recorded] : data.scenarios), [data, recorded]);
+  const allHooks = useMemo(() => [...data.stages.flatMap((stage) => stage.hooks), ...data.breaker.hooks], [data]);
 
-export function AgentGraph({ data, recorded = null, initialAgent = null }: GraphProps) {
-  const [agent, setAgent] = useState<AgentId | null>(initialAgent);
-  const [sel, setSel] = useState<Selection>(null);
-  const [flow, setFlow] = useState<FlowScenario | null>(null);
-  const [step, setStep] = useState(0);
+  const [agentId, setAgentId] = useState<AgentId>("protective_put");
+  const [phase, setPhase] = useState<Phase>(0);
   const [playing, setPlaying] = useState(false);
-  const [touched, setTouched] = useState(false);
+  const [sel, setSel] = useState<string | null>(null);
+  const [collapsed, setCollapsed] = useState<string[]>([]);
+  const [flow, setFlow] = useState<FlowScenario | null>(null);
+  const [step, setStep] = useState(-1);
   const rootRef = useRef<HTMLDivElement>(null);
-  const panelRef = useRef<HTMLDivElement>(null);
-  // The recorded scenario only exists when the public Tape returned a record.
-  const scenarios = recorded ? [...data.scenarios, recorded] : data.scenarios;
+  const autoStarted = useRef(false);
 
-  const expanded = agent === "protective_put";
+  const agent = data.agents.find((row) => row.id === agentId) ?? data.agents[0]!;
 
+  // Auto-play advances phases, then the illustrative flow. One timer at a time, cleared on pause or unmount.
   useEffect(() => {
     if (!playing) return;
+    const delay = phase < 4 ? PHASE_HOLD[phase] : flow ? FLOW_HOLD : PHASE_HOLD[4];
     const timer = window.setTimeout(() => {
-      setStep((value) => {
-        if (value >= FLOW_STEPS.length - 1) {
-          setPlaying(false);
-          return value;
-        }
-        return value + 1;
-      });
-    }, step === 0 ? 650 : 1050);
+      if (phase < 4) setPhase((phase + 1) as Phase);
+      else if (!flow) {
+        setFlow(scenarios[0] ?? null);
+        setStep(0);
+      } else if (step < FLOW_STEPS.length - 1) setStep(step + 1);
+      else setPlaying(false);
+    }, delay);
     return () => window.clearTimeout(timer);
-  }, [playing, step]);
+  }, [playing, phase, flow, step, scenarios]);
 
-  // Idle pulses only run while the graph is on screen.
+  // The first time the network is mostly on screen it grows once by itself. Pausing stops it; reduced motion never starts it.
   useEffect(() => {
     const root = rootRef.current;
     if (!root || typeof IntersectionObserver === "undefined") return;
-    const observer = new IntersectionObserver(([entry]) => { root.dataset.live = entry?.isIntersecting ? "1" : "0"; }, { rootMargin: "80px" });
+    const observer = new IntersectionObserver(([entry]) => {
+      root.dataset.live = entry?.isIntersecting ? "1" : "0";
+      if (entry && entry.intersectionRatio >= 0.5 && !autoStarted.current && !reduced()) {
+        autoStarted.current = true;
+        setPlaying(true);
+      }
+    }, { threshold: [0, 0.5], rootMargin: "60px 0px" });
     observer.observe(root);
     return () => observer.disconnect();
   }, []);
 
-  const reveal = () => {
-    if (typeof window === "undefined" || !window.matchMedia("(max-width: 859px)").matches) return;
-    window.requestAnimationFrame(() => {
-      const box = panelRef.current?.getBoundingClientRect();
-      if (box && (box.top > window.innerHeight * 0.7 || box.bottom < 0)) panelRef.current?.scrollIntoView({ block: "start", behavior: reduced() ? "auto" : "smooth" });
-    });
-  };
+  const interacted = () => { autoStarted.current = true; };
+  const needs = (id: string): Phase => (id.startsWith("hook:") || id.startsWith("locked:") ? 3 : id === "stage:pulse" || id === "stage:expiry" || id === "stage:breaker" ? 2 : 1);
+  const reset = () => { setSel(null); setFlow(null); setStep(-1); setCollapsed([]); };
 
-  const c: Controller = {
-    data,
-    agent,
-    sel,
-    flow,
-    step,
-    playing,
-    scenarios,
-    pickAgent(id) {
-      setTouched(true);
-      if (id === agent && !sel && !flow) {
-        setAgent(null);
-        return;
-      }
-      setAgent(id);
-      setSel(null);
-      setFlow(null);
+  const c: Ctl = {
+    data, agent, phase, sel, collapsed, flow, step, scenarios,
+    select(id) {
+      interacted();
       setPlaying(false);
-      reveal();
+      if (id === sel) { setSel(null); return; }
+      setSel(id);
+      if (id && id !== "root") setPhase((current) => (current < needs(id) ? needs(id) : current));
     },
-    pickStage(id) {
-      setSel((current) => (current?.kind === "stage" && current.id === id ? null : { kind: "stage", id }));
-      setFlow(null);
-      reveal();
-    },
-    pickHook(id) {
-      setSel((current) => (current?.kind === "hook" && current.id === id ? null : { kind: "hook", id }));
-      setFlow(null);
-      reveal();
+    toggleCollapse(stage) {
+      setCollapsed((current) => (current.includes(stage) ? current.filter((item) => item !== stage) : [...current, stage]));
     },
     startFlow(scenario) {
-      setFlow(scenario);
+      interacted();
       setSel(null);
-      if (reduced()) {
-        setStep(FLOW_STEPS.length - 1);
-        setPlaying(false);
-      } else {
-        setStep(0);
-        setPlaying(true);
-      }
-      reveal();
+      setPhase(4);
+      setFlow(scenario);
+      if (reduced()) { setStep(FLOW_STEPS.length - 1); setPlaying(false); } else { setStep(0); setPlaying(true); }
     },
-    stepFlow() {
-      setStep((value) => Math.min(FLOW_STEPS.length - 1, value + 1));
-    },
-    closeFlow() {
-      setFlow(null);
-      setPlaying(false);
-    },
-    back() {
-      setPlaying(false);
-      if (flow) setFlow(null);
-      else if (sel) setSel(null);
-      else setAgent(null);
-    },
+    closeFlow() { setFlow(null); setStep(-1); setPlaying(false); },
+    explore() { interacted(); setSel(null); setPhase(1); setPlaying(true); },
   };
 
-  const onRootKey = (event: KeyboardEvent<HTMLDivElement>) => {
-    if (event.key === "Escape" && (agent || sel || flow)) {
-      event.stopPropagation();
-      c.back();
+  const goTo = (target: Phase) => { interacted(); setPlaying(false); setFlow(null); setStep(-1); setSel(null); setPhase(target); };
+  const replay = () => { interacted(); reset(); setPhase(0); window.setTimeout(() => setPlaying(true), 450); };
+  const start = () => { interacted(); setPlaying(false); reset(); setPhase(0); };
+  const pickAgent = (id: AgentId) => { interacted(); setAgentId(id); setPhase(0); setPlaying(false); reset(); };
+
+  const onKey = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (event.key !== "Escape") return;
+    if (sel) { event.stopPropagation(); setSel(null); } else if (flow) { event.stopPropagation(); c.closeFlow(); }
+  };
+
+  const ready = agent.ready;
+  const stageOf = (id: string | null): string | null => {
+    if (!id) return null;
+    if (id.startsWith("stage:") || id.startsWith("locked:")) return id.split(":")[1] ?? null;
+    if (id.startsWith("hook:")) return allHooks.find((hook) => `hook:${hook.id}` === id)?.stage ?? null;
+    return null;
+  };
+  const selStage = stageOf(sel);
+  const flowOn = ready && flow !== null && phase === 4 && step >= 0;
+  const stepOf = (stage: string) => FLOW_STEPS.indexOf(stage as FlowStep);
+  const reached = (stage: string | undefined) => flowOn && stage !== undefined && step >= stepOf(stage);
+  const verdictOf = (node: LayoutNode): Verdict | undefined => (flowOn && reached(node.stage) ? flow?.verdicts[node.id.replace("hook:", "")]?.status : undefined);
+  const selNode = layout.nodes.find((node) => node.id === sel);
+  const side = selNode && selNode.x > 600 ? "left" : "right";
+
+  const showCard = !ready || sel !== null || flowOn;
+  // When a card is open the network slides and shrinks into the free side, so the card never covers what it describes.
+  const camera = (() => {
+    let cam = layout.camera[phase];
+    if (selNode && phase >= 3 && selNode.kind !== "root") cam = { s: 1.15, fx: selNode.x, fy: Math.min(560, Math.max(260, selNode.y)) };
+    else if (flowOn) cam = { s: 0.78, fx: 600, fy: 410 };
+    else if (showCard) cam = { ...cam, s: Math.min(cam.s, 1.3) };
+    if (showCard) {
+      const shift = (side === "right" ? 1 : -1) * 175;
+      return { ...cam, fx: cam.fx + shift / cam.s };
     }
-  };
+    return cam;
+  })();
 
-  const allHooks = [...data.stages.flatMap((stage) => stage.hooks), ...data.breaker.hooks];
-  const selHook = sel?.kind === "hook" ? allHooks.find((hook) => hook.id === sel.id) : undefined;
-  const selStage = sel?.kind === "stage" ? sel.id : selHook?.stage;
-  const flowOn = flow !== null && expanded;
+  const inCollapsed = (stage: string | undefined, kind: string) => stage !== undefined && collapsed.includes(stage) && (kind === "hook" || kind === "risk" || kind === "locked" || kind === "lock");
+  const visible = (node: LayoutNode) => ready && node.phase <= phase && !inCollapsed(node.stage, node.kind);
+  const visibleEdge = (edge: LayoutEdge) => ready && edge.phase <= phase && !inCollapsed(edge.stage, edge.kind);
+  const dimmed = (stage: string | undefined) => (flowOn ? !reached(stage) : selStage !== null && stage !== undefined && stage !== selStage);
+  const nodeById = (id: string) => layout.nodes.find((node) => node.id === id)!;
+  const stageData = (name: string | undefined) => [...data.stages, data.breaker].find((row) => row.stage === name);
 
-  const stageStep = (stage: string) => FLOW_STEPS.indexOf(stage as FlowStep);
-  const revealed = (stage: string) => flowOn && step >= stageStep(stage);
-  const activeStage = (stage: string) => flowOn && step === stageStep(stage);
-  const dimStage = (stage: string) => (flowOn ? !revealed(stage) : selStage !== undefined && selStage !== stage);
-  const verdictOf = (hook: GraphHook): Verdict | undefined => (revealed(hook.stage) ? flow?.verdicts[hook.id]?.status : undefined);
+  const statusText = !ready
+    ? `${agent.name}, Preview. Not yet available.`
+    : flowOn
+      ? `Decision flow, step ${step + 1} of ${FLOW_STEPS.length}: ${STEP_LABEL[FLOW_STEPS[step] ?? "gate"]}.${step >= FLOW_STEPS.length - 1 ? ` Illustrative result: ${flow?.action}. ${flow?.reason}` : ""}`
+      : sel
+        ? `${sel.replace(":", " ")} selected.`
+        : `State ${phase + 1} of 5: ${PHASE_COPY[phase].title}.`;
 
-  const crumb: { label: string; onClick?: () => void }[] = [{ label: "Agents", onClick: agent ? () => { setAgent(null); setSel(null); setFlow(null); setPlaying(false); } : undefined }];
-  const agentRow = data.agents.find((row) => row.id === agent);
-  if (agentRow) crumb.push({ label: agentRow.name, onClick: sel || flow ? () => { setSel(null); setFlow(null); setPlaying(false); } : undefined });
-  if (flow) crumb.push({ label: "Decision flow" });
-  else if (selHook) crumb.push({ label: selHook.name });
-  else if (sel?.kind === "stage") crumb.push({ label: `${sel.id.charAt(0).toUpperCase()}${sel.id.slice(1)}` });
+  const idle = phase === 0 && !playing;
 
-  const statusText = flow
-    ? `Decision flow, step ${step + 1} of ${FLOW_STEPS.length}: ${STEP_LABEL[FLOW_STEPS[step] ?? "gate"]}.${step >= FLOW_STEPS.length - 1 ? ` Result: ${flow.action}. ${flow.reason}` : ""}`
-    : selHook ? `${selHook.name} selected. ${selHook.summary}`
-    : sel?.kind === "stage" ? `${sel.id} stage selected.`
-    : agentRow ? `${agentRow.name} selected. ${agentRow.ready ? "Paper ready. Hook stages shown." : "Preview. Not yet available."}`
-    : "Overview of four House Agents.";
-
-  /* Nodes that exist only when Protective Put is expanded appear in a short sequence: stages left to right, then their hooks. */
-  const stageDelay = (index: number) => 220 + index * 90;
-  const hookDelay = (stageIndex: number, hookIndex: number) => 520 + stageIndex * 90 + hookIndex * 70;
-
-  const hookPos = (stageIndex: number, hookIndex: number) => ({ x: COL[stageIndex]! + 8, y: HOOK_Y0 + hookIndex * HOOK_DY });
-  const breakerPos = (index: number) => ({ x: COL[index]! + 8, y: BREAKER_Y });
-
-  const handOffs = COL.slice(0, 4).map((x, index) => `M${x + 54} ${STAGE_Y} H${COL[index + 1]! - 54}`);
+  const controls = (
+    <div className="pn-controls" role="group" aria-label="Network playback">
+      {idle ? (
+        <button type="button" className={cn(buttonVariants({ size: "sm" }), "pn-explore")} disabled={!ready} onClick={c.explore}>Explore agent</button>
+      ) : (
+        <>
+          <button type="button" className={buttonVariants({ variant: "outline", size: "sm" })} onClick={() => { interacted(); setPlaying((value) => !value); }} aria-pressed={playing}>{playing ? "Pause" : "Play"}</button>
+          <button type="button" className={buttonVariants({ variant: "outline", size: "sm" })} onClick={replay}>Replay</button>
+          {phase === 4 && !flow ? <button type="button" className={buttonVariants({ variant: "outline", size: "sm" })} onClick={() => c.startFlow(scenarios[0]!)}>View decision flow</button> : null}
+          <button type="button" className={buttonVariants({ variant: "ghost", size: "sm" })} onClick={start}>Back to start</button>
+        </>
+      )}
+    </div>
+  );
+  const stepper = (
+    <ol className="pn-dots" aria-label="Network states">
+      {PHASES.map((value) => (
+        <li key={value}>
+          <button type="button" disabled={!ready} aria-label={`State ${value + 1}: ${PHASE_COPY[value].title}`} aria-current={phase === value ? "step" : undefined} data-done={phase >= value ? "1" : "0"} onClick={() => goTo(value)}>{value + 1}</button>
+        </li>
+      ))}
+    </ol>
+  );
+  const caption = (
+    <div className="pn-caption">
+      <p className="pn-state">
+        <span className="pn-mono pn-state-live">STATE {phase + 1} / 5</span>
+        <span className="pn-mono pn-state-static">COMPLETE NETWORK</span>
+        <span className="pn-state-live pn-title">{ready ? PHASE_COPY[phase].title : "Preview agent"}</span>
+        <span className="pn-state-static pn-title">{ready ? "Protective Put" : "Preview agent"}</span>
+      </p>
+      <p className="pn-state-line pn-state-live">{ready ? PHASE_COPY[phase].line : "No recipe exists yet, so nothing grows from this agent."}</p>
+      <p className="pn-state-line pn-state-static">{ready ? "The agent, six hook stages, the Breaker guard, a paper decision and Optra Tape." : "No recipe exists yet, so nothing grows from this agent."}</p>
+      {ready ? stepper : null}
+    </div>
+  );
+  const illustration = flow?.source === "recorded" ? "PUBLIC TAPE RECORD" : "ILLUSTRATIVE ONLY · NO RECORDED TRADE";
 
   return (
-    <div ref={rootRef} className="gx" data-agent={agent ?? "none"} data-expanded={expanded ? "1" : "0"} data-flow={flowOn ? "1" : "0"} data-touched={touched ? "1" : "0"} data-live="1" onKeyDown={onRootKey}>
+    <div ref={rootRef} className="pn" data-phase={phase} data-agent={agent.id} data-ready={ready ? "1" : "0"} data-playing={playing ? "1" : "0"} data-flow={flowOn ? "1" : "0"} data-live="1" onKeyDown={onKey}>
       <p className="sr-only" role="status">{statusText}</p>
-      <div className="gx-bar">
-        <nav aria-label="Graph location">
-          <ol className="gx-crumbs">
-            {crumb.map((item, index) => (
-              <li key={`${item.label}-${index}`}>
-                {item.onClick ? <button type="button" onClick={item.onClick}>{item.label}</button> : <span aria-current={index === crumb.length - 1 ? "step" : undefined}>{item.label}</span>}
-              </li>
-            ))}
-          </ol>
-        </nav>
-        <ul className="gx-legend" aria-label="Legend">
-          <li><i className="k-rule" />Rule path</li>
-          <li><i className="k-risk" />Breaker guard</li>
-          <li><i className="k-off" />Not yet available</li>
+
+      <div className="pn-head">
+        <ul className="pn-agents" aria-label="House Agents">
+          {data.agents.map((row) => (
+            <li key={row.id}>
+              <button type="button" className="pn-agent" aria-pressed={row.id === agentId} data-ready={row.ready ? "1" : "0"} onClick={() => pickAgent(row.id)}>
+                <svg viewBox="0 0 38 28" aria-hidden="true"><path d={SMALL_PAYOFF[row.id]} /></svg>
+                <span>{row.name}</span>
+                <small>{row.ready ? "Paper ready" : "Preview"}</small>
+              </button>
+            </li>
+          ))}
         </ul>
+        {ready ? controls : null}
       </div>
 
-      <div className="gx-body">
-        <div className="gx-canvas">
-          <svg viewBox={`0 0 ${W} ${H}`} role="group" aria-label="Optra Agent graph. Four House Agents; Protective Put expands into six hook stages." preserveAspectRatio="xMidYMid meet">
-            {/* Edges first, so every node sits on top of its connections. */}
-            <Edge d={`M${HUB.x} ${HUB.y} L${OVERVIEW.protective_put.x} ${OVERVIEW.protective_put.y}`} show={!expanded} delay={80} pulse={{ name: "slow", delay: 0 }} hot={agent === "protective_put"} />
-            {(["covered_call", "cash_secured_put", "earnings_straddle"] as const).map((id, index) => (
-              <Edge key={id} d={`M${HUB.x} ${HUB.y} L${OVERVIEW[id].x} ${OVERVIEW[id].y}`} show={!expanded} kind="dashed" delay={160 + index * 70} hot={agent === id} />
-            ))}
+      <div className="pn-stage">
+        {caption}
 
-            <Edge d={`M${FOCUS.x} 54 V86`} show={expanded} delay={80} />
-            <Edge d={`M${FOCUS.x + 86} ${STAGE_Y} H${COL[0]! - 54}`} show={expanded} delay={260} pulse={{ name: "walk", delay: 0 }} done={flowOn && step >= 0} dim={dimStage("gate")} />
-            {handOffs.map((d, index) => (
-              <Edge key={d} d={d} show={expanded} delay={340 + index * 90} pulse={{ name: "walk", delay: (index + 1) * 600 }} done={flowOn && step > index} dim={flowOn ? step <= index : selStage !== undefined} />
-            ))}
-            <Edge d={`M${COL[4]! + 54} ${STAGE_Y} H972 V${BREAKER_Y} H${BAND.x + BAND.w}`} show={expanded} delay={760} pulse={{ name: "walk", delay: 3000 }} done={flowOn && step >= 4} dim={flowOn ? step < 4 : selStage !== undefined} />
+        <svg className="pn-svg" viewBox={`0 0 ${VIEW.w} ${VIEW.h}`} role="group" aria-label="Optra Agent network. Protective Put grows into six hook stages, the Breaker guard, a paper decision and Optra Tape." preserveAspectRatio="xMidYMid meet">
+          <defs>
+            <radialGradient id="pn-glow-grad" cx="50%" cy="50%" r="50%">
+              <stop offset="0%" stopColor="#1e8fff" stopOpacity="0.3" />
+              <stop offset="55%" stopColor="#1e8fff" stopOpacity="0.07" />
+              <stop offset="100%" stopColor="#1e8fff" stopOpacity="0" />
+            </radialGradient>
+          </defs>
+          <g className="pn-cam" style={{ "--s": camera.s, "--fx": px(camera.fx), "--fy": px(camera.fy) } as CSSProperties}>
+            <g className="pn-atmos" aria-hidden="true">
+              <circle className="pn-glow" cx={layout.root.x} cy={layout.root.y} r="330" fill="url(#pn-glow-grad)" />
+              {layout.orbits.map((orbit, index) => <ellipse key={index} className="pn-orbit-guide" cx={layout.root.x} cy={layout.root.y} rx={orbit.rx} ry={orbit.ry} />)}
+            </g>
 
-            {data.stages.map((stage, si) => stage.hooks.map((hook, hi) => {
-              const pos = hookPos(si, hi);
-              return <Edge key={`b-${hook.id}`} d={`M${COL[si]! - 52} ${STAGE_Y + 28} V${pos.y} H${pos.x - 48}`} show={expanded} delay={hookDelay(si, hi) - 120} hot={selHook?.id === hook.id} pulse={selHook?.id === hook.id ? { name: "branch", delay: 0 } : undefined} dim={flowOn ? !revealed(stage.stage) : selStage !== undefined && selHook?.id !== hook.id && selStage !== stage.stage} />;
-            }))}
+            {/* Breaker ring: an always-on guard around the whole network, not the last step. */}
+            <g className="pn-ring" data-show={ready && phase >= layout.ring.phase ? "1" : "0"} data-dim={dimmed("breaker") ? "1" : "0"} data-hot={selStage === "breaker" || (flowOn && reached("breaker")) ? "1" : "0"} style={{ "--d": "700ms" } as CSSProperties} aria-hidden="true">
+              <path className="pn-ring-line" d={layout.ring.d} pathLength={1} />
+              <path className="pn-ring-scan" d={layout.ring.d} pathLength={1} />
+              {flowOn && step >= 5 ? (
+                <>
+                  <path className="pn-ring-flow" d={layout.ring.dLeft} pathLength={1} />
+                  <path className="pn-ring-flow" d={layout.ring.dRight} pathLength={1} />
+                </>
+              ) : null}
+              <text className="pn-ring-label pn-mono" x={layout.ring.cx + 84} y={layout.ring.cy - layout.ring.ry + 4}>BREAKER · ALWAYS ON</text>
+            </g>
 
-            {[228, 400, 540, 680, 820].map((x, index) => (
-              <Edge key={x} d={`M${x} ${BAND.y} V${STAGE_Y + 4}`} show={expanded} kind="guard" delay={820 + index * 70} hot={selStage === "breaker"} dim={flowOn ? step < 5 : selStage !== undefined && selStage !== "breaker"} />
-            ))}
-            <Edge d={`M${DECISION.x} ${BAND.y + BAND.h} V${DECISION.y - 23}`} show={expanded} delay={1100} done={flowOn && step >= 6} />
-            <Edge d={`M${DECISION.x + 100} ${DECISION.y} H${TAPE.x - 100}`} show={expanded} delay={1180} done={flowOn && step >= 7} />
+            {layout.edges.map((edge) => {
+              const stage = edge.stage;
+              const hot = edge.kind !== "flow" && stage !== undefined && selStage === stage;
+              const flowStep = edge.kind === "flow" ? (edge.to === "decision" ? 6 : 7) : stage !== undefined ? stepOf(stage) : 0;
+              const done = flowOn && step >= flowStep;
+              const pulse = edge.kind === "branch" && stage ? stepOf(stage) * 700 : edge.kind === "hook" && hot ? 0 : edge.kind === "flow" && phase === 4 && !flowOn ? 0 : undefined;
+              return <Edge key={edge.id} edge={edge} show={visibleEdge(edge)} hot={hot} done={done} dim={edge.kind === "flow" ? flowOn && step < flowStep : dimmed(stage)} pulse={pulse} />;
+            })}
 
-            {/* Breaker band: a guard layer, not a final step. */}
-            <Node x={0} y={0} show={expanded} delay={700} className={cn("gx-bandnode")} state={{ dim: dimStage("breaker") ? "1" : "0", active: activeStage("breaker") || selStage === "breaker" ? "1" : "0" }}>
-              <rect className="gx-band" x={BAND.x} y={BAND.y} width={BAND.w} height={BAND.h} rx="12" />
-              <text className="gx-band-title" x={BAND.x + 16} y={BAND.y + 22}>BREAKER</text>
-              <text className="gx-band-sub" x={BAND.x + 88} y={BAND.y + 22}>Risk check. Always on. Can stop new entries at every hand-off.</text>
+            {/* The root agent: the one focal point. */}
+            <Node
+              node={nodeById("root")}
+              show
+              label={`${agent.name}. ${ready ? "Paper agent. Explore it." : "Preview, not yet available. Show details."}`}
+              pressed={sel === "root"}
+              onActivate={() => (ready && idle && !reduced() ? c.explore() : c.select("root"))}
+              state={{ active: sel === "root" ? "1" : "0", ready: ready ? "1" : "0" }}
+              className="pn-root"
+            >
+              <circle className="pn-orbit-ring" r="88" />
+              <circle className="pn-root-ring" r="62" />
+              <circle className="pn-root-disc" r="54" />
+              <circle className="pn-focus" r="72" />
+              <g transform="translate(0 -4) scale(1.5)"><Glyph id={agent.id} ready={ready} /></g>
+              <path className="pn-root-strike" d="M-40 24 H40" />
+              <circle className="pn-root-dot" cx="22" cy="24" r="3.6" />
+              <text className="pn-root-name" y="118" textAnchor="middle">{agent.name}</text>
+              <g className="pn-root-more" data-compact={phase >= 2 ? "1" : "0"}>
+                <text className="pn-root-tag pn-mono" y="140" textAnchor="middle" data-ready={ready ? "1" : "0"}>{ready ? "PAPER AGENT" : "PREVIEW"}</text>
+                <text className="pn-root-sub" y="160" textAnchor="middle">{ready ? "15 hooks · paper only · modeled premiums" : "Not yet available"}</text>
+              </g>
             </Node>
 
-            {/* Hub and agents */}
-            <Hub expanded={expanded} />
-
-            {data.agents.map((row) => {
-              const isFocus = expanded && row.id === "protective_put";
-              const pos = row.id === "protective_put" ? (expanded ? FOCUS : OVERVIEW.protective_put) : OVERVIEW[row.id];
-              const showFull = row.id === "protective_put" || !expanded;
+            {layout.nodes.filter((node) => node.kind === "stage").map((node) => {
+              const stage = stageData(node.stage)!;
               return (
-                <Node
-                  key={row.id}
-                  x={pos.x}
-                  y={pos.y}
-                  show={showFull}
-                  scale={isFocus ? 0.9 : expanded ? 1 : 1.2}
-                  className={cn("gx-agent", row.ready ? "is-ready" : "is-preview")}
-                  label={`${row.name}. ${row.ready ? "Paper ready. Show its hook stages." : "Preview, not yet available. Show details."}`}
-                  pressed={agent === row.id}
-                  onActivate={() => c.pickAgent(row.id)}
-                  state={{ active: agent === row.id ? "1" : "0", dim: agent && agent !== row.id && !expanded ? "1" : "0" }}
-                >
-                  <rect className="gx-box" x="-95" y="-39" width="190" height="78" rx="11" />
-                  <rect className="gx-focus" x="-100" y="-44" width="200" height="88" rx="14" />
-                  {row.ready && !touched ? <rect className="gx-invite" x="-100" y="-44" width="200" height="88" rx="14" /> : null}
-                  <Glyph id={row.id} x={-82} y={-14} />
-                  <text className="gx-name" x="-34" y="-9">{row.name}</text>
-                  <text className={cn("gx-tag mono", row.ready ? "is-ready" : "")} x="-34" y="8">{row.ready ? "PAPER READY" : "PREVIEW"}</text>
-                  <text className="gx-sub" x="-34" y="26">{row.ready ? `${data.stages.reduce((n, s) => n + s.hooks.length, 0) + data.breaker.hooks.length} hooks · paper only` : "Not yet available"}</text>
+                <Node key={node.id} node={node} show={visible(node)} label={`${stage.label} stage. ${stage.live} of ${stage.total} hooks implemented. Show details.`} pressed={sel === node.id} onActivate={() => c.select(node.id)} className="pn-stage-node" state={{ active: sel === node.id || (flowOn && step === stepOf(node.stage ?? "")) ? "1" : "0", dim: dimmed(node.stage) ? "1" : "0" }}>
+                  <polygon className="pn-box" points="-58,0 -44,-25 44,-25 58,0 44,25 -44,25" />
+                  <polygon className="pn-focus" points="-64,0 -47,-31 47,-31 64,0 47,31 -47,31" />
+                  <text className="pn-stage-name pn-mono" y="-3" textAnchor="middle">{stage.label.toUpperCase()}</text>
+                  <text className="pn-stage-count" y="14" textAnchor="middle">{stage.live} of {stage.total}</text>
                 </Node>
               );
             })}
 
-            {/* Docked agents while Protective Put is expanded */}
-            <text className="gx-dock-label" x={FOCUS.x} y={186} textAnchor="middle" data-show={expanded ? "1" : "0"}>OTHER HOUSE AGENTS</text>
-            {(["covered_call", "cash_secured_put", "earnings_straddle"] as const).map((id, index) => {
-              const row = data.agents.find((item) => item.id === id)!;
+            {layout.nodes.filter((node) => node.kind === "hook" || node.kind === "risk").map((node) => {
+              const hook = allHooks.find((row) => `hook:${row.id}` === node.id)!;
               return (
-                <Node key={`dock-${id}`} x={DOCK[id].x} y={DOCK[id].y} show={expanded} delay={200 + index * 60} className="gx-agent gx-dock is-preview" label={`${row.name}. Preview, not yet available. Show details.`} pressed={agent === id} onActivate={() => c.pickAgent(id)} state={{ active: agent === id ? "1" : "0" }}>
-                  <rect className="gx-box" x="-75" y="-18" width="150" height="36" rx="9" />
-                  <rect className="gx-focus" x="-79" y="-22" width="158" height="44" rx="11" />
-                  <Glyph id={id} x={-66} y={-10} />
-                  <text className="gx-name sm" x={-22} y="4">{row.name}</text>
+                <Node key={node.id} node={node} show={visible(node)} label={`${hook.name}, ${hook.stage} hook, implemented. Show its rule.`} pressed={sel === node.id} onActivate={() => c.select(node.id)} className={cn("pn-hook", node.kind === "risk" && "pn-risk")} state={{ active: sel === node.id ? "1" : "0", dim: dimmed(node.stage) ? "1" : "0", verdict: verdictOf(node) }}>
+                  <rect className="pn-box" x="-58" y="-16" width="116" height="32" rx="16" />
+                  <rect className="pn-focus" x="-62" y="-20" width="124" height="40" rx="20" />
+                  <circle className="pn-dot" cx="-40" cy="0" r="4" />
+                  <text className="pn-hook-name" x="-28" y="4.5">{hook.name}</text>
                 </Node>
               );
             })}
 
-            {/* Stages */}
-            {data.stages.map((stage, index) => (
-              <Node
-                key={stage.stage}
-                x={COL[index]!}
-                y={STAGE_Y}
-                show={expanded}
-                delay={stageDelay(index)}
-                className="gx-stage"
-                label={`${stage.label} stage. ${stage.live} of ${stage.total} hooks implemented. Show details.`}
-                pressed={sel?.kind === "stage" && sel.id === stage.stage}
-                onActivate={() => c.pickStage(stage.stage)}
-                state={{ dim: dimStage(stage.stage) ? "1" : "0", active: activeStage(stage.stage) || (selStage === stage.stage) ? "1" : "0" }}
-              >
-                <rect className="gx-box" x="-54" y="-28" width="108" height="56" rx="10" />
-                <rect className="gx-focus" x="-58" y="-32" width="116" height="64" rx="13" />
-                <text className="gx-stage-name mono" y="-5" textAnchor="middle">{stage.label.toUpperCase()}</text>
-                <text className="gx-stage-count mono" y="14" textAnchor="middle">{stage.live} of {stage.total}</text>
-              </Node>
-            ))}
-
-            {/* Hooks of the five stages */}
-            {data.stages.map((stage, si) => stage.hooks.map((hook, hi) => {
-              const pos = hookPos(si, hi);
-              const verdict = verdictOf(hook);
+            {layout.nodes.filter((node) => node.kind === "locked").map((node) => {
+              const stage = stageData(node.stage)!;
               return (
-                <Node
-                  key={hook.id}
-                  x={pos.x}
-                  y={pos.y}
-                  show={expanded}
-                  delay={hookDelay(si, hi)}
-                  className="gx-hook"
-                  label={`${hook.name}, ${stage.label} hook, implemented. Show its rule.`}
-                  pressed={selHook?.id === hook.id}
-                  onActivate={() => c.pickHook(hook.id)}
-                  state={{ active: selHook?.id === hook.id ? "1" : "0", dim: flowOn ? (revealed(hook.stage) ? "0" : "1") : selStage !== undefined && selStage !== hook.stage && selHook?.id !== hook.id ? "1" : selHook && selHook.id !== hook.id ? "1" : "0", verdict }}
-                >
-                  <rect className="gx-box" x="-48" y="-15" width="96" height="30" rx="7" />
-                  <rect className="gx-focus" x="-52" y="-19" width="104" height="38" rx="10" />
-                  <circle className="gx-dot" cx="-36" cy="0" r="3.5" />
-                  <text className="gx-hook-name" x="-26" y="4">{hook.name}</text>
-                </Node>
-              );
-            }))}
-
-            {/* Breaker hooks */}
-            {data.breaker.hooks.map((hook, index) => {
-              const pos = breakerPos(index);
-              const verdict = verdictOf(hook);
-              return (
-                <Node
-                  key={hook.id}
-                  x={pos.x}
-                  y={pos.y}
-                  show={expanded}
-                  delay={900 + index * 70}
-                  className="gx-hook gx-risk"
-                  label={`${hook.name}, Breaker hook, implemented. Show its rule.`}
-                  pressed={selHook?.id === hook.id}
-                  onActivate={() => c.pickHook(hook.id)}
-                  state={{ active: selHook?.id === hook.id ? "1" : "0", dim: flowOn ? (revealed("breaker") ? "0" : "1") : selHook && selHook.id !== hook.id ? "1" : "0", verdict }}
-                >
-                  <rect className="gx-box" x="-48" y="-15" width="96" height="30" rx="7" />
-                  <rect className="gx-focus" x="-52" y="-19" width="104" height="38" rx="10" />
-                  <circle className="gx-dot" cx="-36" cy="0" r="3.5" />
-                  <text className="gx-hook-name" x="-26" y="4">{hook.name}</text>
+                <Node key={node.id} node={node} show={visible(node)} label={`${stage.locked.length} catalog-only ${stage.label} hooks. Locked. Show details.`} pressed={sel === node.id} onActivate={() => c.select(node.id)} className="pn-locked" state={{ active: sel === node.id ? "1" : "0", dim: dimmed(node.stage) ? "1" : "0" }}>
+                  <rect className="pn-box" x="-46" y="-14" width="92" height="28" rx="14" />
+                  <rect className="pn-focus" x="-50" y="-18" width="100" height="36" rx="18" />
+                  <text className="pn-locked-text" y="4.5" textAnchor="middle">{stage.locked.length} locked</text>
                 </Node>
               );
             })}
 
-            {/* Breaker header is selectable as a stage. */}
-            <Node x={BAND.x + BAND.w - 60} y={BAND.y + 17} show={expanded} delay={760} className="gx-bandbtn" label="Breaker stage. 5 of 5 hooks implemented. Show details." pressed={sel?.kind === "stage" && sel.id === "breaker"} onActivate={() => c.pickStage("breaker")}>
-              <rect className="gx-box" x="-48" y="-13" width="96" height="26" rx="7" />
-              <rect className="gx-focus" x="-52" y="-17" width="104" height="34" rx="10" />
-              <text className="gx-band-count mono" y="4" textAnchor="middle">{data.breaker.live} of {data.breaker.total}</text>
+            <Node node={nodeById("decision")} show={ready && phase >= 4} className="pn-decision" state={{ active: flowOn && step >= 6 ? "1" : "0", verdict: flowOn && step >= 6 ? (flow?.action === "open" ? "pass" : "noop") : undefined }}>
+              <polygon className="pn-box" points="0,-35 95,0 0,35 -95,0" />
+              <text className="pn-end-title" y="-2" textAnchor="middle">Paper decision</text>
+              <text className="pn-end-sub pn-mono" y="14" textAnchor="middle">{flowOn && step >= 6 ? flow?.action : "open · hold · close · skip"}</text>
             </Node>
+            <Node node={nodeById("tape")} show={ready && phase >= 4} className="pn-tape" state={{ active: flowOn && step >= 7 ? "1" : "0" }}>
+              <rect className="pn-box" x="-85" y="-28" width="170" height="56" rx="10" />
+              <path className="pn-tape-lines" d="M-66 -10 H-30 M-66 0 H-40 M-66 10 H-34" />
+              <text className="pn-end-title" x="-14" y="-2">Optra Tape</text>
+              <text className="pn-end-sub pn-mono" x="-14" y="14">every decision</text>
+            </Node>
+            <g className="pn-illus" data-show={ready && phase >= 4 ? "1" : "0"} aria-hidden="true">
+              <text className="pn-mono" x={layout.root.x + 135} y="800" textAnchor="middle">{illustration}</text>
+            </g>
+          </g>
+        </svg>
 
-            {/* Decision and Tape */}
-            <Node x={DECISION.x} y={DECISION.y} show={expanded} delay={1060} className="gx-end" state={{ active: flowOn && step >= 6 ? "1" : "0", verdict: flowOn && step >= 6 ? (flow?.action === "open" ? "pass" : "noop") : undefined }}>
-              <rect className="gx-box" x="-100" y="-23" width="200" height="46" rx="10" />
-              <text className="gx-end-title" y="-3" textAnchor="middle">Paper decision</text>
-              <text className="gx-end-sub mono" y="13" textAnchor="middle">{flowOn && step >= 6 ? flow?.action : "open · hold · close · skip"}</text>
-            </Node>
-            <Node x={TAPE.x} y={TAPE.y} show={expanded} delay={1140} className="gx-end" state={{ active: flowOn && step >= 7 ? "1" : "0" }}>
-              <rect className="gx-box" x="-100" y="-23" width="200" height="46" rx="10" />
-              <text className="gx-end-title" y="-3" textAnchor="middle">Optra Tape</text>
-              <text className="gx-end-sub mono" y="13" textAnchor="middle">every decision recorded</text>
-            </Node>
-          </svg>
-        </div>
+        {idle && ready ? (
+          <div className="pn-cta">
+            <button type="button" className={cn(buttonVariants({ size: "lg" }), "pn-cta-btn")} onClick={c.explore}>Explore agent</button>
+            <p>Watch Protective Put grow into its rules, or select the agent.</p>
+          </div>
+        ) : null}
 
-        {/* Mobile: the same state as a vertical, tappable sequence. The SVG above is hidden on narrow screens. */}
-        <div className="gm">
-          <ul className="gm-agents" aria-label="House Agents">
-            {data.agents.map((row) => (
-              <li key={row.id}>
-                <button type="button" className="gm-agent" onClick={() => c.pickAgent(row.id)} aria-pressed={agent === row.id} data-ready={row.ready ? "1" : "0"}>
-                  <svg viewBox="0 0 38 28" aria-hidden="true"><path d={PAYOFF[row.id]} /></svg>
-                  <span className="gm-agent-name">{row.name}</span>
-                  <Chip tone={row.ready ? "azure" : "neutral"}>{row.ready ? "Paper ready" : "Preview"}</Chip>
-                </button>
-              </li>
-            ))}
-          </ul>
-          {expanded ? (
-            <ol className="gm-tree" aria-label="Protective Put hook stages">
-              {[...data.stages, data.breaker].map((stage) => (
-                <li key={stage.stage} className={stage.stage === "breaker" ? "is-risk" : ""} data-dim={dimStage(stage.stage) ? "1" : "0"}>
-                  <button type="button" className="gm-stage" onClick={() => c.pickStage(stage.stage)} aria-pressed={sel?.kind === "stage" && sel.id === stage.stage}>
-                    <span className="mono">{stage.label.toUpperCase()}</span>
-                    <small className="mono">{stage.live} of {stage.total}</small>
+        {showCard ? <div className="pn-float" data-side={side}><Card c={c} /></div> : null}
+      </div>
+
+      {/* Compact layout: the same growth as a vertical branching sequence. */}
+      <div className="pm" data-ready={ready ? "1" : "0"}>
+        {ready ? <div className="pm-bar">{controls}</div> : null}
+        {caption}
+        <button type="button" className="pm-root" onClick={() => (ready && idle && !reduced() ? c.explore() : c.select("root"))} aria-pressed={sel === "root"} data-ready={ready ? "1" : "0"}>
+          <svg viewBox="0 0 38 28" aria-hidden="true"><path d={SMALL_PAYOFF[agent.id]} /></svg>
+          <span className="pm-root-name">{agent.name}</span>
+          <small>{ready ? "PAPER AGENT · 15 hooks" : "PREVIEW · Not yet available"}</small>
+        </button>
+        {ready ? (
+          <ol className="pm-tree" style={{ "--grow": phase / 4 } as CSSProperties} aria-label="Protective Put hook stages">
+            {[...data.stages, data.breaker].map((stage) => {
+              const stagePhase = stage.stage === "pulse" || stage.stage === "expiry" || stage.stage === "breaker" ? 2 : 1;
+              const hooksOpen = phase >= 3 && !collapsed.includes(stage.stage);
+              return (
+                <li key={stage.stage} className={cn("pm-stage", stage.stage === "breaker" && "is-risk")} data-show={phase >= stagePhase ? "1" : "0"} data-dim={dimmed(stage.stage) ? "1" : "0"}>
+                  <button type="button" className="pm-stage-btn" aria-pressed={sel === `stage:${stage.stage}`} onClick={() => c.select(`stage:${stage.stage}`)}>
+                    <span className="pn-mono">{stage.label.toUpperCase()}</span>
+                    <small className="pn-mono">{stage.live} of {stage.total}{stage.stage === "breaker" ? " · always on" : ""}</small>
                   </button>
-                  <ul className="gm-hooks">
-                    {stage.hooks.map((hook) => (
-                      <li key={hook.id}>
-                        <button type="button" className="gm-hook" onClick={() => c.pickHook(hook.id)} aria-pressed={selHook?.id === hook.id} data-verdict={verdictOf(hook)}>{hook.name}</button>
-                      </li>
-                    ))}
+                  <ul className="pm-hooks" data-show={hooksOpen ? "1" : "0"}>
+                    {stage.hooks.map((hook, index) => {
+                      const verdict = flowOn && reached(stage.stage) ? flow?.verdicts[hook.id]?.status : undefined;
+                      return <li key={hook.id} style={{ "--i": index } as CSSProperties}><button type="button" className="pm-hook" aria-pressed={sel === `hook:${hook.id}`} data-verdict={verdict} onClick={() => c.select(`hook:${hook.id}`)}>{hook.name}</button></li>;
+                    })}
+                    {stage.locked.length ? <li style={{ "--i": stage.hooks.length } as CSSProperties}><button type="button" className="pm-hook is-locked" aria-pressed={sel === `locked:${stage.stage}`} onClick={() => c.select(`locked:${stage.stage}`)}>{stage.locked.length} locked<span className="sr-only"> catalog-only hooks</span></button></li> : null}
                   </ul>
                 </li>
-              ))}
-              <li className="gm-end"><span>Paper decision</span><span>Optra Tape</span></li>
-            </ol>
-          ) : null}
-        </div>
-
-        <div className="gx-panel" ref={panelRef}>
-          <Panel c={c} />
-        </div>
+              );
+            })}
+            <li className="pm-end" data-show={phase >= 4 ? "1" : "0"}>
+              <span>Paper decision</span><span>Optra Tape</span>
+              <small className="pn-mono">{illustration}</small>
+            </li>
+          </ol>
+        ) : null}
+        {showCard ? <div className="pm-card"><Card c={c} /></div> : null}
       </div>
     </div>
   );

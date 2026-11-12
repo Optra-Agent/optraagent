@@ -13,7 +13,7 @@ export type FlowScenario = {
   /** "illustrative" scenarios are built in; "recorded" ones come from a real public Tape record. */
   source: "illustrative" | "recorded";
   /** Verdict per hook id, as the engine would record it. */
-  verdicts: Record<string, { status: Verdict; reason: string }>;
+  verdicts: Record<string, { status: Verdict; reason: string; /** Canonical HookResult.status, kept when the scenario comes from a recorded decision. */ raw?: string }>;
   action: AgentDecision["action"];
   reason: string;
 };
@@ -23,7 +23,7 @@ export function scenarioFromDecision(decision: AgentDecision): FlowScenario {
   const verdicts: FlowScenario["verdicts"] = {};
   for (const result of decision.hookResults) {
     const status: Verdict = result.status === "fail" || result.status === "error" ? "block" : result.status === "skip" ? "noop" : result.status;
-    verdicts[result.hookId] = { status, reason: result.reason };
+    verdicts[result.hookId] = { status, reason: result.reason, raw: result.status };
   }
   return { id: `tape-${decision.id}`, label: "Public Tape record", source: "recorded", verdicts, action: decision.action, reason: decision.reason };
 }
