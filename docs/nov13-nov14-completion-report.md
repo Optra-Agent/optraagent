@@ -1,20 +1,22 @@
 # Optra Engineering Completion and Final QA Report
 
-Updated: 2026-11-12 (Asia/Jakarta)
+Updated: 2026-11-13 (Asia/Jakarta)
 
 ## Current state
 
 The verified paper core remains bounded to the Protective Put template, 15 evaluator paths, real underlying candle history where source coverage verifies, and modeled option premiums. Live execution remains disabled. The public graph data contract is documented without adding an API or changing the trading engine.
 
-New backtest responses now include reproducible same-window benchmarks: price-only buy-and-hold from verified share-normalized candles and flat USD cash with zero yield. There is no USDG/USD price path, so the cash comparison must not be presented as measured USDG performance. The Lab screen still needs to consume the optional `BacktestMetrics.benchmarks` field.
+New backtest responses now include reproducible same-window benchmarks: price-only buy-and-hold from verified share-normalized candles and flat USD cash with zero yield. There is no USDG/USD price path, so the cash comparison must not be presented as measured USDG performance. Claude's current Lab `BenchmarkComparison` consumes the optional `BacktestMetrics.benchmarks` field, with browser QA pending.
+
+The focused paper-execution audit reproduced and fixed a concurrency defect: distinct simultaneous ticks could evaluate the same flat account and one would fail with a 500; new backdated ticks could also rewrite state from an earlier candle. Tick evaluation now occurs under an owner-scoped agent-row lock with fresh state, and an older new tick returns 409. Claude's current Lab `BenchmarkComparison` is wired to the server field; its browser integration remains unverified.
 
 ## Remaining work for 13 November
 
-1. **Completed 12 Nov:** targeted backtest suite passed 5 files/17 tests; authenticated paper-flow passed 1 test and now asserts benchmark metrics in both the response and persisted JSONB row.
+1. **Completed 13 Nov:** fresh backend-targeted verification passed 31 files / 103 tests; typecheck and lint passed. No new backend defect was confirmed. See `docs/execution-ledger.md` for the exact command and earlier red/green race evidence.
 2. Coordinate with Claude Code to verify the landing graph against `docs/agent-graph-data-contract.md`. The current `docs/agent-graph-ui-handoff.md` references the contract and describes illustrative labeling; confirm the implementation uses the Protective Put root, six taxonomy stages, 15 implemented/21 catalog-only statuses, five Breakers, empty public Tape, and no private data. The current adapter projects catalog-only hook details down to name/reason; use the existing public hook definitions if panels need summary, implementation note, and parameter metadata. Keep template summaries labeled as authored product copy because the template API has no summary field.
-3. Connect Lab to server-returned `metrics.benchmarks`: show the same-window holding result and flat USD/no-yield comparison; show unavailable when older metrics lack the optional field. Do not label flat USD as observed USDG performance.
-4. After the concurrent landing edits settle, rerun typecheck and lint. The current tree passed these checks on 12 November before the final Claude integration changes. Review the changed UI source without editing Claude-owned landing, graph, CSS, motion, or animation files from this backend pass.
-5. Prepare an isolated Playwright port and confirm the correct app target before browser testing. The default Playwright config reuses port 3000, currently owned by SENTERA. Do not run it against that port or stop SENTERA. The OPTRA dev server is active on port 3001.
+3. Verify the current Lab `BenchmarkComparison` against new and legacy API responses. It already reads server-returned `metrics.benchmarks`, shows unavailable for older records, and labels cash flat USD/no yield. Do not label flat USD as observed USDG performance.
+4. Typecheck and lint were rerun on 13 November and passed against the current working tree. Rerun if Claude changes source again. Do not edit Claude-owned landing, graph, CSS, motion, or animation files from this backend pass.
+5. Prepare an isolated Playwright port and confirm the correct app target before browser testing. The default Playwright config reuses port 3000, currently owned by SENTERA. Do not run it against that port or stop SENTERA. The OPTRA dev server is active on port 3001 and shares `.next` output with builds.
 
 ## 14 November final QA checklist
 
@@ -28,7 +30,7 @@ New backtest responses now include reproducible same-window benchmarks: price-on
 
 ## Current verification limits
 
-The repository has prior full-suite evidence dated 12 November, before the current concurrent marketing graph work and benchmark changes. The current targeted backtest suite (5 files/17 tests), paper-flow integration test (1 test), backward-compatible contract test (1 file/6 tests), `bunx tsc --noEmit --incremental false`, and `bun run lint` pass. A focused browser attempt did not hydrate against the in-progress development server, and no API requests were issued. Full coordinated Playwright and production-build verification remain outstanding; see `docs/execution-ledger.md` for the test/port record.
+The latest backend-targeted suite passed 31 files/103 tests, including the captured-provider wallet-to-paper flow, benchmark compatibility, public/private boundaries, same-key idempotency, concurrent distinct ticks, and backdated-tick conflict. `bunx tsc --noEmit --incremental false` and `bun run lint` passed on the current working tree. The earlier focused browser attempt did not hydrate against the in-progress development server and issued no API requests; it does not verify the current Lab or graph UI. Full coordinated Playwright and production-build verification remain outstanding; see `docs/execution-ledger.md` for the test/port record.
 
 The temporary config, response capture, and Playwright results generated by that focused attempt were removed from `/tmp`; no repository screenshots or unrelated temporary artifacts were removed.
 
@@ -40,3 +42,12 @@ The temporary config, response capture, and Playwright results generated by that
 - [Core handoff](final-core-handoff.md)
 - [Progress tracker](tasks/optra-fullstack-progress.md)
 - [Execution ledger](execution-ledger.md)
+
+## 2026-11-13 continuation result
+
+- Current HEAD is `afe4fe3`; no staged or unstaged Claude source changes were altered. This continuation made documentation changes only.
+- The focused backend suite and the full Vitest suite both passed (31 files / 103 tests); typecheck and lint passed. The current benchmark API shape remains the optional server-provided `BacktestMetrics.benchmarks`; no client calculation is needed.
+- An isolated 50-test Playwright run against the existing OPTRA server on port 3001 ended 11 passed / 39 failed. In failing app-route tests, the client remained at “Checking wallet session…”. The browser logged invalid `/_next/hmr` WebSocket handshakes and observed no API requests. This blocks UI/API browser verification; it does not identify a backend response mismatch.
+- `bun run build` and the repository-default Playwright command were not run. The default config targets port 3000 (SENTERA), while the OPTRA process on port 3001 owns `.next/dev/lock`. The unrelated servers were left running.
+- Prior Nov 12 UI/E2E evidence is historical and does not replace the current coordinated rerun. Complete browser hydration, full E2E, production build, actual extension prompt, and final security/regression sign-off remain for Nov 14 after the server target and `.next` are coordinated.
+- See [Codex final engineering handoff](codex-final-engineering-handoff.md) for API contracts, current integration status, file ownership, and exact commands.

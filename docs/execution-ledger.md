@@ -1,6 +1,6 @@
 # Optra Paper Core Recovery — Execution Ledger
 
-Updated: 2026-11-12 (Asia/Jakarta)
+Updated: 2026-11-13 (Asia/Jakarta)
 
 This recovery record supersedes the earlier partial-only Step 01–10 status. Work continued in the existing Next.js repository; no second repository, worktree, or premium redesign was created.
 
@@ -79,9 +79,9 @@ All commands run in the current workspace on 2026-11-12:
 
 **Reason:** This is reproducible from verified data and does not fabricate a USDG price/yield path. The agent's total return and both benchmark returns share the same decision window. Invalid/nonpositive benchmark endpoint closes withhold metrics and keep the run unlaunchable.
 
-**Compatibility:** `benchmarks` is optional in `BacktestMetricsSchema` so previously persisted JSONB metrics remain parseable. No DB schema migration is required. UI integration is pending: it must consume server metrics and show unavailable when an older row lacks the field.
+**Compatibility:** `benchmarks` is optional in `BacktestMetricsSchema` so previously persisted JSONB metrics remain parseable. No DB schema migration is required. At that backend-only change, UI integration was pending. Claude's current `BenchmarkComparison` now consumes server metrics and shows unavailable when an older row lacks the field; browser verification is still pending.
 
-**Evidence added:** `lib/backtest/run.ts`; `lib/domain/contracts.ts`; `tests/backtest/run.test.ts`; contract updates in `docs/api-contracts.md`, `docs/ui-handoff-contract.md`, and `docs/final-core-handoff.md`. The Lab UI is unchanged and still needs this data mapping.
+**Evidence added:** `lib/backtest/run.ts`; `lib/domain/contracts.ts`; `tests/backtest/run.test.ts`; contract updates in `docs/api-contracts.md`, `docs/ui-handoff-contract.md`, and `docs/final-core-handoff.md`. The backend pass did not edit UI files; the current Claude-owned Lab component later consumed this mapping.
 
 ### Agent graph contract
 
@@ -126,3 +126,26 @@ See the detailed status/evidence matrix in `docs/tasks/optra-fullstack-progress.
 - Validate availability and multiplier/corporate-action continuity for each additional underlying before enabling its backtest.
 - No scheduler is configured for unrelated hourly quote collection; the historical Crius feed is fetched directly by backtest/tick runtime.
 - The premium application UI is documented in `docs/final-ui-handoff.md`; current marketing graph work is tracked as a separate in-progress UI integration. Claude Code may use `docs/ui-handoff-contract.md` and `docs/final-core-handoff.md`; backend, safety, tests, migration, and verification paths remain protected there.
+
+## 2026-11-13 continuation — final engineering and browser integration check
+
+**Worktree:** HEAD was `afe4fe3` (`origin/main` matched). Existing Claude staged UI, graph, browser-test, and shared TypeScript build-info changes were left untouched. This continuation changed documentation only; no backend or frontend source was changed.
+
+**Backend verification:**
+
+- `bun run test -- tests/agents tests/auth tests/backtest tests/db tests/domain tests/engine tests/forge tests/hooks tests/integration tests/market tests/options tests/paper tests/public-api` — passed, 31 files / 103 tests.
+- `bun run test` — passed, full Vitest suite: 31 files / 103 tests.
+- `bunx tsc --noEmit --incremental false` — passed without rewriting the staged `tsconfig.tsbuildinfo`.
+- `bun run lint` — passed.
+- Source review covered wallet challenge/session handling, owner-scoped API handlers, lifecycle transitions, transaction-level tick evaluation/persistence, backtest provenance/launch gating, public capability handlers, benchmark schema, and the live-execution boundary. No additional confirmed backend defect was found, so no code or regression-test change was made.
+
+**Browser attempt and limitation:**
+
+- Ran 50 existing Playwright tests with an external temporary config against the active OPTRA server at `http://127.0.0.1:3001`, with no `webServer` and output directed to `/tmp`. Result: 11 passed / 39 failed.
+- Representative app pages loaded server HTML (`/agents`, `/lab`, `/hooks`, `/verify` returned 200), but client state remained “Checking wallet session…”. A browser probe captured invalid `/_next/hmr` WebSocket handshakes (`ERR_INVALID_HTTP_RESPONSE`) and no `/api/*` requests. Therefore this run cannot validate client/API integration and is not recorded as a product API failure.
+- Port 3000 and 3002 were confirmed as SENTERA. OPTRA on 3001 had the active `.next/dev/lock` held by its Next server. The default Playwright config and `bun run build` were not run because they could hit SENTERA or overwrite the active `.next` directory. No process was stopped.
+- No real wallet-extension signing prompt was verified. The signed wallet challenge and full supported paper flow remain covered by the passing backend integration suite using a test EVM signer and deterministic provider fixture.
+
+**Next coordinated QA:** restore a healthy OPTRA client hydration/HMR path, then rerun the browser suite on a safe OPTRA target; verify new and legacy Lab benchmark states, the public graph and no-private-data requests; walk the browser wallet journey if an extension is available; coordinate a quiet `.next` before production build. Do not claim those checks passed until rerun.
+
+See `docs/codex-final-engineering-handoff.md` for endpoint contracts, ownership boundaries, the exact Lab benchmark shape, and the Claude integration handoff.

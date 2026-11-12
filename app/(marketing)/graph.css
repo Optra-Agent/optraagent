@@ -74,6 +74,7 @@
 .fd-agent-text b { color: var(--muted); font-size: 12.5px; font-weight: 600; line-height: 1.2; }
 .fd-agent-text small { color: var(--dim); font-size: 11px; }
 .fd-agent > svg:last-child { position: absolute; top: 8px; right: 8px; width: 12px; height: 12px; color: var(--dim); }
+.fd-agent[data-ready="0"] { padding-right: 28px; }
 .fd-agent[data-ready="1"] { border-style: solid; border-color: var(--azure-line); }
 .fd-agent[data-ready="1"] b { color: var(--text); }
 .fd-agent[data-ready="1"] small { color: var(--azure-hover); }
