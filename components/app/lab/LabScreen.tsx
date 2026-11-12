@@ -14,7 +14,10 @@ import {
 import type { Agent, AgentDetail, BacktestCoverage, BacktestRun, MarketAsset } from "../../../lib/domain/contracts";
 import { useAuthSession } from "../AuthSessionProvider";
 import { formatUsd, formatUtc, shortHash, signedTone, errorText } from "../format";
-import { Chip, JourneyRail, PageHeader, Skeleton, StateBlock } from "../ui";
+import { Chip, JourneyRail, PageHeader, Skeleton, StateBlock, Panel } from "../ui";
+import { Button, buttonVariants } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 function errorMessage(value: unknown): string {
   const parsed = ApiErrorSchema.safeParse(value);
@@ -233,17 +236,20 @@ export function LabScreen({ initialAgentId = "" }: { initialAgentId?: string }) 
 
       {markets.length > 0 ? (
         <div className="lab-layout">
-          <section className="panel lab-panel" aria-label="Backtest coverage">
+          <Panel className="lab-panel" aria-label="Backtest coverage">
             <div className="panel-head"><div><p className="eyebrow">1 · DATA COVERAGE</p><h2>Source-backed history</h2></div></div>
             <div className="control-row">
               <div className="field field-inline">
-                <label htmlFor="lab-symbol">Underlying symbol</label>
-                <select id="lab-symbol" value={selectedSymbol} onChange={(event) => chooseSymbol(event.target.value)} disabled={Boolean(agentSymbol)} aria-describedby={agentSymbol ? "lab-symbol-note" : undefined}>
-                  {markets.map((market) => <option key={market.symbol} value={market.symbol}>{market.symbol}</option>)}
-                </select>
+                <Label htmlFor="lab-symbol">Underlying symbol</Label>
+                <Select value={selectedSymbol} onValueChange={chooseSymbol} disabled={Boolean(agentSymbol)}>
+                  <SelectTrigger id="lab-symbol" className="w-full" aria-describedby={agentSymbol ? "lab-symbol-note" : undefined}><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {markets.map((market) => <SelectItem key={market.symbol} value={market.symbol}>{market.symbol}</SelectItem>)}
+                  </SelectContent>
+                </Select>
                 {agentSymbol ? <span className="field-hint" id="lab-symbol-note">Pinned to the selected draft&apos;s underlying.</span> : null}
               </div>
-              <button className="button button-secondary" type="button" disabled={coverageLoading} onClick={refreshCoverage}>Refresh coverage</button>
+              <Button variant="outline" type="button" disabled={coverageLoading} onClick={refreshCoverage}>Refresh coverage</Button>
             </div>
             {coverageLoading ? <div role="status"><Skeleton lines={3} /></div> : null}
             {coverageError ? <p className="form-error" role="alert">{coverageError}</p> : null}
@@ -274,16 +280,16 @@ export function LabScreen({ initialAgentId = "" }: { initialAgentId?: string }) 
                 <li>No historical option chain, implied volatility or listed-contract guarantee exists in this data.</li>
               </ul>
             </div>
-          </section>
+          </Panel>
 
-          <section className="panel lab-panel" aria-label="Backtest and launch">
+          <Panel className="lab-panel" aria-label="Backtest and launch">
             <div className="panel-head"><div><p className="eyebrow">2 · BACKTEST AND LAUNCH</p><h2>Run the draft</h2></div><Chip tone="ember">Modeled premiums</Chip></div>
 
             {status === "loading" ? <div role="status"><Skeleton lines={2} /></div> : null}
             {status === "signed_out" ? (
               <>
                 <p>Connect a wallet to create and launch your paper backtest.</p>
-                <button className="button button-secondary" type="button" onClick={() => { setWalletMenuOpen(true); window.scrollTo({ top: 0, behavior: "smooth" }); }}>Choose a wallet</button>
+                <Button variant="outline" type="button" onClick={() => { setWalletMenuOpen(true); window.scrollTo({ top: 0, behavior: "smooth" }); }}>Choose a wallet</Button>
               </>
             ) : null}
             {status === "error" ? <p className="form-error" role="alert">Wallet session could not be checked. Retry from the header.</p> : null}
@@ -291,20 +297,23 @@ export function LabScreen({ initialAgentId = "" }: { initialAgentId?: string }) 
             {status === "signed_in" ? (
               <>
                 <div className="field">
-                  <label htmlFor="lab-agent">Protective Put draft</label>
-                  <select id="lab-agent" value={selectedAgentId} onChange={(event) => { setSelectedAgentId(event.target.value); setSelectedAgent(null); setRun(null); setWorkflowError(""); }} disabled={agentsLoading || agents.length === 0}>
-                    {agentsLoading ? <option value="">Loading drafts…</option> : null}
-                    {!agentsLoading && agents.length === 0 ? <option value="">No Protective Put drafts</option> : null}
-                    {agents.map((agent) => <option key={agent.id} value={agent.id}>{agent.name} · {agent.recipeHash.slice(0, 18)}</option>)}
-                  </select>
+                  <Label htmlFor="lab-agent">Protective Put draft</Label>
+                  <Select value={selectedAgentId || undefined} onValueChange={(value) => { setSelectedAgentId(value); setSelectedAgent(null); setRun(null); setWorkflowError(""); }} disabled={agentsLoading || agents.length === 0}>
+                    <SelectTrigger id="lab-agent" className="w-full">
+                      <SelectValue placeholder={agentsLoading ? "Loading drafts…" : "No Protective Put drafts"} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {agents.map((agent) => <SelectItem key={agent.id} value={agent.id}>{agent.name} · {agent.recipeHash.slice(0, 18)}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
                 </div>
                 {!agentsLoading && agents.length === 0 && !launched ? (
                   <p className="form-hint">Backtests run against a saved draft. <Link href="/agents#configure">Create a Protective Put draft</Link> first.</p>
                 ) : null}
                 <div className="action-row">
-                  <button className="button button-primary" type="button" aria-describedby={runBlockedReason ? "run-blocked" : undefined} disabled={busy !== "" || agentsLoading || Boolean(runBlockedReason) || Boolean(launched)} onClick={() => void createBacktest()}>
+                  <Button  type="button" aria-describedby={runBlockedReason ? "run-blocked" : undefined} disabled={busy !== "" || agentsLoading || Boolean(runBlockedReason) || Boolean(launched)} onClick={() => void createBacktest()}>
                     {busy === "backtest" ? "Replaying 720 decisions…" : "Run paper backtest"}
-                  </button>
+                  </Button>
                   {runBlockedReason && agents.length > 0 ? <span className="action-note" id="run-blocked">{runBlockedReason}</span> : null}
                 </div>
               </>
@@ -333,7 +342,7 @@ export function LabScreen({ initialAgentId = "" }: { initialAgentId?: string }) 
                 <p className="panel-note">Comparison with simply holding the stock: <strong>Not yet available</strong>. Treat these metrics as a model result, not a forecast.</p>
                 {run.status === "complete" && !launched ? (
                   <div className="action-row">
-                    <button className="button button-primary" type="button" disabled={busy !== ""} onClick={() => void launchAgent()}>{busy === "launch" ? "Launching…" : "Launch paper agent"}</button>
+                    <Button  type="button" disabled={busy !== ""} onClick={() => void launchAgent()}>{busy === "launch" ? "Launching…" : "Launch paper agent"}</Button>
                     <span className="action-note">Launch attaches this exact backtest to the draft.</span>
                   </div>
                 ) : null}
@@ -345,13 +354,13 @@ export function LabScreen({ initialAgentId = "" }: { initialAgentId?: string }) 
                 <h3>Paper agent running</h3>
                 <p>{launched.name} is live on paper. Open it to run a paper tick, then inspect the Tape.</p>
                 <div className="action-row">
-                  <Link className="button button-primary" href={`/agents/${encodeURIComponent(launched.id)}`}>Open agent and run a tick</Link>
-                  <Link className="button button-secondary" href={`/tape?agentId=${encodeURIComponent(launched.id)}`}>Open Tape</Link>
+                  <Link className={buttonVariants({ variant: "default" })} href={`/agents/${encodeURIComponent(launched.id)}`}>Open agent and run a tick</Link>
+                  <Link className={buttonVariants({ variant: "outline" })} href={`/tape?agentId=${encodeURIComponent(launched.id)}`}>Open Tape</Link>
                 </div>
               </section>
             ) : null}
             {workflowError ? <p className="form-error" role="alert">{workflowError}</p> : null}
-          </section>
+          </Panel>
         </div>
       ) : null}
     </main>

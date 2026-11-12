@@ -4,7 +4,10 @@ import { useEffect, useState } from "react";
 import { ApiErrorSchema, MarketListSchema, MarketSnapshotSchema } from "../../../lib/domain/contracts";
 import type { MarketAsset, MarketSnapshot } from "../../../lib/domain/contracts";
 import { formatUtc, errorText } from "../format";
-import { Chip, PageHeader, Skeleton, StateBlock } from "../ui";
+import { Chip, PageHeader, Skeleton, StateBlock, Panel } from "../ui";
+import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 type LoadStatus = "loading" | "ready" | "error";
 
@@ -104,17 +107,20 @@ export function MarketScreen() {
       {listStatus === "ready" && markets.length === 0 ? <StateBlock kind="empty">No active Robinhood Chain markets are available.</StateBlock> : null}
 
       {markets.length > 0 ? (
-        <section className="panel market-panel" aria-label="Current market quote">
+        <Panel className="market-panel" aria-label="Current market quote">
           <div className="control-row">
             <div className="field field-inline">
-              <label htmlFor="market-symbol">Underlying symbol</label>
-              <select id="market-symbol" value={selectedSymbol} onChange={(event) => selectMarket(event.target.value)}>
-                {markets.map((market) => <option key={market.symbol} value={market.symbol}>{market.symbol} · {market.name}</option>)}
-              </select>
+              <Label htmlFor="market-symbol">Underlying symbol</Label>
+              <Select value={selectedSymbol} onValueChange={selectMarket}>
+                <SelectTrigger id="market-symbol" className="w-full"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {markets.map((market) => <SelectItem key={market.symbol} value={market.symbol}>{market.symbol} · {market.name}</SelectItem>)}
+                </SelectContent>
+              </Select>
             </div>
-            <button className="button button-secondary" type="button" disabled={snapshotStatus === "loading"} onClick={refreshQuote}>
+            <Button variant="outline" type="button" disabled={snapshotStatus === "loading"} onClick={refreshQuote}>
               Refresh quote
-            </button>
+            </Button>
           </div>
 
           {snapshotStatus === "loading" ? <div role="status"><Skeleton lines={3} /><span className="sr-only">Loading {selectedSymbol} quote…</span></div> : null}
@@ -151,7 +157,7 @@ export function MarketScreen() {
               <p className="panel-note">Underlying reference prices are not option premiums or fills. The token quote is reported separately; no price is modeled here.</p>
             </>
           ) : null}
-        </section>
+        </Panel>
       ) : null}
     </main>
   );

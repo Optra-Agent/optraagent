@@ -5,6 +5,15 @@ export const STAGE_ORDER: HookStage[] = ["gate", "strike", "size", "pulse", "exp
 
 export const stageLabel = (stage: HookStage): string => stage.charAt(0).toUpperCase() + stage.slice(1);
 
+export const STAGE_QUESTION: Record<HookStage, string> = {
+  gate: "May the agent enter now?",
+  strike: "Which strike and expiry?",
+  size: "How much to put at risk?",
+  pulse: "When to manage or exit?",
+  expiry: "What happens near expiry?",
+  breaker: "When to stop new entries?",
+};
+
 /** Everything the landing page states about capability is derived from the same catalog the API serves. */
 export function getLandingFacts() {
   const catalog = getHookCatalog();
@@ -12,7 +21,8 @@ export function getLandingFacts() {
   const implemented = catalog.definitions.filter((hook) => hook.availability === "implemented");
   const byStage = STAGE_ORDER.map((stage) => {
     const hooks = catalog.definitions.filter((hook) => hook.stage === stage);
-    return { stage, total: hooks.length, live: hooks.filter((hook) => hook.availability === "implemented").length };
+    const live = hooks.filter((hook) => hook.availability === "implemented");
+    return { stage, total: hooks.length, live: live.length, liveNames: live.map((hook) => hook.name) };
   });
 
   // Recipe defaults are read from the real Protective Put builder; the symbol and sizes are placeholders and never displayed.

@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { ApiErrorSchema, PublicVerificationSchema } from "../../../lib/domain/contracts";
 import type { PublicClaim, PublicVerification } from "../../../lib/domain/contracts";
-import { Chip, PageHeader, StateBlock } from "../ui";
+import { Chip, PageHeader, StateBlock, Panel } from "../ui";
 import type { Tone } from "../ui";
 import { errorText } from "../format";
 
@@ -76,7 +76,7 @@ export function VerifyScreen() {
             <div className="metric"><dt>Uniswap v4 claim level</dt><dd className="mono">{verification.v4ClaimLevel}</dd></div>
             <div className="metric"><dt>Claims reported</dt><dd className="mono">{verification.claims.length}</dd></div>
           </dl>
-          <section className="panel" aria-label="Verified claims">
+          <Panel  aria-label="Verified claims">
             <div className="panel-head"><h2>Claims and evidence</h2></div>
             <ul className="claim-list">
               {verification.claims.map((claim) => {
@@ -93,11 +93,11 @@ export function VerifyScreen() {
                 );
               })}
             </ul>
-          </section>
+          </Panel>
         </>
       ) : null}
 
-      <section className="panel" aria-label="Not yet shipped">
+      <Panel  aria-label="Not yet shipped">
         <div className="panel-head"><h2>Not shipped yet</h2></div>
         <ul className="claim-list">
           {roadmap.map(([title, label, text]) => (
@@ -107,7 +107,7 @@ export function VerifyScreen() {
             </li>
           ))}
         </ul>
-      </section>
+      </Panel>
     </main>
   );
 }

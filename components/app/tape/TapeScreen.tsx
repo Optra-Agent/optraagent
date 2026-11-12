@@ -7,7 +7,9 @@ import type { Agent, AgentDecision, PaperOrder, PaperPosition } from "../../../l
 import { useAuthSession } from "../AuthSessionProvider";
 import { formatUtc, shortHash, titleCase, errorText } from "../format";
 import { OrdersTable, PositionGrid, TapeList } from "../paper";
-import { Chip, JourneyRail, PageHeader, Skeleton, StateBlock } from "../ui";
+import { Chip, JourneyRail, PageHeader, Skeleton, StateBlock, Panel } from "../ui";
+import { Button, buttonVariants } from "@/components/ui/button";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 type TapeData = { decisions: AgentDecision[]; orders: PaperOrder[]; positions: PaperPosition[] };
 type LoadState = "idle" | "loading" | "ready" | "error";
@@ -46,7 +48,7 @@ function AgentPicker() {
   if (status === "loading") return <StateBlock kind="loading" title="Checking wallet session…" />;
   if (status === "signed_out") {
     return (
-      <StateBlock kind="info" title="No agent selected" action={<button className="button button-secondary" type="button" onClick={() => { setWalletMenuOpen(true); window.scrollTo({ top: 0, behavior: "smooth" }); }}>Choose a wallet</button>}>
+      <StateBlock kind="info" title="No agent selected" action={<Button variant="outline" type="button" onClick={() => { setWalletMenuOpen(true); window.scrollTo({ top: 0, behavior: "smooth" }); }}>Choose a wallet</Button>}>
         <p>Open Tape from an agent detail page to inspect its persisted decisions.</p>
         <p className="subtle">Tape is private to the wallet that owns the agent. Connect to pick one of yours.</p>
       </StateBlock>
@@ -56,13 +58,13 @@ function AgentPicker() {
   if (!agents) return <div className="state-panel" role="status"><Skeleton lines={3} /></div>;
   if (agents.length === 0) {
     return (
-      <StateBlock kind="empty" title="No agents yet" action={<Link className="button button-primary" href="/agents#configure">Create a Protective Put draft</Link>}>
+      <StateBlock kind="empty" title="No agents yet" action={<Link className={buttonVariants({ variant: "default" })} href="/agents#configure">Create a Protective Put draft</Link>}>
         <p>Tape fills after a paper agent runs its first tick.</p>
       </StateBlock>
     );
   }
   return (
-    <section className="panel" aria-label="Choose an agent">
+    <Panel  aria-label="Choose an agent">
       <div className="panel-head"><h2>Choose an agent</h2><span className="coverage-sub">{agents.length} saved</span></div>
       <ul className="picker-list">
         {agents.map((agent) => (
@@ -75,7 +77,7 @@ function AgentPicker() {
           </li>
         ))}
       </ul>
-    </section>
+    </Panel>
   );
 }
 
@@ -132,14 +134,14 @@ export function TapeScreen({ agentId }: { agentId: string }) {
         eyebrow="APPEND-ONLY · PAPER"
         title="Optra Tape"
         description="Persisted agent decisions, source provenance, rule traces, and open paper positions. Holds and skips are first-class entries, not gaps."
-        actions={agentId ? <button className="button button-secondary" type="button" disabled={state === "loading"} onClick={refresh}>Refresh Tape</button> : null}
+        actions={agentId ? <Button variant="outline" type="button" disabled={state === "loading"} onClick={refresh}>Refresh Tape</Button> : null}
       />
       {agentId ? <JourneyRail step={6} /> : null}
 
       {!agentId ? <AgentPicker /> : null}
       {state === "loading" ? <div className="state-panel" role="status"><Skeleton lines={4} /><span className="sr-only">Loading persisted paper history…</span></div> : null}
       {state === "error" ? (
-        <StateBlock kind="error" title="Tape could not be loaded" action={<><button className="button button-secondary" type="button" onClick={refresh}>Retry</button><Link className="button button-secondary" href="/agents">Back to agents</Link></>}>
+        <StateBlock kind="error" title="Tape could not be loaded" action={<><Button variant="outline" type="button" onClick={refresh}>Retry</Button><Link className={buttonVariants({ variant: "outline" })} href="/agents">Back to agents</Link></>}>
           <p>{error}</p>
         </StateBlock>
       ) : null}
@@ -152,33 +154,36 @@ export function TapeScreen({ agentId }: { agentId: string }) {
             <div className="metric"><dt>Paper orders</dt><dd className="mono">{data.orders.length}</dd></div>
           </dl>
           <div className="tape-layout">
-            <section className="panel" aria-label="Decision Tape">
+            <Panel  aria-label="Decision Tape">
               <div className="panel-head">
                 <h2>Decision Tape</h2>
                 <Chip>Paper</Chip>
               </div>
               {data.decisions.length > 0 ? (
-                <div className="filter-row" role="group" aria-label="Filter decisions by action">
-                  {(["all", "open", "hold", "close", "skip"] as const).map((action) => (
-                    <button key={action} type="button" className="filter-pill" aria-pressed={filter === action} onClick={() => setFilter(action)}>
-                      {action === "all" ? "All" : titleCase(action)}
-                    </button>
-                  ))}
-                </div>
+                <Tabs value={filter} onValueChange={(value) => setFilter(value as ActionFilter)} className="mb-4">
+                  <TabsList aria-label="Filter decisions by action" className="h-auto flex-wrap justify-start gap-1 bg-secondary p-1">
+                    {(["all", "open", "hold", "close", "skip"] as const).map((action) => (
+                      <TabsTrigger key={action} value={action} className="h-9 px-3 text-sm data-[state=active]:bg-accent data-[state=active]:text-foreground">
+                        {action === "all" ? "All" : titleCase(action)}
+                        <span className="mono ml-1.5 text-xs text-muted-foreground">{action === "all" ? data.decisions.length : counts[action]}</span>
+                      </TabsTrigger>
+                    ))}
+                  </TabsList>
+                </Tabs>
               ) : null}
               <TapeList decisions={visible} />
               {data.decisions.length > 0 && visible.length === 0 ? <p className="empty-line">No {filter} decisions on this Tape.</p> : null}
-            </section>
+            </Panel>
             <div className="tape-side">
-              <section className="panel" aria-label="Paper positions">
+              <Panel  aria-label="Paper positions">
                 <div className="panel-head"><h2>Positions</h2><Chip>Paper</Chip></div>
                 <PositionGrid positions={data.positions} />
-              </section>
-              <section className="panel" aria-label="Paper orders">
+              </Panel>
+              <Panel  aria-label="Paper orders">
                 <div className="panel-head"><h2>Paper orders</h2><Chip tone="ember">Modeled premiums</Chip></div>
                 <OrdersTable orders={data.orders} />
-              </section>
-              <Link className="button button-secondary" href={`/agents/${encodeURIComponent(agentId)}`}>Open agent</Link>
+              </Panel>
+              <Link className={buttonVariants({ variant: "outline" })} href={`/agents/${encodeURIComponent(agentId)}`}>Open agent</Link>
             </div>
           </div>
         </>
