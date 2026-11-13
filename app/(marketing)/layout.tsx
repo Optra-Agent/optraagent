@@ -3,6 +3,7 @@ import { MarketingNav } from "../../components/marketing/MarketingNav";
 import "./marketing.css";
 import "./graph.css";
 import "./network.css";
+import "./studio.css";
 
 export default function MarketingLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (

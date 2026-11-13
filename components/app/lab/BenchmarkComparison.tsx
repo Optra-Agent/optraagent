@@ -1,9 +1,9 @@
 import { Info } from "lucide-react";
 import type { BacktestMetrics } from "../../../lib/domain/contracts";
-import { formatUsd, formatUtc, signedTone } from "../format";
+import { formatPct, formatPoints, formatUsd, formatUtc, signedTone } from "../format";
 
-const signed = (value: string) => `${Number(value) > 0 ? "+" : ""}${value}%`;
-const points = (value: string) => `${Number(value) > 0 ? "+" : ""}${value} pp`;
+const signed = (value: string) => formatPct(value);
+const points = (value: string) => formatPoints(value);
 
 /**
  * Strategy against its two same-window benchmarks, drawn only from the server's `metrics.benchmarks`.
@@ -44,14 +44,14 @@ export function BenchmarkComparison({ metrics }: { metrics: BacktestMetrics }) {
                 <i className="bench-axis" />
                 <i className={`bench-fill bench-${value >= 0 ? "pos" : "neg"}`} style={value >= 0 ? { left: "50%", width } : { right: "50%", width }} />
               </div>
-              <b className={`mono pnl pnl-${signedTone(row.value)}`}>{signed(row.value)}</b>
+              <b className={`mono pnl pnl-${signedTone(row.value)}`} title={`${row.value}%`}>{signed(row.value)}</b>
             </li>
           );
         })}
       </ul>
       <dl className="bench-diff">
-        <div><dt>Versus holding</dt><dd className={`mono pnl pnl-${signedTone(bench.vsHoldingPct)}`}>{points(bench.vsHoldingPct)}</dd></div>
-        <div><dt>Versus flat USD</dt><dd className={`mono pnl pnl-${signedTone(bench.vsCashPct)}`}>{points(bench.vsCashPct)}</dd></div>
+        <div><dt>Versus holding</dt><dd className={`mono pnl pnl-${signedTone(bench.vsHoldingPct)}`} title={`${bench.vsHoldingPct} pp`}>{points(bench.vsHoldingPct)}</dd></div>
+        <div><dt>Versus flat USD</dt><dd className={`mono pnl pnl-${signedTone(bench.vsCashPct)}`} title={`${bench.vsCashPct} pp`}>{points(bench.vsCashPct)}</dd></div>
         <div><dt>Holding, start to end</dt><dd className="mono">{formatUsd(bench.underlying.startingValueUsd)} to {formatUsd(bench.underlying.endingValueUsd)}</dd></div>
         <div><dt>Cash, start to end</dt><dd className="mono">{formatUsd(bench.cash.startingValueUsd)} to {formatUsd(bench.cash.endingValueUsd)}</dd></div>
       </dl>

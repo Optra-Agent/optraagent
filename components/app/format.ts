@@ -47,3 +47,17 @@ export function errorText(reason: unknown, fallback: string): string {
   if (reason.name === "ZodError") return `${fallback} The server response was not in the expected format.`;
   return reason.message || fallback;
 }
+
+/** Readable percentage for display (default 2 decimals). The full-precision string stays in the data and in `title` attributes. */
+export function formatPct(value: string, digits = 2): string {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return `${value}%`;
+  const text = parsed.toFixed(digits);
+  return `${parsed > 0 ? "+" : ""}${text === `-${(0).toFixed(digits)}` ? (0).toFixed(digits) : text}%`;
+}
+
+export function formatPoints(value: string, digits = 2): string {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return `${value} pp`;
+  return `${parsed > 0 ? "+" : ""}${parsed.toFixed(digits)} pp`;
+}

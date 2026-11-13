@@ -13,7 +13,7 @@ import {
 } from "../../../lib/domain/contracts";
 import type { Agent, AgentDetail, BacktestCoverage, BacktestRun, MarketAsset } from "../../../lib/domain/contracts";
 import { useAuthSession } from "../AuthSessionProvider";
-import { formatUsd, formatUtc, shortHash, signedTone, errorText } from "../format";
+import { formatPct, formatUsd, formatUtc, shortHash, signedTone, errorText } from "../format";
 import { Chip, JourneyRail, PageHeader, Skeleton, StateBlock, Panel } from "../ui";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -329,8 +329,8 @@ export function LabScreen({ initialAgentId = "" }: { initialAgentId?: string }) 
                 <p>{run.reason}</p>
                 {run.metrics ? (
                   <dl className="metric-row">
-                    <div className="metric"><dt>Total return</dt><dd className={`mono pnl pnl-${signedTone(run.metrics.totalReturnPct)}`}>{Number(run.metrics.totalReturnPct) > 0 ? "+" : ""}{run.metrics.totalReturnPct}%</dd></div>
-                    <div className="metric"><dt>Maximum drawdown</dt><dd className="mono pnl pnl-loss">-{run.metrics.maxDrawdownPct}%</dd></div>
+                    <div className="metric"><dt>Total return</dt><dd className={`mono pnl pnl-${signedTone(run.metrics.totalReturnPct)}`} title={`${run.metrics.totalReturnPct}%`}>{formatPct(run.metrics.totalReturnPct)}</dd></div>
+                    <div className="metric"><dt>Maximum drawdown</dt><dd className="mono pnl pnl-loss" title={`-${run.metrics.maxDrawdownPct}%`}>{formatPct(`-${run.metrics.maxDrawdownPct}`)}</dd></div>
                     <div className="metric"><dt>Ending cash</dt><dd className="mono">{formatUsd(run.metrics.endingCashUsd)}</dd></div>
                   </dl>
                 ) : <p className="form-hint">No performance metrics were produced.</p>}

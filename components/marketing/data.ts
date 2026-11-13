@@ -14,6 +14,15 @@ export const STAGE_QUESTION: Record<HookStage, string> = {
   breaker: "When to stop new entries?",
 };
 
+export const STAGE_BLURB: Record<HookStage, string> = {
+  gate: "Decides whether the agent may open a new position right now. Every Gate rule has to agree.",
+  strike: "Picks the put to buy: how far out of the money, and how many days until it expires.",
+  size: "Sets how many units to buy, limited by the shares covered and the premium budget.",
+  pulse: "Watches an open position and decides when to take protection off early.",
+  expiry: "Closes the position ahead of expiry and decides when the next cycle may start.",
+  breaker: "Guards every tick. If data health, daily loss, drawdown or exposure hits its limit, new entries stop. Exits keep running.",
+};
+
 /** Everything the landing page states about capability is derived from the same catalog the API serves. */
 export function getLandingFacts() {
   const catalog = getHookCatalog();

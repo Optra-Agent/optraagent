@@ -3,7 +3,7 @@ import { PublicTapeResponseSchema, PublicVerificationSchema } from "../../lib/do
 import { createPublicHandlers } from "../../lib/public/handlers";
 import { getLandingFacts } from "../../components/marketing/data";
 import { getGraphData } from "../../components/marketing/graph-data";
-import { getApiSample, getExplorerData, getForgeDemo, getRiskRails } from "../../components/marketing/section-data";
+import { getApiDocs, getExplorerData, getForgeDemo, getHealthGuard, getRiskRails } from "../../components/marketing/section-data";
 import { scenarioFromDecision } from "../../components/marketing/graph-flow";
 import { Developers, DualMode, Faq, FinalCta, Forge, Hero, Hooks, HouseAgents, HowItWorks, LabSection, Sessions, Status, TapeSection } from "../../components/marketing/sections";
 
@@ -17,6 +17,9 @@ export default async function LandingPage() {
   const facts = getLandingFacts();
   // The ledger renders the server's own claims, read through the same handler the public API uses.
   const verification = PublicVerificationSchema.parse(await createPublicHandlers().verify().then((response) => response.json()));
+  const publicHandlers = createPublicHandlers();
+  const read = async (response: Promise<Response>) => (await response).json() as Promise<unknown>;
+  const docs = getApiDocs({ templates: await read(publicHandlers.templates()), verify: verification, agents: await read(publicHandlers.agents()), tape: await read(publicHandlers.tape()) });
   const graph = getGraphData();
   // When the public Tape has a record, the graph can replay it. Today the public Tape is empty, so only the labeled illustrative examples show.
   const tape = PublicTapeResponseSchema.parse(await createPublicHandlers().tape().then((response) => response.json()));
@@ -30,10 +33,10 @@ export default async function LandingPage() {
       <Hooks facts={facts} explorer={getExplorerData()} />
       <HowItWorks />
       <TapeSection graph={graph} />
-      <LabSection facts={facts} />
-      <Sessions rails={getRiskRails()} />
+      <LabSection />
+      <Sessions rails={getRiskRails()} health={getHealthGuard()} />
       <DualMode />
-      <Developers sample={getApiSample()} />
+      <Developers docs={docs} />
       <Status verification={verification} />
       <Faq facts={facts} />
       <FinalCta />

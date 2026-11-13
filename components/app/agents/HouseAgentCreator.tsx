@@ -49,7 +49,11 @@ export function HouseAgentCreator() {
         const nextSymbols = markets.map((market) => market.symbol);
         setSymbols(nextSymbols);
         setMarketsLoading(false);
-        if (nextSymbols.length) setSymbol((current) => nextSymbols.includes(current) ? current : nextSymbols.includes("AAPL") ? "AAPL" : nextSymbols[0]!);
+        if (nextSymbols.length) {
+          // Markets links here with ?symbol=XYZ. The choice still has to pass wallet sign-in, a backtest and validation.
+          const requested = new URLSearchParams(window.location.search).get("symbol")?.toUpperCase();
+          setSymbol((current) => requested && nextSymbols.includes(requested) ? requested : nextSymbols.includes(current) ? current : nextSymbols.includes("AAPL") ? "AAPL" : nextSymbols[0]!);
+        }
       })
       .catch((reason: unknown) => {
         if (controller.signal.aborted) return;
