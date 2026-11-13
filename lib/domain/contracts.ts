@@ -101,6 +101,8 @@ export const MarketAssetSchema = z.object({
   currentMultiplier: DecimalStringSchema,
   tokenAddress: EvmAddressSchema.optional(),
   pendingMultiplier: DecimalStringSchema.optional(),
+  /** Official Robinhood asset logo, present only when it passed the host and deployment-address checks. Additive and optional. */
+  logoUrl: z.string().url().optional(),
 }).strict();
 
 export const MarketListSchema = z.object({

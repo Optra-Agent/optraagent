@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createRobinhoodMarketFeed, MarketFeedError } from "../../lib/market/robinhood-feed";
+import { createRobinhoodMarketFeed, MarketFeedError, verifiedLogoUrl } from "../../lib/market/robinhood-feed";
 
 const ASSET = {
   tokenSymbol: "AAPL",
@@ -89,5 +89,51 @@ describe("Robinhood market feed", () => {
 
     await expect(feed.listMarkets()).rejects.toBeInstanceOf(MarketFeedError);
     await expect(feed.listMarkets()).rejects.toMatchObject({ code: "UPSTREAM_UNAVAILABLE", retryable: true });
+  });
+});
+
+describe("asset logos", () => {
+  const address = "0xaF3D76f1834A1d425780943C99Ea8A608f8a93f9";
+  const official = `https://cdn.robinhood.com/ncw_assets/logos/${address.toLowerCase()}.png`;
+  const withDeployment = (logoUrl?: string) => ({ ...ASSET, ...(logoUrl ? { logoUrl } : {}), deployments: [{ chainId: 4663, networkName: "Robinhood Chain", contractAddress: address }] });
+  const list = (asset: object, logos: "none" | "registry" = "registry") => createRobinhoodMarketFeed({ logos, fetcher: async () => Response.json({ assets: [asset] }) }).listMarkets();
+
+  it("keeps_the_official_logo_that_matches_the_chain_4663_deployment", async () => {
+    await expect(list(withDeployment(official))).resolves.toMatchObject([{ symbol: "AAPL", logoUrl: official }]);
+    expect(verifiedLogoUrl(official, address)).toBe(official);
+  });
+
+  it("exposes_no_logo_by_default_because_the_registry_logo_is_one_generic_image", async () => {
+    const [market] = await list(withDeployment(official), "none");
+    expect(market).not.toHaveProperty("logoUrl");
+    const [defaulted] = await createRobinhoodMarketFeed({ fetcher: async () => Response.json({ assets: [withDeployment(official)] }) }).listMarkets();
+    expect(defaulted).not.toHaveProperty("logoUrl");
+  });
+
+  it("omits_the_logo_when_the_registry_has_none", async () => {
+    const [market] = await list(withDeployment());
+    expect(market).not.toHaveProperty("logoUrl");
+  });
+
+  it("drops_logos_with_the_wrong_host_scheme_address_or_extras", () => {
+    for (const bad of [
+      `http://cdn.robinhood.com/ncw_assets/logos/${address.toLowerCase()}.png`,
+      `https://evil.example/ncw_assets/logos/${address.toLowerCase()}.png`,
+      `https://cdn.robinhood.com.evil.example/ncw_assets/logos/${address.toLowerCase()}.png`,
+      "https://cdn.robinhood.com/ncw_assets/logos/0x0000000000000000000000000000000000000001.png",
+      "https://cdn.robinhood.com/ncw_assets/logos/aapl.png",
+      `${official}?x=1`,
+      `https://user:pw@cdn.robinhood.com/ncw_assets/logos/${address.toLowerCase()}.png`,
+      "not a url",
+      "javascript:alert(1)",
+    ]) expect(verifiedLogoUrl(bad, address), bad).toBeUndefined();
+    expect(verifiedLogoUrl(official, undefined)).toBeUndefined();
+    expect(verifiedLogoUrl(undefined, address)).toBeUndefined();
+  });
+
+  it("lists_the_market_without_a_logo_when_the_registry_logo_is_untrusted", async () => {
+    const [market] = await list(withDeployment("https://evil.example/logo.png"));
+    expect(market?.symbol).toBe("AAPL");
+    expect(market).not.toHaveProperty("logoUrl");
   });
 });

@@ -34,8 +34,8 @@ The Breaker is a ring around the whole network, not a node at the end of a chain
 
 All geometry is in `components/marketing/network-layout.ts` (pure, tested). `AgentGraph.tsx` renders it.
 
-- Each node has its own position and a `from` position, which is its parent's. Hidden, it sits on the parent, small and transparent. Shown, it transitions to its own place with a stagger. This is what makes it spread outward instead of fading in place.
-- Branches are gentle quadratic curves drawn with `stroke-dashoffset`, timed with the node that rides them.
+- Each branch draws outward and the node it reaches blooms at the branch tip (scale and opacity, after the branch has started drawing), so a node is always attached to its connector and the network spreads outward instead of fading in place. Breaker hooks bloom as the ring draws past their position.
+- Branches are S-shaped cubic Bézier curves drawn with `stroke-dashoffset`, timed with the node they reach.
 - A camera group (`translate · scale · translate`) zooms out from 1.6x to 1x across states, and slides and shrinks the network into the free side when a card is open so the card never covers what it describes.
 - Pulses are short dashes moving along real branches, one after another with fixed delays. Nothing random, no particles.
 - Only transform, opacity and stroke-dashoffset animate. There is no physics, canvas or animation library. Pulses, the ring scan and the orbit pause when the network is off screen.
@@ -75,7 +75,7 @@ The first and last states are unmistakably different: one node against 28, and t
 | `bun run test:e2e` | 43 of 43 passed through a scratch Playwright config on port 3001 (the repo config needs port 3000, held by an unrelated SENTERA server I did not touch) |
 | `bun run build` | passed, `/` still prerendered |
 
-New e2e coverage: initial one-agent state, growth through all five states with children starting at their parent, widening and densifying, hook cards, locked satellites, hiding and showing a stage's hooks, the labeled decision flow, auto-play then Pause and Back to start, Preview agents, keyboard operation, the compact layout, reduced motion, and no JavaScript.
+New e2e coverage: initial one-agent state, growth through all five states with every branch ending on its node, widening and densifying, hook cards, locked satellites, hiding and showing a stage's hooks, the labeled decision flow, auto-play then Pause and Back to start, Preview agents, keyboard operation, the compact layout, reduced motion, and no JavaScript.
 
 The supported journey (wallet session, draft, backtest, launch, paper tick, Tape) is covered by the paper-flow integration test and the existing agents, forge, lab, tape, hooks, market and verify e2e specs, all passing. I did not repeat the manual signed-in browser run, and none of those files changed in this pass. During the run, `lib/backtest/run.ts`, `lib/domain/contracts.ts`, `tests/backtest/run.test.ts` and `tests/e2e/lab.spec.ts` were being edited by someone else; one backtest unit test failed once mid-edit and passed on the next run. I did not touch those files.
 
@@ -104,3 +104,10 @@ New: `components/marketing/network-layout.ts`, `app/(marketing)/network.css`, `t
 ## Git
 
 Nothing was committed, pushed or deployed.
+
+## Addendum (2026-11-13): refinements after the first redesign
+
+- **Root identity:** the root is now a strategy module: a hexagonal shell, a ring of six arcs (five Azure for the stages, one Ember for the Breaker), a payoff glyph over an Ember strike line, and a "validated" check badge. Preview agents keep the same shape dashed and dim, without the badge.
+- **Toolbar and selector:** playback is a labeled toolbar with icons (Explore agent, Pause or Play, Replay, View decision flow, Back to start), each with a tooltip; the labels collapse to icons with accessible names on phones. The agent selector is four tiles with a payoff mark, a name and a status, and a lock on Preview agents.
+- **Decision timeline:** the flow panel now opens with a result summary (Evaluating, then Result with the action and reason, and a progress bar), then one row per stage with compact pass, block and idle counts. A row opens into hook verdicts on demand, blocked stages open by default, and a row focuses that stage on the canvas. Selecting a hook or stage while the timeline is open offers "Back to decision timeline". Labels are unchanged: "Illustrative only" for built-in examples, "Public Tape record" for real ones.
+- **Not covered here:** the landing preview, Forge, Hooks, Lab benchmark and app-shell work is in `docs/optra-final-ui-refinement.md`.

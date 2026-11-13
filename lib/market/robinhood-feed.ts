@@ -13,6 +13,7 @@ const AssetSchema = z.object({
   status: z.string(),
   currentMultiplier: DecimalSchema,
   pendingMultiplier: z.string().optional(),
+  logoUrl: z.string().optional(),
   deployments: z.array(z.object({ chainId: z.number().int(), contractAddress: z.string().optional() })),
 });
 const AssetRegistrySchema = z.object({ assets: z.array(AssetSchema) });
@@ -39,6 +40,12 @@ export class MarketFeedError extends Error {
 }
 
 export type RobinhoodMarketFeedOptions = {
+  /**
+   * "none" (default) never exposes a logo. "registry" exposes the registry logo after `verifiedLogoUrl` passes.
+   * It is off by default because the registry serves one identical Robinhood mark for every token (verified 2026-11-13
+   * by comparing downloaded files), so it is not an asset logo and would label every row with Robinhood's brand.
+   * Crius token profiles return `metadata.logo: null` for the stock tokens sampled. */
+  logos?: "none" | "registry";
   fetcher?: typeof fetch;
   now?: () => Date;
   baseUrl?: string;
@@ -59,6 +66,21 @@ function compareDecimals(left: string, right: string): number {
   return leftScaled === rightScaled ? 0 : leftScaled < rightScaled ? -1 : 1;
 }
 
+const LOGO_HOSTS = new Set(["cdn.robinhood.com"]);
+
+/**
+ * Accepts the registry's logo only when it is https, on a trusted Robinhood host, and its file name is exactly the
+ * chain 4663 deployment address of this token. Anything else is dropped, so the UI falls back to the ticker initials.
+ * URLs are never built from tickers.
+ */
+export function verifiedLogoUrl(logoUrl: string | undefined, contractAddress: string | undefined): string | undefined {
+  if (!logoUrl || !contractAddress) return undefined;
+  let url: URL;
+  try { url = new URL(logoUrl); } catch { return undefined; }
+  if (url.protocol !== "https:" || !LOGO_HOSTS.has(url.hostname) || url.username || url.password || url.port || url.search || url.hash) return undefined;
+  return url.pathname === `/ncw_assets/logos/${contractAddress.toLowerCase()}.png` ? url.toString() : undefined;
+}
+
 function isoTimestamp(value: string): string | null {
   const timestamp = new Date(value);
   return Number.isFinite(timestamp.getTime()) ? timestamp.toISOString() : null;
@@ -74,6 +96,7 @@ export function createRobinhoodMarketFeed(options: RobinhoodMarketFeedOptions = 
   const baseUrl = (options.baseUrl ?? DEFAULT_BASE_URL).replace(/\/$/, "");
   const maxQuoteAgeMs = options.maxQuoteAgeMs ?? DEFAULT_MAX_AGE_MS;
   const requestTimeoutMs = options.requestTimeoutMs ?? 5000;
+  const logoMode = options.logos ?? "none";
 
   async function getJson(url: string): Promise<unknown> {
     let response: Response;
@@ -104,11 +127,14 @@ export function createRobinhoodMarketFeed(options: RobinhoodMarketFeedOptions = 
       if (asset.status !== "ASSET_STATUS_ACTIVE") continue;
       if (!asset.deployments.some((deployment) => deployment.chainId === ROBINHOOD_CHAIN_ID)) continue;
       if (!positiveDecimal(asset.currentMultiplier)) return failUpstream("Robinhood returned an invalid asset multiplier.");
+      const deployment = asset.deployments.find((item) => item.chainId === ROBINHOOD_CHAIN_ID);
+      const logoUrl = logoMode === "registry" ? verifiedLogoUrl(asset.logoUrl, deployment?.contractAddress) : undefined;
       const market = MarketAssetSchema.safeParse({
         symbol: asset.tokenSymbol,
         name: asset.tokenName,
         currentMultiplier: asset.currentMultiplier,
-        tokenAddress: asset.deployments.find((deployment) => deployment.chainId === ROBINHOOD_CHAIN_ID)?.contractAddress,
+        tokenAddress: deployment?.contractAddress,
+        ...(logoUrl ? { logoUrl } : {}),
         ...(asset.pendingMultiplier && positiveDecimal(asset.pendingMultiplier) ? { pendingMultiplier: asset.pendingMultiplier } : {}),
       });
       if (!market.success) return failUpstream("Robinhood returned an invalid asset record.");

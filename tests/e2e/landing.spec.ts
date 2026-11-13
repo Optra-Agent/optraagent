@@ -23,12 +23,14 @@ test("landing capability claims match the catalog and roadmap items are not pres
   await page.goto("/");
 
   await expect(page.getByText("15 of 36 hooks run today.", { exact: true })).toBeVisible();
-  const status = page.getByRole("table", { name: "Capability status" });
-  await expect(status.getByRole("row", { name: /Live execution/ })).toContainText("Disabled");
-  await expect(status.getByRole("row", { name: /AI composition/ })).toContainText("Coming soon");
-  await expect(status.getByRole("row", { name: /Other House Agents/ })).toContainText("Preview");
-  await expect(status.getByRole("row", { name: /Session choices, Listing, Floor, MCP, x402/ })).toContainText("Planned");
-    await expect(page.locator("#agents .pn-agents").getByText("Preview", { exact: true })).toHaveCount(3);
+  const verify = page.locator("#verify");
+  await expect(verify.getByRole("region", { name: "Safety boundaries" }).getByText("Live execution")).toBeVisible();
+  await expect(verify.getByRole("region", { name: "Safety boundaries" }).getByText("Disabled", { exact: true })).toBeVisible();
+  const roadmap = verify.getByRole("region", { name: "Roadmap" });
+  await expect(roadmap.getByText("AI composition").locator("..")).toContainText("Coming soon");
+  await expect(roadmap.getByText("Other House Agents").locator("..")).toContainText("Preview");
+  await expect(roadmap.getByText("Session choices, Listing, Floor, MCP, x402").locator("..")).toContainText("Planned");
+  await expect(page.locator("#agents .pn-agents").getByText("Preview", { exact: true })).toHaveCount(3);
 });
 
 test("every landing navigation anchor resolves to a section that exists", async ({ page }) => {
@@ -134,14 +136,14 @@ test("scroll-driven reveals settle to full opacity, and revisiting a section rep
   }
   await goTo("agents");
   expect(await headOpacity("agents"), "agents on the way back up").toBeGreaterThanOrEqual(0.95);
-  const cards = await page.locator("#lab .lp > *").count();
+  const cards = await page.locator("#verify .ev-group:nth-of-type(1) ul > *").count();
   expect(cards).toBe(4);
   for (let index = 0; index < cards; index += 1) {
-    await page.locator("#lab .lp > *").nth(index).scrollIntoViewIfNeeded();
-    await page.evaluate((i) => document.querySelectorAll("#lab .lp > *")[i].scrollIntoView({ block: "center" }), index);
+    await page.locator("#verify .ev-group:nth-of-type(1) ul > *").nth(index).scrollIntoViewIfNeeded();
+    await page.evaluate((i) => document.querySelectorAll("#verify .ev-group:nth-of-type(1) ul > *")[i].scrollIntoView({ block: "center" }), index);
     await page.waitForTimeout(300);
-    const opacity = await page.evaluate((i) => parseFloat(getComputedStyle(document.querySelectorAll("#lab .lp > *")[i]).opacity), index);
-    expect(opacity, `lab step ${index} once in view`).toBeGreaterThanOrEqual(0.95);
+    const opacity = await page.evaluate((i) => parseFloat(getComputedStyle(document.querySelectorAll("#verify .ev-group:nth-of-type(1) ul > *")[i]).opacity), index);
+    expect(opacity, `verify claim ${index} once in view`).toBeGreaterThanOrEqual(0.95);
   }
 });
 
@@ -153,16 +155,56 @@ test("reduced motion shows every section at full opacity without scrolling", asy
   expect(Math.min(...opacities)).toBe(1);
 });
 
-test("the hook workbench keeps the true counts and separates implemented from catalog-only", async ({ page }) => {
+test("the hook explorer is pinned, keeps the true counts, and separates implemented from catalog-only", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto("/");
-  const ruler = page.getByRole("tablist", { name: "Hook stages" });
-  await expect(ruler.getByRole("tab", { name: /GATE.*3 of 10/ })).toBeVisible();
-  await expect(ruler.getByRole("tab", { name: /BREAKER.*5 of 5/ })).toBeVisible();
-  await expect(ruler.getByText("Runs on every tick. Can stop new entries.")).toBeVisible();
+  const nav = page.getByRole("navigation", { name: "Hook stages" });
+  await expect(nav.getByRole("button", { name: /GATE.*3 of 10/ })).toBeVisible();
+  await expect(nav.getByRole("button", { name: /BREAKER.*5 of 5/ })).toBeVisible();
+  await expect(nav.getByText("Guards every stage, every tick")).toBeVisible();
   await expect(page.getByText("Catalog only, locked (21 hooks)")).toBeVisible();
-  // A locked hook is readable but never presented as implemented.
-  await page.locator("#hooks").getByRole("button", { name: /Volra/ }).click();
-  const detail = page.getByRole("region", { name: "Volra details" });
+  const hooks = page.locator("#hooks");
+  const active = () => hooks.locator(".ps").getAttribute("data-step");
+  const go = async (fraction: number) => {
+    await page.evaluate((f) => {
+      const track = document.querySelector("#hooks .ps") as HTMLElement;
+      const pin = track.querySelector(".ps-pin") as HTMLElement;
+      window.scrollTo(0, track.getBoundingClientRect().top + window.scrollY - 104 + (track.offsetHeight - pin.offsetHeight) * f);
+    }, fraction);
+    await page.waitForTimeout(450);
+  };
+  // Scrolling moves the active stage forward, and back.
+  await go(0.3);
+  await expect.poll(active).toBe("1");
+  expect(await page.evaluate(() => Math.round(document.querySelector("#hooks .ps-pin")!.getBoundingClientRect().top))).toBe(104);
+  await expect(hooks.getByRole("button", { name: /Percy/ })).toBeVisible();
+  await go(0.97);
+  await expect.poll(active).toBe("5");
+  await expect(hooks.getByText("The five guards a Protective Put runs")).toBeVisible();
+  await go(0.02);
+  await expect.poll(active).toBe("0");
+  // Clicking a stage scrolls and activates it without bouncing; clicking a hook opens its detail.
+  await nav.getByRole("button", { name: /SIZE/ }).click();
+  await page.waitForTimeout(1300);
+  await expect.poll(active).toBe("2");
+  await expect(hooks.getByRole("button", { name: /Capra/ })).toBeVisible();
+  await nav.getByRole("button", { name: /GATE/ }).click();
+  await page.waitForTimeout(1300);
+  await expect.poll(active).toBe("0");
+  const panel = hooks.locator('.ps-view[data-state="active"]');
+  await panel.getByText(/7 catalog-only hooks in Gate/).click();
+  await panel.getByRole("button", { name: /Volra/ }).click();
+  const detail = panel.getByRole("region", { name: "Volra details" });
   await expect(detail.getByText("Catalog only, locked", { exact: true })).toBeVisible();
   await expect(detail.getByText("Why it is locked.")).toBeVisible();
+});
+
+test("on a phone the hook explorer is a stacked list that switches one stage at a time", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/");
+  expect(await page.evaluate(() => getComputedStyle(document.querySelector("#hooks .ps-pin")!).position)).toBe("static");
+  const nav = page.getByRole("navigation", { name: "Hook stages" });
+  await nav.getByRole("button", { name: /STRIKE/ }).click();
+  await expect(page.locator('#hooks .ps-view[data-state="active"]').getByRole("button", { name: /Percy/ })).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBe(0);
 });

@@ -3,13 +3,15 @@ import type { CSSProperties, ReactNode } from "react";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { Chip } from "../app/ui";
-import type { Tone } from "../app/ui";
 import type { PublicVerification } from "../../lib/domain/contracts";
 import { AgentGraph } from "./AgentGraph";
 import { ForgeDemo } from "./ForgeDemo";
 import { HookExplorer } from "./HookExplorer";
+import { BreakerPanel, DevDocs, EvidenceCenter, LabShowcase, SessionsTimeline } from "./story";
+import { Bot, Check, Circle, Hand, Lock } from "lucide-react";
+import { HowWalkthrough } from "./HowWalkthrough";
 import { TapeTimeline } from "./TapeTimeline";
-import type { ExplorerStage, ForgeDemoData, RiskRail } from "./section-data";
+import type { ApiDoc, ExplorerStage, ForgeDemoData, HealthGuard, RiskRail } from "./section-data";
 import { ProductPreview } from "./ProductPreview";
 import type { GraphData } from "./graph-data";
 import type { FlowScenario } from "./graph-flow";
@@ -135,50 +137,8 @@ export function HowItWorks() {
         <SectionHead eyebrow="HOW IT WORKS" title="From idea to paper position, in four steps.">
           <p>Each step unlocks the next. Nothing reaches a paper run without a complete backtest, and there is no real-money path.</p>
         </SectionHead>
-        <ol className="how-flow reveal-stagger">
-          <li style={at(0)}>
-            <span className="how-num mono">1</span>
-            <h3>Configure a strategy</h3>
-            <p>Pick Protective Put and set the underlying, virtual reference shares and paper capital.</p>
-            <div className="mini mini-form" aria-hidden="true">
-              <span>Underlying</span><i />
-              <span>Virtual reference shares</span><i />
-              <span>Paper capital (USD)</span><i />
-            </div>
-          </li>
-          <li style={at(1)}>
-            <span className="how-num mono">2</span>
-            <h3>Backtest its rules</h3>
-            <p>Replay closed hourly candles through the same engine. Premiums are modeled, not recorded.</p>
-            <div className="mini" aria-hidden="true">
-              <div className="mini-bar"><i style={{ flexGrow: 721 }} /><i className="is-decisions" style={{ flexGrow: 720 }} /></div>
-              <div className="mini-bar-labels mono"><span>721 warmup</span><span>720 decisions</span></div>
-            </div>
-          </li>
-          <li style={at(2)}>
-            <span className="how-num mono">3</span>
-            <h3>Run on paper</h3>
-            <p>Launch attaches the exact backtest. A paper tick evaluates every rule on the latest closed candle.</p>
-            <div className="mini mini-run" aria-hidden="true">
-              <Chip tone="ember">PAPER</Chip>
-              <span className="mini-btn">Run paper tick</span>
-            </div>
-          </li>
-          <li style={at(3)}>
-            <span className="how-num mono">4</span>
-            <h3>Inspect every decision</h3>
-            <p>The Tape records each rule&apos;s verdict, the data it used, and the decision, including holds.</p>
-            <div className="mini mini-trace mono" aria-hidden="true">
-              <span><b className="v-pass">pass</b> Sessia</span>
-              <span><b className="v-block">block</b> Calmo</span>
-              <span><b className="v-hold">hold</b> decision</span>
-            </div>
-          </li>
-        </ol>
-        <p className="how-note">Illustrative interface fragments. Live trading is disabled: every run is paper.</p>
-        <div className="m-actions">
-          <Link className={buttonVariants()} href="/agents">Launch a paper agent</Link>
-        </div>
+        <HowWalkthrough />
+        <p className="how-note">Each step shows the screen it leads to. The pictures are illustrative: they carry no returns, balances or trades. Live trading is disabled and every run is paper.</p>
       </div>
     </section>
   );
@@ -190,8 +150,8 @@ export function TapeSection({ graph }: { graph: GraphData }) {
   return (
     <section className="m-section" id="tape" aria-labelledby="tape-title">
       <div className="m-wrap tape-grid">
-        <SectionHead eyebrow="OPTRA TAPE" title="Every decision is written down, including the ones to wait." className="tape-head">
-          <p>Each tick the agent records what it did and why: which rule passed or blocked, on what data, under which recipe hash. Skips and holds are entries, not gaps.</p>
+        <SectionHead eyebrow="OPTRA TAPE" title="Every decision has a reason, even when the agent does nothing." className="tape-head">
+          <p>Each tick the agent records what it did and why, in plain words first and rule by rule on demand. Pick a tick to see why entry was allowed or blocked.</p>
           <ul className="forge-points">
             <li><strong>Append-only.</strong> Decisions and paper orders persist per agent.</li>
             <li><strong>Private to your wallet.</strong> There is no public Tape yet, so none is shown here.</li>
@@ -208,118 +168,37 @@ export function TapeSection({ graph }: { graph: GraphData }) {
 
 /* ─────────────────────────── Optra Lab ─────────────────────────── */
 
-export function LabSection({ facts }: { facts: Facts }) {
-  const recipeHooks = facts.recipeStages.flatMap((entry) => entry.hooks);
-  const line = (id: string) => recipeHooks.find((hook) => hook.id === id)?.line ?? "";
+export function LabSection() {
   return (
     <section className="m-section m-section-raised" id="lab" aria-labelledby="lab-title">
       <div className="m-wrap">
-        <SectionHead eyebrow="OPTRA LAB" title="Backtests that show only what the data supports.">
-          <p>The Lab replays real hourly candles through the same engine. If history is short, gapped, or produces no entry, it shows no metrics at all instead of a guess.</p>
-          <Link className={buttonVariants({ variant: "outline" })} href="/lab">Open the Lab</Link>
+        <SectionHead eyebrow="OPTRA LAB" title="Test the strategy before you run it.">
+          <p>The Lab replays verified hourly candles through the same engine that runs paper ticks, prices synthetic options with a disclosed model, and compares the result with simply holding. If history is short or no entry happens, it shows no metrics instead of a guess.</p>
         </SectionHead>
-        <ol className="lp reveal-stagger" aria-label="How a backtest runs">
-          <li className="lp-col lp-in" style={at(0)}>
-            <p className="lp-n mono">1 · Inputs</p>
-            <h3>Verified historical candles</h3>
-            <div className="lp-strip" aria-hidden="true">
-              <i className="lp-warm" style={{ flexGrow: 721 }} />
-              <i className="lp-dec" style={{ flexGrow: 720 }} />
-              <b className="lp-fill" />
-            </div>
-            <div className="lp-labels mono"><span>721 warmup</span><span>720 decisions</span></div>
-            <p className="lp-copy">1,441 consecutive closed hourly candles. Gaps or a missing corporate-action check block the run.</p>
-            <Chip tone="azure">Source-backed</Chip>
-          </li>
-          <li className="lp-col lp-in" style={at(1)}>
-            <p className="lp-n mono">2 · Premiums</p>
-            <h3>Modeled option premium</h3>
-            <dl className="lp-model">
-              <div><dt>Strike</dt><dd>{line("percy")}</dd></div>
-              <div><dt>Expiry</dt><dd>{line("tenora")}</dd></div>
-              <div><dt>Volatility</dt><dd>30-day realized × 1.1</dd></div>
-              <div><dt>Slippage</dt><dd className="mono">50 bp</dd></div>
-              <div><dt>Venue fees</dt><dd>Not modeled</dd></div>
-            </dl>
-            <Chip tone="ember">Modeled, not quoted</Chip>
-          </li>
-          <li className="lp-col lp-in" style={at(2)}>
-            <p className="lp-n mono">3 · Rules</p>
-            <h3>Every hook on every candle</h3>
-            <div className="lp-cells" aria-hidden="true">
-              {Array.from({ length: recipeHooks.length }, (_, index) => <i key={index} style={at(index)} />)}
-            </div>
-            <p className="lp-copy">{recipeHooks.length} hooks evaluate each of the 720 decision candles. The result is open, hold, close or skip, as on a paper tick.</p>
-            <Chip>Same engine as paper</Chip>
-          </li>
-          <li className="lp-col lp-out" style={at(3)}>
-            <p className="lp-n mono">4 · Results</p>
-            <h3>Appear after a complete run</h3>
-            <div className="lab-slots">
-              <div><span>Total return</span><i /></div>
-              <div><span>Maximum drawdown</span><i /></div>
-              <div><span>Ending cash</span><i /></div>
-            </div>
-            <p className="lp-copy">Comparison with holding the stock</p>
-            <Chip>Not yet available</Chip>
-          </li>
-        </ol>
+        <LabShowcase />
       </div>
     </section>
   );
 }
 
-/* ─────────────────────────── Sessions ─────────────────────────── */
+/* ─────────────────────────── Sessions and risk ─────────────────────────── */
 
-const sessionBands = [
-  { name: "Overnight", hours: 4, on: false },
-  { name: "Pre-market", hours: 5.5, on: false },
-  { name: "Regular hours", hours: 6.5, on: true },
-  { name: "After-hours", hours: 4, on: false },
-  { name: "Overnight", hours: 4, on: false },
-] as const;
-
-export function Sessions({ rails }: { rails: RiskRail[] }) {
+export function Sessions({ rails, health }: { rails: RiskRail[]; health: HealthGuard }) {
   return (
     <section className="m-section" id="sessions" aria-labelledby="sessions-title">
       <div className="m-wrap">
         <SectionHead eyebrow="SESSIONS" title="Entries follow the market session.">
-          <p>The Sessia hook allows entries only during regular US equity hours on open market days, in the America/New_York time zone, with holidays and early closes. Exits are not gated by it. Choosing Opening Bell or Closing Bell sessions is Planned.</p>
+          <p>The Sessia hook lets an agent open new positions only during regular US equity hours on open market days. Exits are not gated by it. Choosing other sessions is Planned.</p>
         </SectionHead>
-        <div className="session-line reveal" role="img" aria-label="A 24 hour US trading day in Eastern Time. Entries are allowed only from 09:30 to 16:00, regular hours.">
-          <div className="session-bands">
-            {sessionBands.map((band, index) => (
-              <div key={`${band.name}-${index}`} className={band.on ? "session-band is-on" : "session-band"} style={{ flexGrow: band.hours }}>
-                <span>{band.name}</span>
-                <b className="mono">{band.on ? "Entries allowed" : "Entries blocked"}</b>
-              </div>
-            ))}
-          </div>
-          <div className="session-axis mono" aria-hidden="true">
-            {([["00:00", 0], ["04:00", 4], ["09:30", 9.5], ["16:00", 16], ["20:00", 20], ["24:00 ET", 24]] as const).map(([label, hour]) => <span key={label} style={{ "--at": `${(hour / 24) * 100}%` } as CSSProperties}>{label}</span>)}
-          </div>
-        </div>
-        <p className="how-note">Standard US session hours in Eastern Time. Sessia is implemented; other session choices are not selectable yet.</p>
+        <SessionsTimeline />
 
         <div className="risk">
           <div className="risk-head reveal-lead">
             <p className="m-eyebrow">RISK</p>
             <h3>Breakers stop new entries. Exits keep running.</h3>
-            <p>Four of the five Breakers watch a number. Each rail runs from zero to the largest value Forge allows, and the marker is the Protective Put default. Venux, the fifth, checks that data and the premium model are healthy.</p>
+            <p>Five guards watch every tick: four numeric limits and one data-health check. Pick one to see its limit and try a value.</p>
           </div>
-          <ul className="risk-rails reveal-stagger">
-            {rails.map((rail, index) => (
-              <li key={rail.id} style={at(index)} className="risk-rail">
-                <div className="risk-rail-top"><span className="risk-hook mono">{rail.name}</span><span className="risk-label">{rail.label}</span><b className="mono">Stops entries at {rail.value}{rail.unit}</b></div>
-                <div className="risk-track" role="img" aria-label={`${rail.label}: new entries stop at ${rail.value}${rail.unit}. Scale 0 to ${rail.max}${rail.unit}.`}>
-                  <i className="risk-ok" style={{ width: `${(rail.value / rail.max) * 100}%` }} />
-                  <i className="risk-stop" />
-                  <b className="risk-mark mono" style={{ left: `${(rail.value / rail.max) * 100}%` }}>{rail.value}{rail.unit}</b>
-                </div>
-                <div className="risk-scale mono" aria-hidden="true"><span>0</span><span>{rail.max}{rail.unit}</span></div>
-              </li>
-            ))}
-          </ul>
+          <BreakerPanel rails={rails} health={health} />
         </div>
       </div>
     </section>
@@ -329,34 +208,28 @@ export function Sessions({ rails }: { rails: RiskRail[] }) {
 /* ─────────────────────────── Dual Mode ─────────────────────────── */
 
 export function DualMode() {
+  const agentPoints = ["Rules decide: a strategy of hooks, validated by the server", "Backtest first, then launch on paper", "Every decision is written to the Tape", "Pause, resume, stop or fork"];
+  const manualPoints = ["Place calls and puts yourself", "Hand exits to hooks", "Agents never touch positions you opened"];
   return (
     <section className="m-section m-section-raised" id="dual" aria-labelledby="dual-title">
       <div className="m-wrap">
-        <SectionHead eyebrow="DUAL MODE" title="Two modes. One book. One is live on paper.">
-          <p>Agent mode is built. Manual control is Planned: there is no Floor route yet, so nothing on this page implies you can place a manual order today.</p>
+        <SectionHead eyebrow="DUAL MODE" title="Agent mode works today. Manual mode is next.">
+          <p>One book, two ways to run it. Only Agent mode exists: there is no Floor route yet, so nothing on this page lets you place a manual order.</p>
         </SectionHead>
-        <div className="control-switch reveal" role="group" aria-label="Who controls a position">
-          <span className="control-seg" aria-disabled="true">You <small>Planned</small></span>
-          <span className="control-seg" aria-disabled="true">You + Hook <small>Planned</small></span>
-          <span className="control-seg is-on" aria-current="true">Agent <small>Working on paper</small></span>
-        </div>
-        <div className="dual-grid reveal-stagger">
-          <article className="dual-card lift is-on" style={at(0)}>
-            <div className="lab-row-head"><h3>Agent mode</h3><Chip tone="azure">Working on paper</Chip></div>
-            <ul>
-              <li>Rules decide. Each decision is written to the Tape.</li>
-              <li>Backtest first, then launch on paper.</li>
-              <li>Pause, resume, stop or fork from the agent page.</li>
-            </ul>
+        <div className="dm reveal-stagger">
+          <article className="dm-card dm-on" style={at(0)}>
+            <div className="dm-top"><span className="dm-icon"><Bot aria-hidden /></span><Chip tone="azure">Working on paper</Chip></div>
+            <h3>Agent mode</h3>
+            <p className="dm-lead">A rule-driven agent does the work and explains every decision.</p>
+            <ul>{agentPoints.map((point) => <li key={point}><Check aria-hidden />{point}</li>)}</ul>
+            <Link className={buttonVariants({ size: "sm" })} href="/agents">Launch a paper agent</Link>
           </article>
-          <article className="dual-card dual-card-off lift" style={at(1)}>
-            <div className="lab-row-head"><h3>Manual Floor</h3><Chip>Planned</Chip></div>
-            <ul>
-              <li>You would place calls and puts yourself.</li>
-              <li>You could hand exits to hooks.</li>
-              <li>Agents would never touch positions you opened.</li>
-            </ul>
-            <p className="dual-note">No route or service exists yet.</p>
+          <article className="dm-card dm-off" style={at(1)} aria-label="Manual mode, planned">
+            <div className="dm-top"><span className="dm-icon"><Hand aria-hidden /></span><Chip>Planned</Chip></div>
+            <h3>Manual mode</h3>
+            <p className="dm-lead">You place the order. Hooks could manage the exit.</p>
+            <ul>{manualPoints.map((point) => <li key={point}><Circle aria-hidden />{point}</li>)}</ul>
+            <p className="dm-none"><Lock aria-hidden />Not available. No route or service exists yet.</p>
           </article>
         </div>
       </div>
@@ -366,101 +239,30 @@ export function DualMode() {
 
 /* ─────────────────────────── Developers ─────────────────────────── */
 
-const endpoints = [
-  { path: "/api/public/v1/hooks", detail: "All hook definitions with implemented or catalog-only status", status: "Working", tone: "azure" },
-  { path: "/api/public/v1/templates", detail: "House Agent templates and paper-ready status", status: "Working", tone: "azure" },
-  { path: "/api/public/v1/verify", detail: "Capability claims with evidence paths", status: "Working", tone: "azure" },
-  { path: "/api/public/v1/agents", detail: "Public agents. Empty: there is no public visibility model yet", status: "Empty", tone: "neutral" },
-  { path: "/api/public/v1/tape", detail: "Public decisions. Empty for the same reason", status: "Empty", tone: "neutral" },
-] as const;
-
-export function Developers({ sample }: { sample: string }) {
+export function Developers({ docs }: { docs: ApiDoc[] }) {
   return (
     <section className="m-section" id="developers" aria-labelledby="developers-title">
-      <div className="m-wrap dev-grid">
-        <SectionHead eyebrow="DEVELOPERS" title="Read-only public API today." className="dev-head">
-          <p>Capability data is open to any client. Trading routes are private to the wallet that owns the agent. An MCP server and pay-per-call endpoints are Planned and not available.</p>
+      <div className="m-wrap">
+        <SectionHead eyebrow="DEVELOPERS" title="A public, read-only API you can call today.">
+          <p>Five endpoints, no key, real responses below. Trading routes are private to the wallet that owns the agent. An MCP server and pay-per-call endpoints are Planned and not available.</p>
         </SectionHead>
-        <div className="dev-panel reveal">
-          <ul className="endpoint-list">
-            {endpoints.map((endpoint) => (
-              <li key={endpoint.path}>
-                <span className="method mono">GET</span>
-                <a className="endpoint-path mono" href={endpoint.path} target="_blank" rel="noreferrer">{endpoint.path}</a>
-                <span className="endpoint-detail">{endpoint.detail}</span>
-                <Chip tone={endpoint.tone as Tone}>{endpoint.status}</Chip>
-              </li>
-            ))}
-            <li className="is-off"><span className="method mono">MCP</span><span className="endpoint-path mono">MCP server</span><span className="endpoint-detail">Agent tools over the Model Context Protocol</span><Chip>Planned</Chip></li>
-            <li className="is-off"><span className="method mono">x402</span><span className="endpoint-path mono">Pay-per-call endpoints</span><span className="endpoint-detail">Metered access in USDG</span><Chip>Planned</Chip></li>
-          </ul>
-          <div className="api-sample">
-            <p className="api-sample-head mono"><span>GET /api/public/v1/hooks</span><span>Response excerpt</span></p>
-            <pre tabIndex={0} aria-label="Response excerpt from the hooks endpoint"><code>{sample}</code></pre>
-          </div>
-        </div>
+        <DevDocs docs={docs} />
       </div>
     </section>
   );
 }
 
-/* ─────────────────────────── Verify ledger ─────────────────────────── */
-
-const claimTitle: Record<string, string> = {
-  market_data: "Market data",
-  hook_catalog: "Hook catalog",
-  house_agents: "House Agents",
-  historical_backtest: "Historical backtest",
-  live_execution: "Live execution",
-  v4_claim_level: "Uniswap v4 claim level",
-};
-const claimStatus: Record<string, { label: string; tone: Tone }> = {
-  verified: { label: "Verified", tone: "azure" },
-  limited: { label: "Limited", tone: "neutral" },
-  preview: { label: "Preview", tone: "neutral" },
-  unavailable: { label: "Unavailable", tone: "ember" },
-  disabled: { label: "Disabled", tone: "ember" },
-};
+/* ─────────────────────────── Verify ─────────────────────────── */
 
 export function Status({ verification }: { verification: PublicVerification }) {
-  const planned: { name: string; label: string; tone: Tone; note: string }[] = [
-    { name: "Other House Agents", label: "Preview", tone: "neutral", note: "Covered Call, Cash-Secured Put and Earnings Straddle cannot be created yet." },
-    { name: "AI composition", label: "Coming soon", tone: "neutral", note: "No AI provider is configured." },
-    { name: "Session choices, Listing, Floor, MCP, x402", label: "Planned", tone: "neutral", note: "Roadmap only. No route or service yet." },
-  ];
   return (
     <section className="m-section m-section-raised" id="verify" aria-labelledby="verify-title">
-      <div className="m-wrap verify-grid">
-        <SectionHead eyebrow="VERIFY" title="Built, not promised." className="verify-head">
-          <p>Each row below is a claim the server makes about itself, with the path that proves it. Rows without evidence are labeled as roadmap.</p>
+      <div className="m-wrap">
+        <SectionHead eyebrow="VERIFY" title="Built, not promised.">
+          <p>Every claim below comes from the server&apos;s own verification response, with the path that proves it. Rows without evidence are labeled as roadmap.</p>
           <Link className={buttonVariants({ variant: "outline" })} href="/verify">Open the Verify page</Link>
         </SectionHead>
-        <div className="ledger reveal">
-          <table className="status-table">
-            <caption className="sr-only">Capability status</caption>
-            <thead><tr><th scope="col">Capability</th><th scope="col">Status</th><th scope="col">What the server says</th></tr></thead>
-            <tbody>
-              {verification.claims.map((claim) => {
-                const meta = claimStatus[claim.status] ?? { label: claim.status, tone: "neutral" as Tone };
-                return (
-                  <tr key={claim.id}>
-                    <th scope="row">{claimTitle[claim.id] ?? claim.id.replaceAll("_", " ")}</th>
-                    <td><Chip tone={meta.tone}>{meta.label}</Chip></td>
-                    <td>{claim.statement} <a className="evidence mono" href={claim.evidencePath} target="_blank" rel="noreferrer">{claim.evidencePath}</a></td>
-                  </tr>
-                );
-              })}
-              {planned.map((row) => (
-                <tr key={row.name} className="is-roadmap">
-                  <th scope="row">{row.name}</th>
-                  <td><Chip tone={row.tone}>{row.label}</Chip></td>
-                  <td>{row.note} <span className="evidence mono">No evidence yet</span></td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          <p className="ledger-foot mono">Live trading {verification.liveTradingEnabled ? "enabled" : "disabled"} · Uniswap v4 claim level {verification.v4ClaimLevel}</p>
-        </div>
+        <EvidenceCenter verification={verification} />
       </div>
     </section>
   );
@@ -501,12 +303,16 @@ export function Faq({ facts }: { facts: Facts }) {
 export function FinalCta() {
   return (
     <section className="m-final" aria-labelledby="final-title">
-      <div className="m-wrap reveal">
+      <span className="m-final-curtain m-final-curtain-l" aria-hidden="true" />
+      <span className="m-final-curtain m-final-curtain-r" aria-hidden="true" />
+      <span className="m-final-edge" aria-hidden="true" />
+      <div className="m-wrap m-final-inner">
+        <p className="m-eyebrow">PAPER FIRST</p>
         <h2 id="final-title">Your first agent runs on paper.</h2>
         <p>Create the draft, backtest it, launch it, and read the first tick on the Tape. No deposit, no real money.</p>
         <div className="m-actions">
-          <Link className={buttonVariants({ size: "lg" })} href="/agents">Launch a paper agent</Link>
-          <Link className={buttonVariants({ variant: "outline", size: "lg" })} href="/hooks">Read the rules first</Link>
+          <Link className={buttonVariants({ size: "lg" })} href="/agents">Launch app</Link>
+          <Link className={buttonVariants({ variant: "outline", size: "lg" })} href="/verify">Inspect what is verified</Link>
         </div>
       </div>
     </section>
