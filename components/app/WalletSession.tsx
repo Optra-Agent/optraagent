@@ -1,15 +1,20 @@
 "use client";
 
-import { useAccount } from "wagmi";
+import { useConnection } from "wagmi";
 import { Check, ChevronRight, Network, ShieldCheck, TriangleAlert, Wallet } from "lucide-react";
+import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { walletOptions } from "@/lib/chain/wallets";
 import { useAuthSession } from "./AuthSessionProvider";
 import { shortAddress } from "./format";
 
 export function WalletSession() {
-  const { chainId, status: walletStatus } = useAccount();
+  const connection = useConnection();
+  const { chainId, status: walletStatus, connector } = connection;
   const { session, status, error, busy, connectWallet, switchToRobinhoodChain, logout, refresh, walletMenuOpen, setWalletMenuOpen } = useAuthSession();
+  const connectedWallet = walletOptions.find((option) => option.label === connector?.name)?.label;
+  const canSignInWithConnectedWallet = walletStatus === "connected" && chainId === 4663 && connectedWallet;
 
   if (status === "loading") return <div className="session-box session-loading" role="status">Checking wallet session…</div>;
 
@@ -36,17 +41,31 @@ export function WalletSession() {
           Switch to Robinhood Chain
         </Button>
       ) : null}
-      <Button size="sm" aria-haspopup="dialog" disabled={busy} onClick={() => setWalletMenuOpen(true)}>
-        {busy ? "Connecting…" : "Connect wallet"}
-      </Button>
+      {walletStatus === "connecting" || walletStatus === "reconnecting" ? (
+        <Button variant="outline" size="sm" disabled role="status">Restoring wallet connection…</Button>
+      ) : (
+        <Button
+          size="sm"
+          aria-haspopup={canSignInWithConnectedWallet ? undefined : "dialog"}
+          disabled={busy}
+          onClick={() => canSignInWithConnectedWallet ? void connectWallet(canSignInWithConnectedWallet) : setWalletMenuOpen(true)}
+        >
+          {busy ? canSignInWithConnectedWallet ? "Signing in…" : "Connecting…" : canSignInWithConnectedWallet ? `Sign in with ${canSignInWithConnectedWallet}` : walletStatus === "connected" ? "Choose wallet" : "Connect wallet"}
+        </Button>
+      )}
+      {canSignInWithConnectedWallet ? (
+        <Button variant="link" size="sm" disabled={busy} onClick={() => setWalletMenuOpen(true)}>Choose another wallet</Button>
+      ) : null}
 
       <Dialog open={walletMenuOpen} onOpenChange={setWalletMenuOpen}>
         <DialogContent className="wallet-dialog max-w-md">
           <DialogHeader>
             <span className="wallet-badge" aria-hidden="true"><Wallet /></span>
-            <DialogTitle className="font-display text-2xl">Choose an EVM wallet</DialogTitle>
+            <DialogTitle className="font-display text-2xl">{canSignInWithConnectedWallet ? `Sign in with ${canSignInWithConnectedWallet}` : "Choose an EVM wallet"}</DialogTitle>
             <DialogDescription>
-              You sign one message to log in. No transaction is sent and no funds move.
+              {canSignInWithConnectedWallet
+                ? "Your wallet is connected. Sign one message to restore your OPTRA session; no transaction is sent and no funds move."
+                : "You sign one message to log in. No transaction is sent and no funds move."}
             </DialogDescription>
           </DialogHeader>
           <ol className="wallet-steps" aria-label="Sign-in steps">
@@ -56,17 +75,17 @@ export function WalletSession() {
           </ol>
           <div className="wallet-options" aria-label="Wallet options">
             <button type="button" className="wallet-option" aria-label="MetaMask" disabled={busy} onClick={() => void connectWallet("MetaMask")}>
-              <span className="wallet-mark wallet-mark-mm" aria-hidden="true">M</span>
-              <span className="wallet-option-text"><b>MetaMask</b><small>Browser extension</small></span>
+              <span className="wallet-mark" aria-hidden="true"><Image src="/wallets/metamask.svg" alt="" width={40} height={40} /></span>
+              <span className="wallet-option-text"><b>MetaMask</b><small>{connector?.name === "MetaMask" && walletStatus === "connected" ? chainId === 4663 ? "Connected · sign in" : "Connected · wrong network" : "Browser extension"}</small></span>
               <ChevronRight aria-hidden />
             </button>
             <button type="button" className="wallet-option" aria-label="Phantom EVM" disabled={busy} onClick={() => void connectWallet("Phantom EVM")}>
-              <span className="wallet-mark wallet-mark-ph" aria-hidden="true">P</span>
-              <span className="wallet-option-text"><b>Phantom EVM</b><small>Browser extension</small></span>
+              <span className="wallet-mark" aria-hidden="true"><Image src="/wallets/phantom.svg" alt="" width={40} height={40} /></span>
+              <span className="wallet-option-text"><b>Phantom EVM</b><small>{connector?.name === "Phantom EVM" && walletStatus === "connected" ? chainId === 4663 ? "Connected · sign in" : "Connected · wrong network" : "Browser extension"}</small></span>
               <ChevronRight aria-hidden />
             </button>
           </div>
-          {busy ? <p className="wallet-status" role="status"><span className="wallet-spin" aria-hidden="true" />Waiting for your wallet. Approve the request in its window.</p> : null}
+          {busy ? <p className="wallet-status" role="status"><span className="wallet-spin" aria-hidden="true" />{canSignInWithConnectedWallet ? "Check your wallet for the sign-in message." : "Check your wallet to connect and sign the sign-in message."}</p> : null}
           {error ? (
             <div className="wallet-error" role="alert">
               <p className="wallet-error-title"><TriangleAlert aria-hidden />{/rejected/i.test(error) ? "Request rejected" : /No compatible/i.test(error) ? "No wallet found" : /network|Switch|4663/i.test(error) ? "Wrong network" : "Sign-in did not finish"}</p>

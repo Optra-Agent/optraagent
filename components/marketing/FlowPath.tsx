@@ -4,8 +4,8 @@ import { useId } from "react";
 export type FlowNode = { id: string; label: string; sub?: string; icon: ComponentType<{ className?: string; "aria-hidden"?: boolean }>; tone?: "azure" | "ember" };
 
 /* One smooth cubic path through N stations. Every station sits at a fixed percentage of the width, so the HTML nodes
-   and the SVG line stay attached at any width. The lit part is the same path clipped to the active station; past a
-   blocked station it turns Ember; a short pulse travels from the start to the active station and repeats. */
+   and the SVG line stay attached at any width. The lit part is clipped to the active station; a block turns it Ember;
+   one short signal travels to the active station when the pinned step changes. */
 
 const GAP = 100 / 5;
 const x = (index: number) => GAP / 2 + index * GAP;
@@ -44,7 +44,7 @@ export function FlowPath({ nodes, active, stop = null, guard = false, guardActiv
         <path className="fp-base" d={d} />
         {emberTo > 0 ? <path className="fp-ember" d={d} clipPath={`url(#${uid}-ember)`} /> : null}
         <path className="fp-lit" d={d} clipPath={`url(#${uid}-lit)`} />
-        {active > 0 ? <path className="fp-pulse" d={d} pathLength={1} key={`${active}-${stop}`} /> : null}
+        {nodes.length > 0 ? <path className="fp-pulse" d={d} pathLength={1} key={`${active}-${stop}`} /> : null}
       </svg>
       <ol className="fp-nodes">
         {nodes.map((node, index) => {

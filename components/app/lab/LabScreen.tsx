@@ -299,7 +299,7 @@ export function LabScreen({ initialAgentId = "" }: { initialAgentId?: string }) 
               <>
                 <div className="field">
                   <Label htmlFor="lab-agent">Protective Put draft</Label>
-                  <Select value={selectedAgentId || undefined} onValueChange={(value) => { setSelectedAgentId(value); setSelectedAgent(null); setRun(null); setWorkflowError(""); }} disabled={agentsLoading || agents.length === 0}>
+                  <Select value={selectedAgentId} onValueChange={(value) => { setSelectedAgentId(value); setSelectedAgent(null); setRun(null); setWorkflowError(""); }} disabled={agentsLoading || agents.length === 0}>
                     <SelectTrigger id="lab-agent" className="w-full">
                       <SelectValue placeholder={agentsLoading ? "Loading drafts…" : "No Protective Put drafts"} />
                     </SelectTrigger>

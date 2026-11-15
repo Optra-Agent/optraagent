@@ -1,11 +1,17 @@
 "use client";
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
-import { ProviderNotFoundError, useAccount, useConnect, useDisconnect, useSignMessage, useSwitchChain } from "wagmi";
+import { ProviderNotFoundError, useConnection, useConnect, useDisconnect, useSignMessage, useSwitchChain } from "wagmi";
 import { SessionSchema, type Session } from "../../lib/domain/contracts";
 import { walletOptions } from "../../lib/chain/wallets";
 
 type SessionStatus = "loading" | "signed_out" | "signed_in" | "error";
+type ConnectionSnapshot = {
+  status: "connected" | "connecting" | "reconnecting" | "disconnected";
+  address?: `0x${string}`;
+  chainId?: number;
+  connector?: { uid: string };
+};
 type AuthSessionContextValue = {
   session: Session | null;
   status: SessionStatus;
@@ -36,12 +42,22 @@ export function AuthSessionProvider({ children }: Readonly<{ children: React.Rea
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [walletMenuOpen, setWalletMenuOpen] = useState(false);
-  const { address, chainId, status: walletStatus } = useAccount();
+  const connection = useConnection();
   const { connectAsync, connectors } = useConnect();
   const { disconnectAsync } = useDisconnect();
   const { signMessageAsync } = useSignMessage();
   const { switchChainAsync } = useSwitchChain();
   const latestSessionAddress = useRef<string | null>(null);
+  const connectionRef = useRef<ConnectionSnapshot>(connection);
+  const signInInFlightRef = useRef(false);
+  useEffect(() => {
+    connectionRef.current = {
+      status: connection.status,
+      address: connection.address,
+      chainId: connection.chainId,
+      connector: connection.connector,
+    };
+  }, [connection]);
 
   const refresh = useCallback(async () => {
     try {
@@ -78,13 +94,13 @@ export function AuthSessionProvider({ children }: Readonly<{ children: React.Rea
       setSession(null);
       latestSessionAddress.current = null;
       setStatus("signed_out");
-      if (walletStatus === "connected") await disconnectAsync();
+      if (connection.status === "connected") await disconnectAsync();
     } catch (exception) {
       setError(exception instanceof Error ? exception.message : "Could not close the wallet session.");
     } finally {
       setBusy(false);
     }
-  }, [disconnectAsync, walletStatus]);
+  }, [connection.status, disconnectAsync]);
 
   const connectWallet = useCallback(async (walletLabel: string) => {
     const wallet = walletOptions.find((option) => option.label === walletLabel);
@@ -93,21 +109,65 @@ export function AuthSessionProvider({ children }: Readonly<{ children: React.Rea
       return;
     }
 
+    if (signInInFlightRef.current) return;
+    signInInFlightRef.current = true;
     setBusy(true);
     setError(null);
     try {
-      const connectorIndex = walletOptions.findIndex((option) => option.label === wallet.label);
-      const connector = connectors[connectorIndex];
+      const connector = connectors.find((candidate) => candidate.name === wallet.label);
       if (!connector) throw new Error("Wallet connector is unavailable.");
-      await connector.getProvider();
-      const connection = await connectAsync({ connector });
-      if (connection.chainId !== 4663) {
+
+      let address: `0x${string}` | undefined;
+      let chainId: number | undefined;
+      const current = connectionRef.current;
+      if (current.status === "connected" && current.connector?.uid === connector.uid) {
+        address = current.address;
+        chainId = current.chainId;
+      } else if (current.status === "connecting" || current.status === "reconnecting") {
+        throw new Error("Your wallet connection is still being restored. Try again when it is ready.");
+      } else {
+        try {
+          const connected = await connectAsync({ connector });
+          address = connected.accounts[0];
+          chainId = connected.chainId;
+          connectionRef.current = { status: "connected", address, chainId, connector };
+        } catch (exception) {
+          if (!(exception instanceof Error) || exception.name !== "ConnectorAlreadyConnectedError") throw exception;
+
+          const latest = connectionRef.current;
+          if (latest.status === "connected" && latest.connector?.uid === connector.uid) {
+            address = latest.address;
+            chainId = latest.chainId;
+          } else {
+            throw new Error("Your wallet is already connected. Wait for its connection state to finish restoring, then sign in again.");
+          }
+        }
+      }
+
+      if (!address || chainId === undefined) throw new Error("The wallet connection changed. Try again.");
+      if (chainId !== 4663) {
         setError("Switch your wallet to Robinhood Chain (4663), then sign in again.");
         return;
       }
 
-      const address = connection.accounts[0];
-      if (!address) throw new Error("The wallet did not return an account.");
+      const expectedAddress = address.toLowerCase();
+      const isExpectedConnectionActive = async () => {
+        const active = connectionRef.current;
+        if (active.status !== "connected"
+          || active.connector?.uid !== connector.uid
+          || !active.address
+          || active.address.toLowerCase() !== expectedAddress
+          || active.chainId !== chainId) return false;
+
+        const [accounts, activeChainId] = await Promise.all([connector.getAccounts(), connector.getChainId()]);
+        return accounts[0]?.toLowerCase() === expectedAddress
+          && activeChainId === chainId;
+      };
+
+      if (!await isExpectedConnectionActive()) {
+        throw new Error("The connected wallet or network changed. Sign in again.");
+      }
+
       const challengeResponse = await fetch("/api/auth/challenge", {
         method: "POST",
         credentials: "include",
@@ -116,7 +176,14 @@ export function AuthSessionProvider({ children }: Readonly<{ children: React.Rea
       });
       if (!challengeResponse.ok) throw new Error(await responseError(challengeResponse, "Could not start wallet sign-in."));
       const challenge = await challengeResponse.json() as { nonce: string; message: string };
-      const signature = await signMessageAsync({ message: challenge.message });
+      if (!await isExpectedConnectionActive()) {
+        throw new Error("The connected wallet or network changed. Sign in again.");
+      }
+      const signature = await signMessageAsync({ connector, message: challenge.message });
+      if (!await isExpectedConnectionActive()) {
+        throw new Error("The connected wallet or network changed. Sign in again.");
+      }
+
       const verifyResponse = await fetch("/api/auth/verify", {
         method: "POST",
         credentials: "include",
@@ -125,6 +192,10 @@ export function AuthSessionProvider({ children }: Readonly<{ children: React.Rea
       });
       if (!verifyResponse.ok) throw new Error(await responseError(verifyResponse, "Wallet sign-in could not be verified."));
       const authenticated = SessionSchema.parse(await verifyResponse.json());
+      if (!await isExpectedConnectionActive()) {
+        await fetch("/api/auth/logout", { method: "POST", credentials: "include" });
+        throw new Error("The connected wallet or network changed. Sign in again.");
+      }
       setSession(authenticated);
       latestSessionAddress.current = authenticated.user.address.toLowerCase();
       setStatus("signed_in");
@@ -139,6 +210,7 @@ export function AuthSessionProvider({ children }: Readonly<{ children: React.Rea
       }
       setStatus("signed_out");
     } finally {
+      signInInFlightRef.current = false;
       setBusy(false);
     }
   }, [connectAsync, connectors, signMessageAsync]);
@@ -156,17 +228,17 @@ export function AuthSessionProvider({ children }: Readonly<{ children: React.Rea
   }, [switchChainAsync]);
 
   useEffect(() => {
-    if (walletStatus !== "connected" || !address || !session) return;
-    const connectedAddress = address.toLowerCase();
+    if (connection.status !== "connected" || !session) return;
+    const connectedAddress = connection.address.toLowerCase();
     const expectedAddress = latestSessionAddress.current ?? session.user.address.toLowerCase();
-    if (connectedAddress === expectedAddress && chainId === 4663) return;
+    if (connectedAddress === expectedAddress && connection.chainId === 4663) return;
 
     setSession(null);
     latestSessionAddress.current = null;
     setStatus("signed_out");
     setError("The connected wallet or network changed. Sign in again to continue.");
     void fetch("/api/auth/logout", { method: "POST", credentials: "include" });
-  }, [address, chainId, session, walletStatus]);
+  }, [connection, session]);
 
   const value = useMemo<AuthSessionContextValue>(() => ({
     session,

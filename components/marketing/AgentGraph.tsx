@@ -37,7 +37,7 @@ const SMALL_PAYOFF: Record<AgentId, string> = {
 };
 
 /** Hold time before the next phase while auto-playing, in milliseconds. */
-const PHASE_HOLD: Record<Phase, number> = { 0: 150, 1: 3000, 2: 3400, 3: 4200, 4: 1500 };
+const PHASE_HOLD: Record<Phase, number> = { 0: 1800, 1: 2600, 2: 3600, 3: 3000, 4: 2200, 5: 1800 };
 const FLOW_HOLD = 1000;
 
 const reduced = () => typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -64,7 +64,7 @@ function Edge({ edge, show, hot, done, dim, pulse }: { edge: LayoutEdge; show: b
   return (
     <g className="pn-edge" data-kind={edge.kind} data-show={show ? "1" : "0"} data-hot={hot ? "1" : "0"} data-done={done ? "1" : "0"} data-dim={dim ? "1" : "0"} style={{ "--d": `${edge.delay}ms` } as CSSProperties} aria-hidden="true">
       <path className="pn-line" d={edge.d} pathLength={solid ? 1 : undefined} />
-      {pulse !== undefined && show ? <path className="pn-pulse" d={edge.d} pathLength={1} style={{ animationDelay: `calc(var(--d, 0ms) + ${900 + pulse}ms)` }} /> : null}
+      {pulse !== undefined && show ? <path className="pn-pulse" d={edge.d} pathLength={1} style={{ "--signal-delay": `${pulse}ms` } as CSSProperties} /> : null}
     </g>
   );
 }
@@ -229,7 +229,7 @@ function Card({ c }: { c: Ctl }) {
     }
   }
 
-  if (flow && c.phase === 4) return <FlowCard c={c} scenario={flow} />;
+  if (flow && c.phase === 5) return <FlowCard c={c} scenario={flow} />;
 
   return (
     <div className="pn-card" key="agent">
@@ -350,6 +350,8 @@ export function AgentGraph({ data, recorded = null }: GraphProps) {
   const [agentId, setAgentId] = useState<AgentId>("protective_put");
   const [phase, setPhase] = useState<Phase>(0);
   const [playing, setPlaying] = useState(false);
+  const [inView, setInView] = useState(false);
+  const [saveData, setSaveData] = useState(false);
   const [sel, setSel] = useState<string | null>(null);
   const [collapsed, setCollapsed] = useState<string[]>([]);
   const [flow, setFlow] = useState<FlowScenario | null>(null);
@@ -360,12 +362,20 @@ export function AgentGraph({ data, recorded = null }: GraphProps) {
 
   const agent = data.agents.find((row) => row.id === agentId) ?? data.agents[0]!;
 
-  // Auto-play advances phases, then the illustrative flow. One timer at a time, cleared on pause or unmount.
   useEffect(() => {
-    if (!playing) return;
-    const delay = phase < 4 ? PHASE_HOLD[phase] : flow ? FLOW_HOLD : PHASE_HOLD[4];
+    const connection = (navigator as Navigator & { connection?: EventTarget & { saveData?: boolean } }).connection;
+    const update = () => setSaveData(Boolean(connection?.saveData));
+    update();
+    connection?.addEventListener("change", update);
+    return () => connection?.removeEventListener("change", update);
+  }, []);
+
+  // Auto-play advances phases, then the illustrative flow. Its clock only runs while the network is in view.
+  useEffect(() => {
+    if (!playing || !inView) return;
+    const delay = phase < 5 ? PHASE_HOLD[phase] : flow ? FLOW_HOLD : PHASE_HOLD[5];
     const timer = window.setTimeout(() => {
-      if (phase < 4) setPhase((phase + 1) as Phase);
+      if (phase < 5) setPhase((phase + 1) as Phase);
       else if (!flow) {
         setFlow(scenarios[0] ?? null);
         setStep(0);
@@ -373,25 +383,32 @@ export function AgentGraph({ data, recorded = null }: GraphProps) {
       else setPlaying(false);
     }, delay);
     return () => window.clearTimeout(timer);
-  }, [playing, phase, flow, step, scenarios]);
+  }, [playing, inView, phase, flow, step, scenarios]);
 
   // The first time the network is mostly on screen it grows once by itself. Pausing stops it; reduced motion never starts it.
   useEffect(() => {
     const root = rootRef.current;
     if (!root || typeof IntersectionObserver === "undefined") return;
     const observer = new IntersectionObserver(([entry]) => {
-      root.dataset.live = entry?.isIntersecting ? "1" : "0";
-      if (entry && entry.intersectionRatio >= 0.5 && !autoStarted.current && !reduced()) {
+      const onScreen = Boolean(entry?.isIntersecting);
+      setInView(onScreen);
+      root.dataset.live = onScreen ? "1" : "0";
+      const prefersSaveData = Boolean((navigator as Navigator & { connection?: { saveData?: boolean } }).connection?.saveData);
+      if (entry && entry.intersectionRatio >= 0.12 && !autoStarted.current && !reduced() && !prefersSaveData) {
         autoStarted.current = true;
         setPlaying(true);
       }
-    }, { threshold: [0, 0.5], rootMargin: "60px 0px" });
+    }, { threshold: [0, 0.12], rootMargin: "80px 0px" });
     observer.observe(root);
     return () => observer.disconnect();
   }, []);
 
   const interacted = () => { autoStarted.current = true; };
-  const needs = (id: string): Phase => (id.startsWith("hook:") || id.startsWith("locked:") ? 3 : id === "stage:pulse" || id === "stage:expiry" || id === "stage:breaker" ? 2 : 1);
+  const needs = (id: string): Phase => {
+    if (id.startsWith("locked:")) return 2;
+    if (id.startsWith("hook:")) return allHooks.find((hook) => `hook:${hook.id}` === id)?.stage === "breaker" ? 3 : 2;
+    return id === "stage:breaker" ? 3 : id.startsWith("stage:") ? 1 : 0;
+  };
   const reset = () => { setSel(null); setFlow(null); setStep(-1); setCollapsed([]); setFlowFocus(null); };
 
   const c: Ctl = {
@@ -409,7 +426,7 @@ export function AgentGraph({ data, recorded = null }: GraphProps) {
     startFlow(scenario) {
       interacted();
       setSel(null);
-      setPhase(4);
+      setPhase(5);
       setFlow(scenario);
       if (reduced()) { setStep(FLOW_STEPS.length - 1); setPlaying(false); } else { setStep(0); setPlaying(true); }
     },
@@ -420,7 +437,7 @@ export function AgentGraph({ data, recorded = null }: GraphProps) {
   };
 
   const goTo = (target: Phase) => { interacted(); setPlaying(false); setFlow(null); setStep(-1); setSel(null); setPhase(target); };
-  const replay = () => { interacted(); reset(); setPhase(0); window.setTimeout(() => setPlaying(true), 450); };
+  const replay = () => { interacted(); reset(); setPhase(0); setPlaying(true); };
   const start = () => { interacted(); setPlaying(false); reset(); setPhase(0); };
   const pickAgent = (id: AgentId) => { interacted(); setAgentId(id); setPhase(0); setPlaying(false); reset(); };
 
@@ -437,7 +454,7 @@ export function AgentGraph({ data, recorded = null }: GraphProps) {
     return null;
   };
   const selStage = stageOf(sel);
-  const flowOn = ready && flow !== null && phase === 4 && step >= 0;
+  const flowOn = ready && flow !== null && phase === 5 && step >= 0;
   const stepOf = (stage: string) => FLOW_STEPS.indexOf(stage as FlowStep);
   const reached = (stage: string | undefined) => flowOn && stage !== undefined && step >= stepOf(stage);
   const verdictOf = (node: LayoutNode): Verdict | undefined => (flowOn && reached(node.stage) ? flow?.verdicts[node.id.replace("hook:", "")]?.status : undefined);
@@ -471,19 +488,20 @@ export function AgentGraph({ data, recorded = null }: GraphProps) {
       ? `Decision flow, step ${step + 1} of ${FLOW_STEPS.length}: ${STEP_LABEL[FLOW_STEPS[step] ?? "gate"]}.${step >= FLOW_STEPS.length - 1 ? ` Illustrative result: ${flow?.action}. ${flow?.reason}` : ""}`
       : sel
         ? `${sel.replace(":", " ")} selected.`
-        : `State ${phase + 1} of 5: ${PHASE_COPY[phase].title}.`;
+        : `State ${phase + 1} of 6: ${PHASE_COPY[phase].title}.`;
 
   const idle = phase === 0 && !playing;
 
+  const firstHookIds = new Set(data.stages.map((stage) => stage.hooks[0]?.id).filter((id): id is string => Boolean(id)));
   const controls = (
     <div className="pn-controls" role="toolbar" aria-label="Network playback">
       {idle ? (
         <ToolButton primary icon={<Play aria-hidden />} label="Explore agent" hint="Grow the agent into its stages, hooks and decision" onClick={c.explore} disabled={!ready} />
       ) : (
         <>
-          <ToolButton icon={playing ? <Pause aria-hidden /> : <Play aria-hidden />} label={playing ? "Pause" : "Play"} hint={playing ? "Pause the growth" : "Continue the growth"} pressed={playing} onClick={() => { interacted(); setPlaying((value) => !value); }} />
+          <ToolButton icon={playing && inView ? <Pause aria-hidden /> : <Play aria-hidden />} label={playing && inView ? "Pause" : "Play"} hint={playing ? "Pause the growth" : "Continue the growth"} pressed={playing && inView} onClick={() => { interacted(); setPlaying((value) => !value); }} />
           <ToolButton icon={<RotateCcw aria-hidden />} label="Replay" hint="Replay the growth from one agent" onClick={replay} />
-          {phase === 4 && !flow ? <ToolButton icon={<ListTree aria-hidden />} label="View decision flow" hint="Step through how one tick becomes a decision (illustrative)" onClick={() => c.startFlow(scenarios[0]!)} /> : null}
+          {phase === 5 && !flow ? <ToolButton icon={<ListTree aria-hidden />} label="View decision flow" hint="Step through how one tick becomes a decision (illustrative)" onClick={() => c.startFlow(scenarios[0]!)} /> : null}
           <ToolButton icon={<SkipBack aria-hidden />} label="Back to start" hint="Return to the single agent" onClick={start} />
         </>
       )}
@@ -501,13 +519,14 @@ export function AgentGraph({ data, recorded = null }: GraphProps) {
   const caption = (
     <div className="pn-caption">
       <p className="pn-state">
-        <span className="pn-mono pn-state-live">STATE {phase + 1} / 5</span>
+        <span className="pn-mono pn-state-live">STATE {phase + 1} / 6</span>
         <span className="pn-mono pn-state-static">COMPLETE NETWORK</span>
         <span className="pn-state-live pn-title">{ready ? PHASE_COPY[phase].title : "Preview agent"}</span>
         <span className="pn-state-static pn-title">{ready ? "Protective Put" : "Preview agent"}</span>
       </p>
       <p className="pn-state-line pn-state-live">{ready ? PHASE_COPY[phase].line : "No recipe exists yet, so nothing grows from this agent."}</p>
-      <p className="pn-state-line pn-state-static">{ready ? "The agent, six hook stages, the Breaker guard, a paper decision and Optra Tape." : "No recipe exists yet, so nothing grows from this agent."}</p>
+      <p className="pn-state-line pn-state-static">{ready ? `The agent, ${data.stages.length} rule stages, ${allHooks.length} implemented hooks, the Breaker guard, a paper decision and Optra Tape.` : "No recipe exists yet, so nothing grows from this agent."}</p>
+      {ready && phase === 3 ? <p className="pn-eval-note"><b>Illustrative evaluation</b> · {data.breaker.hooks[0]?.name}: {data.breaker.hooks[0]?.example.reason}</p> : null}
       {ready ? stepper : null}
     </div>
   );
@@ -515,7 +534,7 @@ export function AgentGraph({ data, recorded = null }: GraphProps) {
 
   return (
     <TooltipProvider delayDuration={150}>
-    <div ref={rootRef} className="pn" data-phase={phase} data-agent={agent.id} data-ready={ready ? "1" : "0"} data-playing={playing ? "1" : "0"} data-flow={flowOn ? "1" : "0"} data-live="1" onKeyDown={onKey}>
+    <div ref={rootRef} className="pn" data-phase={phase} data-agent={agent.id} data-ready={ready ? "1" : "0"} data-playing={playing && inView ? "1" : "0"} data-flow={flowOn ? "1" : "0"} data-live={inView ? "1" : "0"} data-save-data={saveData ? "1" : "0"} onKeyDown={onKey}>
       <p className="sr-only" role="status">{statusText}</p>
 
       <div className="pn-head">
@@ -557,7 +576,7 @@ export function AgentGraph({ data, recorded = null }: GraphProps) {
             {/* Breaker ring: an always-on guard around the whole network, not the last step. */}
             <g className="pn-ring" data-show={ready && phase >= layout.ring.phase ? "1" : "0"} data-dim={dimmed("breaker") ? "1" : "0"} data-hot={selStage === "breaker" || (flowOn && reached("breaker")) ? "1" : "0"} style={{ "--d": "700ms" } as CSSProperties} aria-hidden="true">
               <path className="pn-ring-line" d={layout.ring.d} pathLength={1} />
-              <path className="pn-ring-scan" d={layout.ring.d} pathLength={1} />
+              {phase >= 3 && phase < 5 ? <path className="pn-ring-scan" d={layout.ring.d} pathLength={1} /> : null}
               {flowOn && step >= 5 ? (
                 <>
                   <path className="pn-ring-flow" d={layout.ring.dLeft} pathLength={1} />
@@ -572,7 +591,8 @@ export function AgentGraph({ data, recorded = null }: GraphProps) {
               const hot = edge.kind !== "flow" && stage !== undefined && selStage === stage;
               const flowStep = edge.kind === "flow" ? (edge.to === "decision" ? 6 : 7) : stage !== undefined ? stepOf(stage) : 0;
               const done = flowOn && step >= flowStep;
-              const pulse = edge.kind === "branch" && stage ? stepOf(stage) * 700 : edge.kind === "hook" && hot ? 0 : edge.kind === "flow" && phase === 4 && !flowOn ? 0 : undefined;
+              const selectedHook = edge.to.startsWith("hook:") && firstHookIds.has(edge.to.slice(5));
+              const pulse = phase === 2 && edge.kind === "hook" && selectedHook && stage ? Math.max(0, stepOf(stage)) * 650 : edge.kind === "flow" && phase >= 4 && !flowOn ? 0 : undefined;
               return <Edge key={edge.id} edge={edge} show={visibleEdge(edge)} hot={hot} done={done} dim={edge.kind === "flow" ? flowOn && step < flowStep : dimmed(stage)} pulse={pulse} />;
             })}
 
@@ -653,13 +673,13 @@ export function AgentGraph({ data, recorded = null }: GraphProps) {
               <text className="pn-end-title" y="-2" textAnchor="middle">Paper decision</text>
               <text className="pn-end-sub pn-mono" y="14" textAnchor="middle">{flowOn && step >= 6 ? flow?.action : "open · hold · close · skip"}</text>
             </Node>
-            <Node node={nodeById("tape")} show={ready && phase >= 4} className="pn-tape" state={{ active: flowOn && step >= 7 ? "1" : "0" }}>
+            <Node node={nodeById("tape")} show={ready && phase >= 5} className="pn-tape" state={{ active: flowOn && step >= 7 ? "1" : "0" }}>
               <rect className="pn-box" x="-85" y="-28" width="170" height="56" rx="10" />
               <path className="pn-tape-lines" d="M-66 -10 H-30 M-66 0 H-40 M-66 10 H-34" />
               <text className="pn-end-title" x="-14" y="-2">Optra Tape</text>
               <text className="pn-end-sub pn-mono" x="-14" y="14">every decision</text>
             </Node>
-            <g className="pn-illus" data-show={ready && phase >= 4 ? "1" : "0"} aria-hidden="true">
+            <g className="pn-illus" data-show={ready && phase >= 5 ? "1" : "0"} aria-hidden="true">
               <text className="pn-mono" x={layout.root.x + 135} y="800" textAnchor="middle">{illustration}</text>
             </g>
           </g>
@@ -685,10 +705,10 @@ export function AgentGraph({ data, recorded = null }: GraphProps) {
           <small>{ready ? "PAPER AGENT · 15 hooks" : "PREVIEW · Not yet available"}</small>
         </button>
         {ready ? (
-          <ol className="pm-tree" style={{ "--grow": phase / 4 } as CSSProperties} aria-label="Protective Put hook stages">
+          <ol className="pm-tree" style={{ "--grow": phase / 5 } as CSSProperties} aria-label="Protective Put hook stages">
             {[...data.stages, data.breaker].map((stage) => {
-              const stagePhase = stage.stage === "pulse" || stage.stage === "expiry" || stage.stage === "breaker" ? 2 : 1;
-              const hooksOpen = phase >= 3 && !collapsed.includes(stage.stage);
+              const stagePhase = stage.stage === "breaker" ? 3 : 1;
+              const hooksOpen = phase >= (stage.stage === "breaker" ? 3 : 2) && !collapsed.includes(stage.stage);
               return (
                 <li key={stage.stage} className={cn("pm-stage", stage.stage === "breaker" && "is-risk")} data-show={phase >= stagePhase ? "1" : "0"} data-dim={dimmed(stage.stage) ? "1" : "0"}>
                   <button type="button" className="pm-stage-btn" aria-pressed={sel === `stage:${stage.stage}`} onClick={() => c.select(`stage:${stage.stage}`)}>
@@ -706,8 +726,10 @@ export function AgentGraph({ data, recorded = null }: GraphProps) {
               );
             })}
             <li className="pm-end" data-show={phase >= 4 ? "1" : "0"}>
-              <span>Paper decision</span><span>Optra Tape</span>
-              <small className="pn-mono">{illustration}</small>
+              <span>Paper decision</span><small className="pn-mono">Illustrative paper action</small>
+            </li>
+            <li className="pm-end pm-tape" data-show={phase >= 5 ? "1" : "0"}>
+              <span>Optra Tape</span><small className="pn-mono">{illustration}</small>
             </li>
           </ol>
         ) : null}
