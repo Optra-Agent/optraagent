@@ -20,183 +20,7 @@ test("Forge reads the PM catalog and blocks unsupported generic recipes without 
   await expect(page.getByRole("button", { name: /compose|generate with ai/i })).toHaveCount(0);
 });
 
-test("the Forge Intelligence Core morphs through five catalog-derived states without running a trade", async ({ page }, testInfo) => {
-  await page.emulateMedia({ reducedMotion: "reduce" });
-  const tradeWrites: string[] = [];
-  page.on("request", (request) => {
-    if (/\/api\/(agents|paper|ticks)(\/|\?|$)/.test(request.url()) && !["GET", "HEAD"].includes(request.method())) {
-      tradeWrites.push(`${request.method()} ${new URL(request.url()).pathname}`);
-    }
-  });
-
-  await page.goto("/");
-  const core = page.locator("#forge .fs-core");
-  await core.scrollIntoViewIfNeeded();
-  await expect(core.locator(".fs-core-fallback")).toHaveAttribute("role", "img");
-  await expect(core).toHaveAttribute("data-hook-total", "36");
-  await expect(core).toHaveAttribute("data-hook-live", "15");
-  await expect(core).toHaveAttribute("data-hook-catalog-only", "21");
-  await expect(core).toHaveAttribute("data-breaker-count", "5");
-  await expect(core).toHaveAttribute("data-reduced-motion", "1");
-  await expect(core).toHaveAttribute("data-renderer", "canvas");
-  await expect(core.getByRole("group", { name: "Intelligence Core stages" }).getByRole("button")).toHaveCount(5);
-  const reducedFrameCount = await core.locator("canvas").getAttribute("data-frame-count");
-  await page.waitForTimeout(160);
-  await expect(core.locator("canvas")).toHaveAttribute("data-frame-count", reducedFrameCount ?? "0");
-
-  const states = ["Agent Core", "Strategy Formation", "Hook Evaluation", "Risk Protection", "Decision & Evidence"];
-  for (const [index, state] of states.entries()) {
-    const button = core.getByRole("button", { name: state, exact: false });
-    await button.click();
-    await expect(button).toHaveAttribute("aria-pressed", "true");
-    await expect(core).toHaveAttribute("data-core-state", String(index));
-    const center = (index + 0.5) / states.length;
-    await expect.poll(async () => Number(await core.locator("canvas").getAttribute("data-progress"))).toBeGreaterThan(center - 0.02);
-    await expect.poll(async () => Number(await core.locator("canvas").getAttribute("data-progress"))).toBeLessThan(center + 0.02);
-    await page.screenshot({ path: testInfo.outputPath(`forge-core-${index + 1}.png`), animations: "disabled" });
-  }
-
-  await page.locator("#forge .fs-rules").getByRole("button", { name: "Calmo", exact: true }).click();
-  await expect(page.locator("#forge .fs-preview")).toHaveAttribute("data-valid", "0");
-  expect(tradeWrites).toEqual([]);
-});
-
-test("Forge Intelligence Core fits phone, tablet and desktop and keeps its controls keyboard reachable", async ({ page }, testInfo) => {
-  await page.emulateMedia({ reducedMotion: "reduce" });
-  for (const [width, height] of [[390, 844], [820, 900], [1440, 900]] as const) {
-    await page.setViewportSize({ width, height });
-    await page.goto("/");
-    const core = page.locator("#forge .fs-core");
-    await core.scrollIntoViewIfNeeded();
-    const controls = core.getByRole("group", { name: "Intelligence Core stages" });
-    const buttons = controls.getByRole("button");
-    await expect(buttons).toHaveCount(5);
-    await buttons.first().focus();
-    await expect(buttons.first()).toBeFocused();
-    await page.keyboard.press("Tab");
-    await expect(buttons.nth(1)).toBeFocused();
-    expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth), `${width}px viewport`).toBe(0);
-    const bounds = await core.boundingBox();
-    expect(bounds).not.toBeNull();
-    expect(bounds!.width).toBeLessThanOrEqual(width);
-    await page.screenshot({ path: testInfo.outputPath(`forge-core-${width}.png`), animations: "disabled" });
-  }
-});
-
-test("the pinned Core tracks continuous scroll forward and backward", async ({ page }) => {
-  const pageErrors: string[] = [];
-  page.on("pageerror", (error) => pageErrors.push(error.message));
-  page.on("console", (message) => {
-    if (message.type() === "error" && /hydration|uncaught|react.*error/i.test(message.text())) pageErrors.push(message.text());
-  });
-  await page.setViewportSize({ width: 1440, height: 900 });
-  await page.emulateMedia({ reducedMotion: "no-preference" });
-  await page.goto("/");
-  const core = page.locator("#forge .fs-core");
-  const canvas = core.locator("canvas");
-  await core.scrollIntoViewIfNeeded();
-  await expect(core).toHaveAttribute("data-active", "1");
-  const geometry = await page.evaluate(() => {
-    const track = document.querySelector<HTMLElement>("#forge .fs-story");
-    const pin = track?.querySelector<HTMLElement>(".ps-pin");
-    if (!track || !pin) throw new Error("Forge Core track was not rendered.");
-    return {
-      trackTop: track.getBoundingClientRect().top + window.scrollY,
-      pinTop: Number.parseFloat(getComputedStyle(pin).top) || 0,
-      range: Math.max(1, track.offsetHeight - pin.offsetHeight),
-      pinHeight: pin.offsetHeight,
-    };
-  });
-  expect(geometry.pinHeight).toBeLessThan(900 - geometry.pinTop);
-
-  const seek = (progress: number) => page.evaluate(({ progress, trackTop, pinTop, range }) => {
-    window.scrollTo({ top: trackTop - pinTop + progress * range, behavior: "auto" });
-  }, { progress, ...geometry });
-  await seek(0.72);
-  await expect.poll(async () => Number(await canvas.getAttribute("data-progress"))).toBeGreaterThan(0.69);
-  await expect(core).toHaveAttribute("data-core-state", "3");
-  await seek(0.18);
-  await expect.poll(async () => Number(await canvas.getAttribute("data-progress"))).toBeLessThan(0.21);
-  await expect(core).toHaveAttribute("data-core-state", "0");
-  expect(pageErrors).toEqual([]);
-});
-
-test("the server SVG remains interactive when Canvas 2D is unavailable", async ({ page }) => {
-  await page.addInitScript(() => {
-    const getContext = HTMLCanvasElement.prototype.getContext;
-    Object.defineProperty(HTMLCanvasElement.prototype, "getContext", {
-      configurable: true,
-      value: function (type: string, ...args: unknown[]) {
-        if (type === "2d" && this.classList.contains("fs-core-canvas")) return null;
-        return Reflect.apply(getContext, this, [type, ...args]);
-      },
-    });
-  });
-  await page.goto("/");
-  const core = page.locator("#forge .fs-core");
-  await core.scrollIntoViewIfNeeded();
-  await expect(core).toHaveAttribute("data-renderer", "svg");
-  const fallback = core.locator(".fs-core-fallback");
-  await expect(fallback).toBeVisible();
-  await core.getByRole("button", { name: /Risk Protection/ }).click();
-  await expect(core).toHaveAttribute("data-core-state", "3");
-  await expect(fallback).toHaveAttribute("aria-label", /Risk Protection/);
-});
-
-test("ambient Core motion runs only while visible", async ({ page }) => {
-  await page.setViewportSize({ width: 1440, height: 900 });
-  await page.emulateMedia({ reducedMotion: "no-preference" });
-  await page.goto("/");
-  const core = page.locator("#forge .fs-core");
-  const canvas = core.locator("canvas");
-  await core.scrollIntoViewIfNeeded();
-  await expect(core).toHaveAttribute("data-active", "1");
-  const firstCount = Number(await canvas.getAttribute("data-frame-count"));
-  await page.waitForTimeout(180);
-  const secondCount = Number(await canvas.getAttribute("data-frame-count"));
-  expect(secondCount).toBeGreaterThan(firstCount);
-
-  const trackEnd = await page.evaluate(() => {
-    const track = document.querySelector<HTMLElement>("#forge .fs-story");
-    if (!track) throw new Error("Forge Core track was not rendered.");
-    return track.getBoundingClientRect().top + window.scrollY + track.offsetHeight + 400;
-  });
-  await page.evaluate((top) => window.scrollTo({ top, behavior: "auto" }), trackEnd);
-  await expect(core).toHaveAttribute("data-active", "0");
-  const pausedCount = Number(await canvas.getAttribute("data-frame-count"));
-  await page.waitForTimeout(180);
-  expect(Number(await canvas.getAttribute("data-frame-count"))).toBe(pausedCount);
-});
-
-test("the Core keeps scroll updates but suppresses ambient motion when Save-Data is enabled", async ({ page }) => {
-  await page.addInitScript(() => {
-    Object.defineProperty(navigator, "connection", {
-      configurable: true,
-      value: { saveData: true, addEventListener() {}, removeEventListener() {} },
-    });
-  });
-  await page.emulateMedia({ reducedMotion: "no-preference" });
-  await page.goto("/");
-  const core = page.locator("#forge .fs-core");
-  const canvas = core.locator("canvas");
-  await core.scrollIntoViewIfNeeded();
-  await expect(core).toHaveAttribute("data-save-data", "1");
-  const firstCount = Number(await canvas.getAttribute("data-frame-count"));
-  await page.waitForTimeout(160);
-  await expect(canvas).toHaveAttribute("data-frame-count", String(firstCount));
-  const initialProgress = Number(await canvas.getAttribute("data-progress"));
-  await core.getByRole("button", { name: /Strategy Formation/ }).click();
-  await expect.poll(async () => Number(await canvas.getAttribute("data-progress"))).not.toBe(initialProgress);
-});
-
-test("the rejected isometric Forge board is no longer shipped", async ({ page }) => {
-  await page.goto("/");
-  await expect(page.locator("#forge .fs-anatomy")).toHaveCount(0);
-  await expect(page.locator("#forge .fs-core-canvas")).toHaveCount(1);
-  await expect(page.locator("#forge .fs-core-controls button")).toHaveCount(5);
-});
-
-test("Forge presents the actual Protective Put workflow as a selectable product walkthrough", async ({ page }) => {
+test("Forge shows the supported recipe through five authentic workflow screens without writing a trade", async ({ page }, testInfo) => {
   await page.emulateMedia({ reducedMotion: "reduce" });
   const writes: string[] = [];
   page.on("request", (request) => {
@@ -206,43 +30,149 @@ test("Forge presents the actual Protective Put workflow as a selectable product 
   });
 
   await page.goto("/");
-  const walkthrough = page.locator("#forge .fs-workflow");
+  const walkthrough = page.locator("#forge .fww");
   await walkthrough.scrollIntoViewIfNeeded();
-  const controls = walkthrough.getByRole("group", { name: "Protective Put workflow" });
+  const tabs = walkthrough.getByRole("tablist", { name: "Protective Put workflow" });
   const labels = ["Agent selection", "Rule composition", "Recipe validation", "Backtest readiness", "Decision & Tape"];
-  await expect(controls.getByRole("button")).toHaveCount(labels.length);
-
-  await expect(walkthrough.locator("[data-workflow-panel]")).toContainText("Protective Put");
-  await expect(walkthrough.locator("[data-workflow-panel]")).toContainText("Paper ready");
+  await expect(tabs.getByRole("tab")).toHaveCount(labels.length);
+  const panel = walkthrough.locator("[data-workflow-panel]");
 
   for (const [index, label] of labels.entries()) {
-    const button = controls.getByRole("button", { name: label, exact: false });
-    await button.click();
-    await expect(button).toHaveAttribute("aria-pressed", "true");
+    const tab = tabs.getByRole("tab", { name: new RegExp(label) });
+    await tab.click();
+    await expect(tab).toHaveAttribute("aria-selected", "true");
     await expect(walkthrough).toHaveAttribute("data-active-stage", String(index));
+    await page.screenshot({ path: testInfo.outputPath(`forge-workflow-${index + 1}.png`), animations: "disabled" });
+    if (index === 0) {
+      await expect(panel).toContainText("Protective Put");
+      await expect(panel).toContainText("Paper ready");
+    }
+    if (index === 1) {
+      await expect(panel).toContainText("15 of 15 required rules selected");
+      await expect(panel).toContainText("21 catalog-only hooks stay locked");
+      await expect(panel.getByRole("button", { name: "Calmo", exact: true })).toHaveAttribute("aria-pressed", "true");
+    }
+    if (index === 2) {
+      await expect(panel).toContainText("Recipe valid");
+      await expect(panel.getByText("CANONICAL RECIPE HASH")).toBeVisible();
+    }
+    if (index === 3) {
+      await expect(panel).toContainText("Historical candle coverage");
+      await expect(panel).toContainText("No backtest runs from this demo.");
+    }
+    if (index === 4) {
+      await expect(panel).toContainText("US session closed");
+      await expect(panel).toContainText("Skip · 0 orders");
+      await expect(panel).toContainText("ILLUSTRATIVE BEHAVIOR · NOT EXECUTED HERE");
+      await expect(panel).toContainText("This marketing view makes no request and creates no record.");
+    }
   }
 
-  const evidence = walkthrough.locator("[data-workflow-panel]");
-  await expect(evidence).toContainText("US session closed");
-  await expect(evidence).toContainText("skip");
-  await expect(evidence).toContainText("0 orders");
-  await expect(evidence).toContainText("Illustrative behavior · not executed here");
+  await tabs.getByRole("tab", { name: /Rule composition/ }).click();
+  await panel.getByRole("button", { name: "Calmo", exact: true }).click();
+  await expect(walkthrough).toHaveAttribute("data-valid", "0");
+  await tabs.getByRole("tab", { name: /Recipe validation/ }).click();
+  await expect(panel).toContainText("Recipe blocked");
+  await expect(panel).toContainText("requires calmo.");
   expect(writes).toEqual([]);
 });
 
-test("the Forge walkthrough autoplay yields to direct selection", async ({ page }) => {
+test("Forge workflow fits mobile, tablet and desktop and supports keyboard stage selection", async ({ page }, testInfo) => {
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  for (const [width, height] of [[390, 844], [820, 900], [1440, 900]] as const) {
+    await page.setViewportSize({ width, height });
+    await page.goto("/");
+    const walkthrough = page.locator("#forge .fww");
+    await walkthrough.scrollIntoViewIfNeeded();
+    const tabs = walkthrough.getByRole("tablist", { name: "Protective Put workflow" });
+    const buttons = tabs.getByRole("tab");
+    await expect(buttons).toHaveCount(5);
+    await buttons.first().focus();
+    await page.keyboard.press("ArrowRight");
+    await expect(buttons.nth(1)).toBeFocused();
+    await expect(buttons.nth(1)).toHaveAttribute("aria-selected", "true");
+    expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth), `${width}px viewport`).toBe(0);
+    const bounds = await walkthrough.boundingBox();
+    expect(bounds).not.toBeNull();
+    expect(bounds!.width).toBeLessThanOrEqual(width);
+    for (const button of await buttons.all()) {
+      const box = await button.boundingBox();
+      expect(box?.height).toBeGreaterThanOrEqual(44);
+    }
+    await page.screenshot({ path: testInfo.outputPath(`forge-workflow-${width}.png`), animations: "disabled" });
+  }
+});
+
+test("Forge autoplay advances the walkthrough and direct selection pauses it", async ({ page }) => {
   await page.emulateMedia({ reducedMotion: "no-preference" });
   await page.goto("/");
-  const walkthrough = page.locator("#forge .fs-workflow");
+  const walkthrough = page.locator("#forge .fww");
   await walkthrough.scrollIntoViewIfNeeded();
   await expect(walkthrough).toHaveAttribute("data-auto-playing", "1");
   await expect(walkthrough).toHaveAttribute("data-active-stage", "1", { timeout: 6000 });
 
-  const controls = walkthrough.getByRole("group", { name: "Protective Put workflow" });
-  await controls.getByRole("button", { name: "Recipe validation", exact: false }).click();
+  const tabs = walkthrough.getByRole("tablist", { name: "Protective Put workflow" });
+  await tabs.getByRole("tab", { name: /Recipe validation/ }).click();
   await expect(walkthrough).toHaveAttribute("data-active-stage", "2");
   await expect(walkthrough).toHaveAttribute("data-auto-playing", "0");
-  await expect(walkthrough.getByRole("button", { name: "Resume" })).toBeVisible();
-  await page.waitForTimeout(1200);
+  await expect(page.locator("#forge .fs-demo-controls").getByRole("button", { name: "Resume" })).toBeVisible();
+  await page.waitForTimeout(1000);
   await expect(walkthrough).toHaveAttribute("data-active-stage", "2");
+});
+
+test("Forge completes its five-stage demonstration within 15 seconds and supports pause, resume and replay", async ({ page }) => {
+  test.setTimeout(25_000);
+  await page.emulateMedia({ reducedMotion: "no-preference" });
+  await page.goto("/");
+  const walkthrough = page.locator("#forge .fww");
+  await walkthrough.scrollIntoViewIfNeeded();
+  await expect(walkthrough).toHaveAttribute("data-auto-playing", "1");
+  await expect(walkthrough).toHaveAttribute("data-active-stage", "4", { timeout: 15_000 });
+  await expect(walkthrough).toHaveAttribute("data-auto-playing", "0");
+
+  const controls = page.locator("#forge .fs-demo-controls");
+  const replay = controls.getByRole("button", { name: "Replay" });
+  await replay.click();
+  await expect(walkthrough).toHaveAttribute("data-active-stage", "0");
+  await expect(walkthrough).toHaveAttribute("data-auto-playing", "1");
+  await controls.getByRole("button", { name: "Pause" }).click();
+  await expect(walkthrough).toHaveAttribute("data-auto-playing", "0");
+  await expect(controls.getByRole("button", { name: "Resume" })).toBeVisible();
+  await controls.getByRole("button", { name: "Resume" }).click();
+  await expect(walkthrough).toHaveAttribute("data-active-stage", "1", { timeout: 3_000 });
+  await expect(walkthrough).toHaveAttribute("data-auto-playing", "1");
+});
+
+test("the pinned Forge story follows scroll forward and backward without a drawn node network", async ({ page }) => {
+  const pageErrors: string[] = [];
+  page.on("pageerror", (error) => pageErrors.push(error.message));
+  page.on("console", (message) => {
+    if (message.type() === "error" && /hydration|uncaught|react.*error/i.test(message.text())) pageErrors.push(message.text());
+  });
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.goto("/");
+  const walkthrough = page.locator("#forge .fww");
+  await walkthrough.scrollIntoViewIfNeeded();
+  const geometry = await page.evaluate(() => {
+    const track = document.querySelector<HTMLElement>("#forge .fs-story");
+    const pin = track?.querySelector<HTMLElement>(".ps-pin");
+    if (!track || !pin) throw new Error("Forge workflow track was not rendered.");
+    return {
+      trackTop: track.getBoundingClientRect().top + window.scrollY,
+      pinTop: Number.parseFloat(getComputedStyle(pin).top) || 0,
+      range: Math.max(1, track.offsetHeight - pin.offsetHeight),
+      pinHeight: pin.offsetHeight,
+    };
+  });
+  expect(geometry.pinHeight).toBeLessThan(900 - geometry.pinTop);
+  const seek = (progress: number) => page.evaluate(({ progress, trackTop, pinTop, range }) => {
+    window.scrollTo({ top: trackTop - pinTop + progress * range, behavior: "auto" });
+  }, { progress, ...geometry });
+  await seek(0.72);
+  await expect(walkthrough).toHaveAttribute("data-active-stage", "3");
+  await seek(0.18);
+  await expect(walkthrough).toHaveAttribute("data-active-stage", "0");
+  await expect(page.locator("#forge canvas, #forge svg.fs-core-fallback, #forge .fs-anatomy")).toHaveCount(0);
+  expect(pageErrors).toEqual([]);
 });

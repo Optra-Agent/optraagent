@@ -305,13 +305,16 @@ test.describe("section visuals", () => {
     await forge.getByRole("button", { name: "Restore recipe" }).click();
     // Restoring hands the studio back to scroll; the last step is the validated recipe.
     await expect.poll(async () => (await story(page, "#forge", 0.95)).step).toBe(4);
-    await expect(forge.getByRole("list", { name: "Forge workflow" }).getByRole("button")).toHaveCount(4);
+    const workflow = forge.getByRole("tablist", { name: "Protective Put workflow" });
+    await expect(workflow.getByRole("tab")).toHaveCount(5);
+    await expect(workflow.getByRole("tab", { name: /Decision & Tape/ })).toHaveAttribute("aria-selected", "true");
     await expect(forge.getByText("Valid", { exact: true })).toBeVisible();
     // Only the 15 rules that run are shown by default; the 21 locked ones sit behind one disclosure.
     await expect(forge.getByRole("button", { name: /Volra/ })).toBeHidden();
     await forge.getByText("Show the 21 locked rules").click();
     await forge.getByRole("button", { name: /Volra/ }).click();
     await expect(forge.getByText("Volra is locked.")).toBeVisible();
+    await forge.locator(".fs-agents").scrollIntoViewIfNeeded();
     await forge.locator(".fs-agent").filter({ hasText: "Covered Call" }).click();
     await expect(forge.locator(".fs-note")).toContainText("Covered Call is not available.");
   });
@@ -441,14 +444,17 @@ test.describe("section visuals", () => {
     await expect.poll(async () => (await at(0.55)).step).toBe(2);
     await expect(forge.getByText("Validating…")).toBeVisible();
     await expect.poll(async () => (await at(0.95)).step).toBe(4);
-    await expect(forge.getByRole("list", { name: "Forge workflow" }).getByRole("button")).toHaveCount(4);
+    const workflow = forge.getByRole("tablist", { name: "Protective Put workflow" });
+    await expect(workflow.getByRole("tab")).toHaveCount(5);
+    await expect(workflow.getByRole("tab", { name: /Decision & Tape/ })).toHaveAttribute("aria-selected", "true");
     await expect(forge.getByText("Valid", { exact: true })).toBeVisible();
     await expect(forge.getByText("Demonstration running")).toHaveCount(0);
     // Reverse
     await expect.poll(async () => (await at(0.3)).step).toBe(1);
     await expect(forge.getByText("Building")).toBeVisible();
     // The rail is clickable and the real validator still answers when a rule is removed.
-    await forge.getByRole("button", { name: /Validate strategy/ }).click();
+    await workflow.getByRole("tab", { name: /Recipe validation/ }).click();
+    await expect(forge.locator(".fww")).toHaveAttribute("data-active-stage", "2");
     await page.waitForTimeout(1200);
     await forge.getByRole("button", { name: "Calmo" }).click();
     await expect(forge.getByText("Protective Put requires calmo.")).toBeVisible();

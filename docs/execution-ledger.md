@@ -178,7 +178,7 @@ Verification on current source:
 | `bun run test -- tests/integration/paper-flow.test.ts` | 1 test passed using temporary PGlite and captured history. |
 | Temporary source snapshot + `OPTRA_E2E_DIST_DIR=.local/optra-next-build bun run build` | Passed on current source in isolated output; 14 static pages generated. |
 
-The current landing also has a data-derived isometric Protective Put anatomy: five real rule stages, 36 hook sockets (15 implemented and 21 catalog-only), Breaker rail, validator, and Tape printer. Forge anatomy and all pinned-story sections were checked at 390px, 820px, and 1440px; the six-phase graph proof records screenshots and a browser video. Marketing demonstrations remain illustrative and issue no paper trade.
+That November 14 landing iteration used a data-derived isometric Protective Put anatomy: five real rule stages, 36 hook sockets (15 implemented and 21 catalog-only), Breaker rail, validator, and Tape printer. The owner later rejected that Forge visualization; the replacement is recorded in the November 15 final execution section below. Marketing demonstrations remain illustrative and issue no paper trade.
 
 Real browser extension signing remains unverified: the live Chrome process exposed no CDP listener, and its extension installation state is unknown. Unit mocks prove connector/session state handling; E2E confirms the no-extension UI state in its isolated browser. Do not report real MetaMask/Phantom authentication as browser-verified. Web release remains a candidate pending the manual extension check and owner go/no-go.
 
@@ -186,24 +186,27 @@ Contract inventory is zero source contracts, zero deployed contracts, and zero e
 
 No commit, push, merge, deployment, server restart, or live-money action was performed. Existing ports 3000–3003 were left untouched; E2E used its isolated port 3100.
 
-## 2026-11-15 final execution — Intelligence Core and release gates
+## 2026-11-15 final execution — Forge workflow and release gates
 
-The rejected Forge anatomy was removed and replaced with one original Canvas 2D Intelligence Core plus server-rendered SVG fallback, wired to the existing `PinnedStory`. Five catalog-derived states morph continuously: Agent Core, the five Protective Put rule stages, 15 live/21 catalog-only hooks, five Ember Breakers, and Decision/Evidence labeled as illustrative. The existing four workflow actions and server validator remain; no trading/API behavior changed and the marketing demo creates no paper tick or Tape row.
+Replaced the owner-rejected Forge visualization with `ForgeWorkflowPreview`, a five-step product walkthrough inside the existing `PinnedStory`: agent selection, real Protective Put rule composition, validator feedback, Lab readiness, and a clearly illustrative decision route into private Tape. Its displayed rule counts/status come from the actual hook catalog; rule chips share selection state with the existing Forge demo editor. The existing `/forge` server validator and APIs were preserved. The marketing walkthrough performs no backtest, paper tick, or Tape write.
 
-Current-source changes include `components/marketing/IntelligenceCore.tsx`, `intelligence-core-model.ts`, `intelligence-core-canvas.ts`, `ForgeDemo.tsx`, `PinnedStory.tsx`, `sections.tsx`, `app/(marketing)/studio.css`, model and E2E tests, and the dated tracker/handoff updates. No dependency was added. Five browser screenshots and viewport evidence are in the ignored `.local/optra-e2e-results/` directory.
+The walkthrough has five selectable states, keyboard controls, automatic progression, pause/resume/replay, reverse scroll, reduced-motion/Save-Data handling, and responsive 390/820/1440px layouts. Captured browser images are in ignored `.local/optra-e2e-results/`. No dependency or trading-engine change was made.
+
+The `package.json` migration script pointed to a nonexistent `scripts/migrate.ts`. Reproducing `env -u DATABASE_URL bun run db:migrate` returned `ERR_MODULE_NOT_FOUND`. Added the missing entrypoint; it now refuses to run without an explicit PostgreSQL target, delegates to the existing Drizzle migration path, closes its connection, and redacts URL-shaped credentials in errors. `tests/db/migrate-script.test.ts` covers the no-target guard. No PostgreSQL connection or migration was attempted.
 
 | Final gate on 2026-11-15 | Result |
 |---|---|
 | `bun run typecheck` | Passed. |
 | `bun run lint` | Passed. |
-| `bun run test` | 33 files / 123 tests passed. |
-| `bun run test:e2e -- tests/e2e/forge.spec.ts` | 8 / 8 passed. |
-| `bun run test:e2e` | 80 / 80 isolated Chromium tests passed. Runtime smoke: 25 scripts loaded, expected signed-out `/api/me` 401, 0 HMR errors. |
-| Isolated production build | Passed in a locked-dependency temporary source snapshot with `OPTRA_E2E_DIST_DIR=.local/optra-next-build`; 14 static pages generated and API routes compiled without touching the active checkout `.next`. |
-| Real MetaMask/Phantom extension prompt | Not verified. Current Chrome has no exposed CDP listener; the prior investigation was not repeated. |
+| `bun run test` | 34 files / 123 tests passed. |
+| `bun run test:e2e` | 78 / 78 isolated Chromium tests passed. Runtime smoke loaded 25 scripts, signed-out `/api/me` returned 401, and HMR socket errors were 0; one permitted Strict Mode template-fetch cancellation was observed. |
+| Forge browser acceptance | All five workflow states, edits/validation, read-only boundary, keyboard, scroll/reverse, 390/820/1440px, and Pause/Resume/Replay passed. The five-stage demo completed in 13.7 seconds. |
+| Isolated production build | Passed from a locked-dependency temporary source snapshot; 14 static pages and all dynamic API routes compiled. Next's generated type edits stayed inside the snapshot, not the checkout. |
+| Migration safety guard | Passed with `DATABASE_URL` unset; no connection attempt. |
+| Real MetaMask/Phantom extension prompt | Not verified. No extension-backed browser target was available; use the manual steps in the tracker. |
 
-The first complete E2E run found stale four-index expectations for Forge's five visual states and a screenshot assertion that outlasted the graph's autoplay phase. The test expectations now distinguish the four Forge workflow actions from the five Core states; the graph proof freezes its final Tape frame after autoplay reaches it. Both focused tests and the final 80-test suite pass.
+One intermediate full E2E run timed out on a single `/agents` navigation while the page still showed “Checking wallet session…”. That test passed when rerun alone, and the subsequent full suite passed 78/78; no source change was tied to the timeout.
 
-**Web release readiness: ready for deployment preparation, not ready for controlled release.** The real-extension acceptance, cross-browser/physical-device checks, selected-host PostgreSQL/origin/backup/monitoring setup, and owner go/no-go remain. The repository has zero Solidity contracts/deployments/verified addresses, two conditional PM-backed contract candidates, and no justification for six distinct contracts. Contract deployment does not block the paper MVP.
+**Web release readiness: ready for deployment preparation, not ready for controlled release.** Real-extension and owner visual acceptance, selected-host persistent PostgreSQL and migration verification, HTTPS/origin setup, backups/rollback, host logging/monitoring, cross-browser/device checks, and owner go/no-go remain. The repository has zero Solidity sources, deployments, or verified addresses; there are two conditional PM-backed contract candidates, with no basis for six distinct contracts. Contract deployment does not block the paper MVP.
 
-No web/contract deployment, migration against a production database, commit, push, merge, or server restart was performed. Ports 3000–3003 were left running; Playwright used isolated port 3100. The [tracker](tasks/optra-fullstack-progress.md) contains the ten-step reconciliation, manual wallet checklist, and deployment preparation checklist.
+No web/contract deployment, production migration, commit, push, merge, or server restart was performed. Ports 3000–3003 were left running; Playwright used isolated port 3100. The [tracker](tasks/optra-fullstack-progress.md) contains the original ten-step reconciliation and release checklists.
