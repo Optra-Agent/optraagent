@@ -9,6 +9,8 @@ import { PayoffMark } from "../app/agents/TemplateCard";
 import { Chip } from "../app/ui";
 import { PinnedStory } from "./PinnedStory";
 import type { ForgeDemoData } from "./section-data";
+import { IntelligenceCore } from "./IntelligenceCore";
+import type { IntelligenceCoreModel } from "./intelligence-core-model";
 
 /* The Forge strategy studio: choose an agent, configure rules, validate, backtest.
    Only the 15 rules that run today are shown by default; the 21 locked rules sit behind one disclosure. The strategy
@@ -16,7 +18,7 @@ import type { ForgeDemoData } from "./section-data";
    real validator's message. Nothing is computed locally: messages and the hash were produced by the real validator on
    the server and are looked up by rule. The workflow rail uses the same classes as the real /forge screen. */
 
-export function ForgeDemo({ data }: { data: ForgeDemoData }) {
+export function ForgeDemo({ data, intelligenceCore }: { data: ForgeDemoData; intelligenceCore: IntelligenceCoreModel }) {
   const [on, setOn] = useState<Set<string>>(() => new Set(data.required));
   const [note, setNote] = useState<{ title: string; text: string } | null>(null);
   const [agent, setAgent] = useState("protective_put");
@@ -26,6 +28,8 @@ export function ForgeDemo({ data }: { data: ForgeDemoData }) {
   const [story, setStory] = useState(0);
   const [tick, setTick] = useState<number | null>(null);
   const [playing, setPlaying] = useState(false);
+  const [inView, setInView] = useState(false);
+  const [saveData, setSaveData] = useState(false);
   const started = useRef(false);
   const manual = useRef(false);
   const stageCount = data.stages.length;
@@ -34,36 +38,42 @@ export function ForgeDemo({ data }: { data: ForgeDemoData }) {
   const END = 7 + stageCount;
 
   useEffect(() => {
-    if (!playing || tick === null) return;
+    if (!playing || !inView || tick === null) return;
     const timer = window.setTimeout(() => {
       if (tick >= END) { setTick(null); setPlaying(false); } else setTick(tick + 1);
     }, tick === 0 ? 500 : 620);
     return () => window.clearTimeout(timer);
-  }, [playing, tick, END]);
+  }, [playing, inView, tick, END]);
+
+  useEffect(() => {
+    const connection = (navigator as Navigator & { connection?: EventTarget & { saveData?: boolean } }).connection;
+    const update = () => setSaveData(Boolean(connection?.saveData));
+    update();
+    connection?.addEventListener("change", update);
+    return () => connection?.removeEventListener("change", update);
+  }, []);
 
   useEffect(() => {
     const root = rootRef.current;
     if (!root || typeof IntersectionObserver === "undefined") return;
     const observer = new IntersectionObserver(([entry]) => {
       if (!entry) return;
+      setInView(entry.isIntersecting);
       const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-      if (entry.isIntersecting && !started.current && !reduce) {
+      const prefersSaveData = Boolean((navigator as Navigator & { connection?: { saveData?: boolean } }).connection?.saveData);
+      if (entry.isIntersecting && !started.current && !reduce && !prefersSaveData) {
         started.current = true;
         setOn(new Set(data.required));
         setTick(0);
         setPlaying(true);
-      } else if (!entry.isIntersecting) {
-        // Leaving the section stops the demonstration and leaves the settled studio.
-        setPlaying(false);
-        setTick(null);
       }
-    }, { threshold: 0.25 });
+    }, { threshold: 0.01, rootMargin: "80px 0px" });
     observer.observe(root);
     return () => observer.disconnect();
   }, [data.required]);
 
   // Scrolling (or clicking a rail step) takes over from the timer and shows that step of the demo. Nothing real runs.
-  const stepTicks = [1, 1 + stageCount, 2 + stageCount, 5 + stageCount];
+  const stepTicks = [1, 1 + stageCount, 2 + stageCount, 5 + stageCount, null];
   const onStory = (index: number) => {
     started.current = true;
     setStory(index);
@@ -74,7 +84,8 @@ export function ForgeDemo({ data }: { data: ForgeDemoData }) {
     // The rules the visitor chose are kept: scrolling changes the phase, never an edit they made.
     setTick(stepTicks[index] ?? null);
   };
-  const stopDemo = () => { started.current = true; manual.current = true; setPlaying(false); setTick(null); };
+  const stopAutoplay = () => { started.current = true; manual.current = true; setPlaying(false); setTick(null); };
+  const markRulesEdited = () => { stopAutoplay(); manual.current = true; };
   const replay = () => { started.current = true; manual.current = false; setOn(new Set(data.required)); setNote(null); setTick(0); setPlaying(true); };
 
   const issues = [...new Set(data.required.filter((id) => !on.has(id)).flatMap((id) => data.issuesIfRemoved[id] ?? []))];
@@ -87,9 +98,11 @@ export function ForgeDemo({ data }: { data: ForgeDemoData }) {
   ];
   const current = steps.findIndex((step) => !step.done);
   const lockedCount = data.stages.reduce((total, stage) => total + stage.hooks.filter((hook) => !hook.live).length, 0);
+  const inProgress = playing && inView;
+  const coreGoRef = useRef<((index: number) => void) | null>(null);
 
   const toggle = (id: string) => {
-    stopDemo();
+    markRulesEdited();
     setNote(null);
     setOn((existing) => {
       const next = new Set(existing);
@@ -100,25 +113,23 @@ export function ForgeDemo({ data }: { data: ForgeDemoData }) {
   };
 
   return (
-    <PinnedStory id="forge" count={4} step={story} onStep={onStory} variant="stack" beat="32vh" className="fs-story">
-      {({ go }) => (
-    <div className="fs" ref={rootRef} data-demo={demoPhase}>
+    <div className="fs" ref={rootRef} data-demo={demoPhase} data-live={inView ? "1" : "0"} data-save-data={saveData ? "1" : "0"}>
       <ol className="fd-rail" aria-label="Forge workflow">
         {steps.map((step, index) => {
           const state = step.done ? "done" : index === current ? "current" : "next";
           return (
-            <li key={step.label} className={`journey-step journey-${state}`} aria-current={state === "current" ? "step" : undefined}>
-              <button type="button" className="journey-static fs-rail-btn" onClick={() => go(index)}><span className="journey-index">{step.done ? <Check aria-hidden /> : index + 1}</span><span className="journey-label">{step.label}</span></button>
+              <li key={step.label} className={`journey-step journey-${state}`} aria-current={state === "current" ? "step" : undefined}>
+              <button type="button" className="journey-static fs-rail-btn" onClick={() => coreGoRef.current?.([0, 1, 3, 4][index] ?? 4)}><span className="journey-index">{step.done ? <Check aria-hidden /> : index + 1}</span><span className="journey-label">{step.label}</span></button>
             </li>
           );
         })}
       </ol>
 
       <div className="fs-demo-bar">
-        <Chip tone="ember">{playing ? "Demonstration running" : "Demonstration"}</Chip>
+        <Chip tone="ember">{inProgress ? "Demonstration running" : "Demonstration"}</Chip>
         <span className="fs-demo-text">A short UI demo of the supported recipe. It runs no backtest and no paper tick.</span>
         <div className="fs-demo-controls" role="group" aria-label="Demonstration controls">
-          <button type="button" className={buttonVariants({ variant: "outline", size: "sm" })} onClick={() => { if (playing) setPlaying(false); else if (tick === null) replay(); else setPlaying(true); }} aria-pressed={playing}>{playing ? <Pause aria-hidden /> : <Play aria-hidden />}{playing ? "Pause" : tick === null ? "Play" : "Resume"}</button>
+          <button type="button" className={buttonVariants({ variant: "outline", size: "sm" })} onClick={() => { if (playing) setPlaying(false); else if (tick === null) replay(); else setPlaying(true); }} aria-pressed={inProgress}>{inProgress ? <Pause aria-hidden /> : <Play aria-hidden />}{inProgress ? "Pause" : tick === null ? "Play" : "Resume"}</button>
           <button type="button" className={buttonVariants({ variant: "ghost", size: "sm" })} onClick={replay}><RotateCcw aria-hidden />Replay</button>
         </div>
       </div>
@@ -126,7 +137,7 @@ export function ForgeDemo({ data }: { data: ForgeDemoData }) {
         <div className="fs-top">
           <div className="fs-agents" role="group" aria-label="House Agent">
             {data.agents.map((row) => (
-              <button type="button" key={row.id} className="fs-agent" aria-pressed={agent === row.id} data-ready={row.ready ? "1" : "0"} onClick={() => { if (row.ready) { setAgent(row.id); setNote(null); } else setNote({ title: `${row.name} is not available.`, text: row.reason }); }}>
+              <button type="button" key={row.id} className="fs-agent" aria-pressed={agent === row.id} data-ready={row.ready ? "1" : "0"} onClick={() => { stopAutoplay(); if (row.ready) { setAgent(row.id); setNote(null); } else setNote({ title: `${row.name} is not available.`, text: row.reason }); }}>
                 <PayoffMark id={row.id} ready={row.ready} size="sm" />
                 <span><b>{row.name}</b><small>{row.ready ? "Can be built" : "Locked"}</small></span>
                 {row.ready ? null : <Lock aria-hidden />}
@@ -135,6 +146,10 @@ export function ForgeDemo({ data }: { data: ForgeDemoData }) {
           </div>
           <p className="fs-ai"><Chip>Coming soon</Chip> Describe a strategy in words. No AI provider is configured, so rules are chosen by clicking.</p>
         </div>
+
+        <PinnedStory id="forge-core" count={5} step={story} onStep={onStory} variant="stack" beat="32vh" className="fs-story" goRef={coreGoRef}>
+          {({ go, progressRef }) => <IntelligenceCore model={intelligenceCore} progressRef={progressRef} activeState={story} onSelectState={go} />}
+        </PinnedStory>
 
         <div className="fs-grid">
           <section className="fs-rules" aria-labelledby="fs-rules-title">
@@ -155,7 +170,7 @@ export function ForgeDemo({ data }: { data: ForgeDemoData }) {
                 );
               })}
             </div>
-            <details className="fs-locked">
+            <details className="fs-locked" onToggle={stopAutoplay}>
               <summary><ChevronDown aria-hidden />Show the {lockedCount} locked rules</summary>
               <div className="fs-locked-body">
                 {data.stages.map((stage) => {
@@ -167,7 +182,7 @@ export function ForgeDemo({ data }: { data: ForgeDemoData }) {
                       <ul>
                         {locked.map((hook) => (
                           <li key={hook.id}>
-                            <button type="button" className="fd-chip is-locked" aria-pressed={note?.title === `${hook.name} is locked.`} onClick={() => setNote(note?.title === `${hook.name} is locked.` ? null : { title: `${hook.name} is locked.`, text: hook.reason })}>
+                            <button type="button" className="fd-chip is-locked" aria-pressed={note?.title === `${hook.name} is locked.`} onClick={() => { stopAutoplay(); setNote(note?.title === `${hook.name} is locked.` ? null : { title: `${hook.name} is locked.`, text: hook.reason }); }}>
                               {hook.name}<span className="sr-only"> (catalog only, locked)</span>
                             </button>
                           </li>
@@ -189,10 +204,10 @@ export function ForgeDemo({ data }: { data: ForgeDemoData }) {
               <span className="mono">{on.size} of {data.required.length} rules</span>
             </div>
             <ol className="fs-lines">
-              {data.stages.map((stage) => {
+              {data.stages.map((stage, index) => {
                 const chosen = stage.hooks.filter((hook) => hook.live && on.has(hook.id));
                 return (
-                  <li key={stage.stage} data-empty={chosen.length === 0 ? "1" : "0"} data-lit={data.stages.indexOf(stage) < lit ? "1" : "0"}>
+                  <li key={stage.stage} data-risk={stage.stage === "breaker" ? "1" : "0"} data-empty={chosen.length === 0 ? "1" : "0"} data-lit={index < lit ? "1" : "0"} data-current={tick !== null && demoPhase === "rules" && index === lit - 1 ? "1" : "0"}>
                     <span className="fs-line-stage mono">{stage.label}</span>
                     <span className="fs-line-text">{chosen.length ? chosen.map((hook) => hook.line).join(". ") : "No rule yet"}</span>
                   </li>
@@ -207,9 +222,9 @@ export function ForgeDemo({ data }: { data: ForgeDemoData }) {
             <div className="fs-next" data-point={demoPhase === "valid" ? "1" : "0"}>
               <Link className={cn(buttonVariants({ size: "sm" }), !valid && "fd-disabled")} href="/lab" aria-disabled={!valid}>Backtest in Lab<ArrowUpRight aria-hidden /></Link>
               <Link className={buttonVariants({ variant: "outline", size: "sm" })} href="/forge">Open Forge</Link>
-              <button type="button" className={buttonVariants({ variant: "ghost", size: "sm" })} onClick={() => { manual.current = false; setOn(new Set(data.required)); setNote(null); }} disabled={valid}>Restore recipe</button>
+              <button type="button" className={buttonVariants({ variant: "ghost", size: "sm" })} onClick={() => { stopAutoplay(); manual.current = false; setOn(new Set(data.required)); setNote(null); }} disabled={valid}>Restore recipe</button>
             </div>
-            <details className="fs-tech">
+            <details className="fs-tech" onToggle={stopAutoplay}>
               <summary>Technical details</summary>
               {valid ? <p className="mono" aria-label="Recipe hash">{data.validHash.slice(0, 23)}…</p> : <p>No hash is issued while the recipe is blocked.</p>}
               <p>The server issues a canonical hash once a recipe validates. This is the hash of the default recipe with example inputs.</p>
@@ -218,7 +233,5 @@ export function ForgeDemo({ data }: { data: ForgeDemoData }) {
         </div>
       </div>
     </div>
-      )}
-    </PinnedStory>
   );
 }

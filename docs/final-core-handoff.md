@@ -1,14 +1,24 @@
 # Optra Paper Core — Claude Code UI Handoff
 
-Updated: 2026-11-12 (Asia/Jakarta); benchmark contract and serialized paper-tick audit added 2026-11-12
+Updated: 2026-11-15 (Asia/Jakarta); core contract baseline first recorded 2026-11-12
 
-## Delivery status
+## 2026-11-15 recovery addendum
+
+Current-source verification on November 15 passed 123 unit/integration tests across 33 files, 80/80 isolated Chromium tests, typecheck, lint, and a production build from a locked-dependency temporary source snapshot. The focused Forge/Core suite passed 8/8. The browser journey uses a server-verified test-signer session, real UI/API handlers, captured market data, and disposable PGlite; its stale quote correctly creates a zero-order skip that remains in Tape after refresh. The separate PGlite integration test covers a successful modeled order, position persistence, replay, concurrency, and cross-owner denial. These tests do not represent a real wallet extension prompt.
+
+The screenshot-reported wallet failure was caused by OPTRA calling `connectAsync` when Wagmi already held the selected connector as active. The client now reuses that connection and guards session/signature races; server nonce/signature verification, cookie issuance, and owner checks remain intact. Twelve lifecycle tests cover connector reuse and session transitions. Actual MetaMask/Phantom signing remains unverified: the live Chrome process had no exposed CDP listener, and extension installation state is unknown.
+
+Forge's rejected board is now an original five-state Intelligence Core: one continuous particle topology moves from agent core through the five actual strategy stages, 15 active/21 catalog-only hooks, five Ember Breakers, and a labeled illustrative paper decision/Tape representation. Browser screenshots were inspected at 390px, 820px, and 1440px; keyboard, scroll/reverse, reduced motion, Save-Data, Canvas fallback, and offscreen pause passed. The original 10-step status and outstanding wallet acceptance are in `docs/tasks/optra-fullstack-progress.md`. Contract inventory remains zero actual/deployed/verified OPTRA contracts; the PM brief supports only two conditional future modules, and deployment is separate from the paper MVP. Live trading remains disabled.
+
+**Release readiness: ready for deployment preparation, not ready for controlled release.** Real MetaMask/Phantom acceptance, cross-browser/physical-device checks, selected-host production configuration, and owner go/no-go remain outstanding. No web or contract deployment occurred.
+
+## Core delivery baseline (recorded 2026-11-12)
 
 **The constrained Protective Put paper core is ready for premium UI integration.** The broader product remains partial: one House Agent is paper-ready, 15 of 36 hook entries have deterministic evaluators, and option premiums are modeled rather than venue-recorded. The handoff does not claim listed option execution, exchange fills, or live trading.
 
 The verified path is: wallet challenge/session → create Protective Put draft → fetch verified market history → replay a 720-decision backtest after warmup → persist source snapshot/hash/provenance/model assumptions → launch the matching recipe → run a paper tick → persist order, position, account and full Optra Tape trace. A valid historical candle path creates one modeled PAPER order. Concurrent tick IDs are serialized and evaluated from the locked latest state; retries do not duplicate fills, and backdated ticks conflict. A closed-session tick records a blocked `skip` or `hold` with zero orders. Incomplete, gapped, stale, multiplier-uncertain, or no-entry inputs do not unlock metrics/launch.
 
-The premium application UI is documented in `docs/final-ui-handoff.md`; current marketing graph work is concurrent and still awaits the coordinated QA listed below. This handoff records core behavior and data boundaries. Preserve the single Next.js repository and backend/API contracts while working on presentation.
+The premium application UI is documented in `docs/final-ui-handoff.md`. This core baseline predates the 2026-11-15 story refinements and browser QA recorded above. Preserve the single Next.js repository and backend/API contracts while working on presentation.
 
 ## Completed functionality
 
@@ -37,7 +47,7 @@ The captured current quote is outside regular US trading hours. It is used in th
 
 ### Backtest comparisons
 
-New completed `BacktestRun.metrics` include optional `benchmarks` from `BacktestBenchmarksSchema` in `lib/domain/contracts.ts`; the exact response shape is in `docs/api-contracts.md`. Benchmark provenance is on the parent `BacktestRun`: `dataSource`, `historyDataHash`, `historyProvenance`, and `pricingAssumptions`. The buy-and-hold return invests the initial capital at the first decision candle's verified share-normalized close and values it at the final decision close across the same 720 decision samples; it is price-only and excludes dividends, fees, and slippage. Cash is a flat USD accounting balance with zero yield. No USDG/USD price path is present, so `vsCashPct` is **not** an observed USDG market return. Older persisted metrics may omit `benchmarks`; consumers must show unavailable in that case. Invalid or nonpositive benchmark endpoint closes fail the run with null metrics and keep launch blocked. Claude's current `components/app/lab/BenchmarkComparison.tsx` reads this server field and shows an unavailable state for legacy rows; this source integration is present, but browser/E2E verification remains pending. See `docs/ui-integration-requests.md`.
+New completed `BacktestRun.metrics` include optional `benchmarks` from `BacktestBenchmarksSchema` in `lib/domain/contracts.ts`; the exact response shape is in `docs/api-contracts.md`. Benchmark provenance is on the parent `BacktestRun`: `dataSource`, `historyDataHash`, `historyProvenance`, and `pricingAssumptions`. The buy-and-hold return invests the initial capital at the first decision candle's verified share-normalized close and values it at the final decision close across the same 720 decision samples; it is price-only and excludes dividends, fees, and slippage. Cash is a flat USD accounting balance with zero yield. No USDG/USD price path is present, so `vsCashPct` is **not** an observed USDG market return. Older persisted metrics may omit `benchmarks`; consumers must show unavailable in that case. Invalid or nonpositive benchmark endpoint closes fail the run with null metrics and keep launch blocked. `components/app/lab/BenchmarkComparison.tsx` reads this server field and shows an unavailable state for legacy rows; current browser cases cover both response states, using API fixtures. See `docs/ui-integration-requests.md`.
 
 ## Application routes and shared UI contracts
 

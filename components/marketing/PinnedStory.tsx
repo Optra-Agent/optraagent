@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef } from "react";
-import type { CSSProperties, ReactNode } from "react";
+import type { CSSProperties, MutableRefObject, ReactNode } from "react";
 import { cn } from "@/lib/utils";
 
 /**
@@ -15,7 +15,7 @@ import { cn } from "@/lib/utils";
  *   and the steps act as tabs. Without JavaScript every view is shown, stacked.
  * - `views` are stacked in one grid cell so the stage keeps the height of its tallest view and nothing jumps.
  */
-export type PinnedStoryApi = { go: (index: number) => void; views: ReactNode };
+export type PinnedStoryApi = { go: (index: number) => void; views: ReactNode; progressRef: MutableRefObject<number> };
 
 type Props = {
   id: string;
@@ -28,18 +28,20 @@ type Props = {
   /** Scroll distance per extra step, as a CSS length. Keep it short: this is understanding, not scroll length. */
   beat?: string;
   className?: string;
+  /** Optional controller for sibling controls that need to move this story's visual step. */
+  goRef?: MutableRefObject<((index: number) => void) | null>;
   children: (api: PinnedStoryApi) => ReactNode;
 };
 
 const reduced = () => typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-export function PinnedStory({ id, count, step, onStep, views, variant = "split", beat = "38vh", className, children }: Props) {
+export function PinnedStory({ id, count, step, onStep, views, variant = "split", beat = "38vh", className, goRef, children }: Props) {
   const trackRef = useRef<HTMLDivElement>(null);
   const pinRef = useRef<HTMLDivElement>(null);
   const lockUntil = useRef(0);
   const current = useRef(step);
+  const progressRef = useRef(count > 0 ? (step + 0.5) / count : 0);
   const onStepRef = useRef(onStep);
-  useEffect(() => { current.current = step; onStepRef.current = onStep; });
 
   const sticky = () => {
     const pin = pinRef.current;
@@ -53,12 +55,22 @@ export function PinnedStory({ id, count, step, onStep, views, variant = "split",
     const range = Math.max(1, track.offsetHeight - pin.offsetHeight);
     return { top, range, trackTop: track.getBoundingClientRect().top };
   };
+  useEffect(() => {
+    current.current = step;
+    onStepRef.current = onStep;
+    if (!sticky()) progressRef.current = count > 0 ? (step + 0.5) / count : 0;
+  }, [step, count, onStep]);
 
   const sync = useCallback(() => {
-    if (performance.now() < lockUntil.current || !sticky()) return;
+    if (!sticky()) {
+      progressRef.current = count > 0 ? (current.current + 0.5) / count : 0;
+      return;
+    }
     const geo = geometry();
     if (!geo) return;
     const progress = Math.min(1, Math.max(0, (geo.top - geo.trackTop) / geo.range));
+    progressRef.current = progress;
+    if (performance.now() < lockUntil.current) return;
     const next = Math.min(count - 1, Math.floor(progress * count));
     if (next !== current.current) {
       current.current = next;
@@ -86,7 +98,10 @@ export function PinnedStory({ id, count, step, onStep, views, variant = "split",
     const next = Math.min(count - 1, Math.max(0, index));
     current.current = next;
     onStepRef.current(next, "go");
-    if (!sticky()) return;
+    if (!sticky()) {
+      progressRef.current = count > 0 ? (next + 0.5) / count : 0;
+      return;
+    }
     const geo = geometry();
     if (!geo) return;
     const absoluteTrackTop = geo.trackTop + window.scrollY;
@@ -96,6 +111,12 @@ export function PinnedStory({ id, count, step, onStep, views, variant = "split",
     window.scrollTo({ top: target, behavior: calm ? "auto" : "smooth" });
     window.setTimeout(sync, calm ? 140 : 950);
   }, [count, sync]);
+
+  useEffect(() => {
+    if (!goRef) return;
+    goRef.current = go;
+    return () => { if (goRef.current === go) goRef.current = null; };
+  }, [goRef, go]);
 
   const stage = views ? (
     <div className="ps-views">
@@ -117,8 +138,7 @@ export function PinnedStory({ id, count, step, onStep, views, variant = "split",
   return (
     <div ref={trackRef} className={cn("ps", className)} data-variant={variant} data-step={step} style={{ "--n": count, "--beat": beat } as CSSProperties}>
       <div ref={pinRef} className="ps-pin">
-        {/* eslint-disable-next-line react-hooks/refs -- `go` only touches refs inside event handlers, never while rendering */}
-        {children({ go, views: stage })}
+        {children({ go, views: stage, progressRef })}
       </div>
     </div>
   );

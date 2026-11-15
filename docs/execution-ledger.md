@@ -1,8 +1,8 @@
 # Optra Paper Core Recovery — Execution Ledger
 
-Updated: 2026-11-13 (Asia/Jakarta)
+Updated: 2026-11-15 (Asia/Jakarta)
 
-This recovery record supersedes the earlier partial-only Step 01–10 status. Work continued in the existing Next.js repository; no second repository, worktree, or premium redesign was created.
+This recovery record supersedes the earlier partial-only Step 01–10 status. Work continued in the existing Next.js repository; no second repository or Git worktree was created, and the approved palette and component architecture were preserved.
 
 ## Recovery objective and acceptance
 
@@ -89,7 +89,7 @@ All commands run in the current workspace on 2026-11-12:
 
 ### Original ten-step status reconciliation
 
-See the detailed status/evidence matrix in `docs/tasks/optra-fullstack-progress.md`. Current statuses: Step 01 DONE; 02 PARTIAL; 03 PARTIAL; 04 DONE; 05 PARTIAL (benchmark API and current Lab component implemented, browser QA pending); 06 PARTIAL (manual ticks, no scheduler); 07 DONE for click-builder scope (AI is Planned); 08 PARTIAL; 09 PARTIAL; 10 PARTIAL pending coordinated final E2E/build QA.
+This was the 2026-11-12 status snapshot and is superseded by the current 2026-11-15 Step 01–10 reconciliation in the takeover recovery below. At the time, the Lab browser check and coordinated final E2E/build QA were still pending.
 
 ### Verification and coordination record
 
@@ -125,7 +125,7 @@ See the detailed status/evidence matrix in `docs/tasks/optra-fullstack-progress.
 - Obtain recorded options quotes/IV, venue contract specs, and fee schedules if venue-based pricing becomes required. Until then, retain modeled labels/assumptions and the simulated one-share limitation.
 - Validate availability and multiplier/corporate-action continuity for each additional underlying before enabling its backtest.
 - No scheduler is configured for unrelated hourly quote collection; the historical Crius feed is fetched directly by backtest/tick runtime.
-- The premium application UI is documented in `docs/final-ui-handoff.md`; current marketing graph work is tracked as a separate in-progress UI integration. Claude Code may use `docs/ui-handoff-contract.md` and `docs/final-core-handoff.md`; backend, safety, tests, migration, and verification paths remain protected there.
+- The premium application UI is documented in `docs/final-ui-handoff.md`; the current pinned-story refinements and browser evidence are recorded in the 2026-11-15 takeover recovery below. Broader PM UI features remain partial. `docs/ui-handoff-contract.md` and `docs/final-core-handoff.md` record the shared interfaces; backend, safety, tests, migration, and verification paths remain protected there.
 
 ## 2026-11-13 continuation — final engineering and browser integration check
 
@@ -149,3 +149,61 @@ See the detailed status/evidence matrix in `docs/tasks/optra-fullstack-progress.
 **Next coordinated QA:** restore a healthy OPTRA client hydration/HMR path, then rerun the browser suite on a safe OPTRA target; verify new and legacy Lab benchmark states, the public graph and no-private-data requests; walk the browser wallet journey if an extension is available; coordinate a quiet `.next` before production build. Do not claim those checks passed until rerun.
 
 See `docs/codex-final-engineering-handoff.md` for endpoint contracts, ownership boundaries, the exact Lab benchmark shape, and the Claude integration handoff.
+
+## 2026-11-15 initial takeover recovery — wallet, pinned stories, and release gates (superseded below)
+
+The active connector bug was in the UI sequence, not a reason to replace Wagmi: `AuthSessionProvider` called `connectAsync` even when Wagmi's connected state already named the selected connector. The installed `@wagmi/core@3.6.9` rejects this repeated connect for its current connector UID. New provider tests confirm an already-connected MetaMask and Phantom EVM connector skip `connectAsync`, then use the selected connector to sign the server challenge. The server challenge, signature verification, cookie, and owner-isolation code were not changed.
+
+Current source changes:
+
+- `components/app/AuthSessionProvider.tsx` and `components/app/WalletSession.tsx`: current connector reuse, reconnect/wrong-chain distinction, expected account/chain checks around sign-in, duplicate prompt guard, and clearer server-session recovery states.
+- `public/wallets/metamask.svg`, `public/wallets/phantom.svg`, and `docs/wallet-brand-assets.md`: locally served official wallet marks and provenance.
+- `components/marketing/ForgeDemo.tsx` and `app/(marketing)/studio.css`: stop autoplay on manual interaction and show stage activity in the existing strategy summary.
+- `components/marketing/FlowPath.tsx`: show the evaluation pulse when the active node is the first stage; reduced motion remains respected.
+- `components/marketing/story.tsx` and `app/(marketing)/studio.css`: replace the arbitrary Lab market curve with an input/model/replay diagram and distinguish historical prices from modeled premiums.
+- `components/app/lab/LabScreen.tsx`: keep the selected draft `Select` controlled during loading, removing the React uncontrolled-to-controlled warning.
+- `lib/market/runtime.ts` and `scripts/optra-e2e-isolated-server.ts`: route the isolated browser server to a loopback market fixture, match `APP_BASE_URL` to its test origin, and keep PGlite inside the temporary source snapshot with inherited `DATABASE_URL` removed.
+- `tests/app/auth-session-provider.test.ts`, `tests/e2e/graph.spec.ts`, and `tests/e2e/lab-benchmarks.spec.ts`: wallet lifecycle and current story/UI regressions.
+- `tests/e2e/paper-flow-live-api.spec.ts`: browser-to-database journey with a test signer and real app routes; the stale test quote correctly yields a persisted zero-order skip, not a real extension test.
+- `docs/contract-deployment-plan.md`: PM-bounded contract inventory and conditional deployment path.
+
+Verification on current source:
+
+| Command | Result |
+|---|---|
+| `bun run test` | 33 files / 122 tests passed. |
+| `bun run test:e2e` | 75 / 75 passed in isolated Chromium. Runtime smoke confirmed hydration, `/api/me` signed-out 401, zero HMR errors, and permitted Strict Mode cancellation only. The live-route UI journey passed with no browser console or page errors. The focused Forge suite passed 3/3 again after the final phone-width anatomy-label adjustment. |
+| `bun run typecheck` | Passed. |
+| `bun run lint` | Passed. |
+| `bun run test -- tests/integration/paper-flow.test.ts` | 1 test passed using temporary PGlite and captured history. |
+| Temporary source snapshot + `OPTRA_E2E_DIST_DIR=.local/optra-next-build bun run build` | Passed on current source in isolated output; 14 static pages generated. |
+
+The current landing also has a data-derived isometric Protective Put anatomy: five real rule stages, 36 hook sockets (15 implemented and 21 catalog-only), Breaker rail, validator, and Tape printer. Forge anatomy and all pinned-story sections were checked at 390px, 820px, and 1440px; the six-phase graph proof records screenshots and a browser video. Marketing demonstrations remain illustrative and issue no paper trade.
+
+Real browser extension signing remains unverified: the live Chrome process exposed no CDP listener, and its extension installation state is unknown. Unit mocks prove connector/session state handling; E2E confirms the no-extension UI state in its isolated browser. Do not report real MetaMask/Phantom authentication as browser-verified. Web release remains a candidate pending the manual extension check and owner go/no-go.
+
+Contract inventory is zero source contracts, zero deployed contracts, and zero explorer-verified addresses. The original PM brief supports two conditional modules (`OptraGuardHook`, `GuardRegistry`) after feasibility review and explicit approval. It does not justify six independent contracts. Read-only `eth_chainId` requests to both supplied public RPC endpoints failed TLS validation because each returned an expired certificate for an unrelated host; no chain ID was obtained and no deployment occurred. The paper MVP does not depend on these modules.
+
+No commit, push, merge, deployment, server restart, or live-money action was performed. Existing ports 3000–3003 were left untouched; E2E used its isolated port 3100.
+
+## 2026-11-15 final execution — Intelligence Core and release gates
+
+The rejected Forge anatomy was removed and replaced with one original Canvas 2D Intelligence Core plus server-rendered SVG fallback, wired to the existing `PinnedStory`. Five catalog-derived states morph continuously: Agent Core, the five Protective Put rule stages, 15 live/21 catalog-only hooks, five Ember Breakers, and Decision/Evidence labeled as illustrative. The existing four workflow actions and server validator remain; no trading/API behavior changed and the marketing demo creates no paper tick or Tape row.
+
+Current-source changes include `components/marketing/IntelligenceCore.tsx`, `intelligence-core-model.ts`, `intelligence-core-canvas.ts`, `ForgeDemo.tsx`, `PinnedStory.tsx`, `sections.tsx`, `app/(marketing)/studio.css`, model and E2E tests, and the dated tracker/handoff updates. No dependency was added. Five browser screenshots and viewport evidence are in the ignored `.local/optra-e2e-results/` directory.
+
+| Final gate on 2026-11-15 | Result |
+|---|---|
+| `bun run typecheck` | Passed. |
+| `bun run lint` | Passed. |
+| `bun run test` | 33 files / 123 tests passed. |
+| `bun run test:e2e -- tests/e2e/forge.spec.ts` | 8 / 8 passed. |
+| `bun run test:e2e` | 80 / 80 isolated Chromium tests passed. Runtime smoke: 25 scripts loaded, expected signed-out `/api/me` 401, 0 HMR errors. |
+| Isolated production build | Passed in a locked-dependency temporary source snapshot with `OPTRA_E2E_DIST_DIR=.local/optra-next-build`; 14 static pages generated and API routes compiled without touching the active checkout `.next`. |
+| Real MetaMask/Phantom extension prompt | Not verified. Current Chrome has no exposed CDP listener; the prior investigation was not repeated. |
+
+The first complete E2E run found stale four-index expectations for Forge's five visual states and a screenshot assertion that outlasted the graph's autoplay phase. The test expectations now distinguish the four Forge workflow actions from the five Core states; the graph proof freezes its final Tape frame after autoplay reaches it. Both focused tests and the final 80-test suite pass.
+
+**Web release readiness: ready for deployment preparation, not ready for controlled release.** The real-extension acceptance, cross-browser/physical-device checks, selected-host PostgreSQL/origin/backup/monitoring setup, and owner go/no-go remain. The repository has zero Solidity contracts/deployments/verified addresses, two conditional PM-backed contract candidates, and no justification for six distinct contracts. Contract deployment does not block the paper MVP.
+
+No web/contract deployment, migration against a production database, commit, push, merge, or server restart was performed. Ports 3000–3003 were left running; Playwright used isolated port 3100. The [tracker](tasks/optra-fullstack-progress.md) contains the ten-step reconciliation, manual wallet checklist, and deployment preparation checklist.

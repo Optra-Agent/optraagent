@@ -17,6 +17,7 @@ import type { GraphData } from "./graph-data";
 import type { FlowScenario } from "./graph-flow";
 import { HeroStage } from "./HeroStage";
 import { getLandingFacts } from "./data";
+import { buildIntelligenceCoreModel } from "./intelligence-core-model";
 
 type Facts = ReturnType<typeof getLandingFacts>;
 
@@ -88,13 +89,14 @@ export function HouseAgents({ facts, graph, recorded }: { facts: Facts; graph: G
 /* ─────────────────────────── Forge ─────────────────────────── */
 
 export function Forge({ facts, forge }: { facts: Facts; forge: ForgeDemoData }) {
+  const intelligenceCore = buildIntelligenceCoreModel(forge);
   return (
     <section className="m-section m-section-raised" id="forge" aria-labelledby="forge-title">
       <div className="m-wrap">
         <SectionHead eyebrow="OPTRA FORGE" title="Click rules together. The server checks every recipe.">
           <p>An agent is a recipe of rules. Forge validates it, gives it a canonical hash, and blocks anything it cannot run, before it can reach a backtest. Try removing a hook below to see what the validator says.</p>
         </SectionHead>
-        <ForgeDemo data={forge} />
+        <ForgeDemo data={forge} intelligenceCore={intelligenceCore} />
         <ul className="forge-points reveal-stagger">
           <li style={at(0)}><strong>{facts.hookLive} of {facts.hookTotal} hooks run today.</strong> The other {facts.hookCatalogOnly} are documented in the library and locked in Forge.</li>
           <li style={at(1)}><strong>AI composition: Coming soon.</strong> Rules decide. No AI provider is configured, so recipes are built by clicking.</li>

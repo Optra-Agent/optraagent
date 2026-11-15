@@ -195,3 +195,54 @@ test("the rejected isometric Forge board is no longer shipped", async ({ page })
   await expect(page.locator("#forge .fs-core-canvas")).toHaveCount(1);
   await expect(page.locator("#forge .fs-core-controls button")).toHaveCount(5);
 });
+
+test("Forge presents the actual Protective Put workflow as a selectable product walkthrough", async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  const writes: string[] = [];
+  page.on("request", (request) => {
+    if (/\/api\/(agents|paper|ticks|backtests)(\/|\?|$)/.test(request.url()) && !["GET", "HEAD"].includes(request.method())) {
+      writes.push(`${request.method()} ${new URL(request.url()).pathname}`);
+    }
+  });
+
+  await page.goto("/");
+  const walkthrough = page.locator("#forge .fs-workflow");
+  await walkthrough.scrollIntoViewIfNeeded();
+  const controls = walkthrough.getByRole("group", { name: "Protective Put workflow" });
+  const labels = ["Agent selection", "Rule composition", "Recipe validation", "Backtest readiness", "Decision & Tape"];
+  await expect(controls.getByRole("button")).toHaveCount(labels.length);
+
+  await expect(walkthrough.locator("[data-workflow-panel]")).toContainText("Protective Put");
+  await expect(walkthrough.locator("[data-workflow-panel]")).toContainText("Paper ready");
+
+  for (const [index, label] of labels.entries()) {
+    const button = controls.getByRole("button", { name: label, exact: false });
+    await button.click();
+    await expect(button).toHaveAttribute("aria-pressed", "true");
+    await expect(walkthrough).toHaveAttribute("data-active-stage", String(index));
+  }
+
+  const evidence = walkthrough.locator("[data-workflow-panel]");
+  await expect(evidence).toContainText("US session closed");
+  await expect(evidence).toContainText("skip");
+  await expect(evidence).toContainText("0 orders");
+  await expect(evidence).toContainText("Illustrative behavior · not executed here");
+  expect(writes).toEqual([]);
+});
+
+test("the Forge walkthrough autoplay yields to direct selection", async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: "no-preference" });
+  await page.goto("/");
+  const walkthrough = page.locator("#forge .fs-workflow");
+  await walkthrough.scrollIntoViewIfNeeded();
+  await expect(walkthrough).toHaveAttribute("data-auto-playing", "1");
+  await expect(walkthrough).toHaveAttribute("data-active-stage", "1", { timeout: 6000 });
+
+  const controls = walkthrough.getByRole("group", { name: "Protective Put workflow" });
+  await controls.getByRole("button", { name: "Recipe validation", exact: false }).click();
+  await expect(walkthrough).toHaveAttribute("data-active-stage", "2");
+  await expect(walkthrough).toHaveAttribute("data-auto-playing", "0");
+  await expect(walkthrough.getByRole("button", { name: "Resume" })).toBeVisible();
+  await page.waitForTimeout(1200);
+  await expect(walkthrough).toHaveAttribute("data-active-stage", "2");
+});

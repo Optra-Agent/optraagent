@@ -27,20 +27,11 @@ function useVisible<T extends Element>(threshold = 0.35) {
 /* ───────────────────────── Lab ───────────────────────── */
 
 const LAB_STEPS = [
-  { id: "prices", title: "Historical prices", text: "1,441 consecutive closed hourly candles from Robinhood Chain. The first 721 warm up the volatility estimate, the next 720 are decisions. Gaps block the run." },
+  { id: "prices", title: "Historical prices", text: "A run needs at least 1,441 consecutive closed hourly candles from verified Robinhood Chain history. The first 721 warm up the volatility estimate; the next 720 are decisions. Gaps block the run." },
   { id: "premium", title: "Premium modeling", text: "No option quotes exist for these synthetic options, so each put is priced with Black–Scholes: 30-day realized volatility × 1.1, 50 bp slippage, venue fees not modeled." },
   { id: "replay", title: "Strategy replay", text: "The same rule engine that runs paper ticks evaluates all 15 hooks on each of the 720 decision candles. It opens, holds, closes or skips, exactly as a paper tick would." },
   { id: "compare", title: "Benchmark comparison", text: "The server returns the strategy result next to buy and hold (price only) and flat USD cash, over the same 720 candles. Numbers appear only after a complete run." },
 ] as const;
-
-/** A fixed, made-up price shape. It is drawn only to show where the stages sit and is labeled illustrative. */
-const PRICE_POINTS = Array.from({ length: 49 }, (_, i) => {
-  const x = 20 + (i * 560) / 48;
-  const y = 150 - 26 * Math.sin(i / 5.2) - 14 * Math.sin(i / 1.9) - i * 0.9;
-  return [Math.round(x * 10) / 10, Math.round(y * 10) / 10] as const;
-});
-const PRICE_D = PRICE_POINTS.map(([x, y], i) => `${i === 0 ? "M" : "L"}${x} ${y}`).join(" ");
-const PREMIUM_D = PRICE_POINTS.map(([x, y], i) => `${i === 0 ? "M" : "L"}${x} ${Math.round((228 - (150 - y) * 0.35) * 10) / 10}`).join(" ");
 
 export function LabShowcase() {
   const [step, setStep] = useState(0);
@@ -65,29 +56,51 @@ export function LabShowcase() {
           </nav>
 
           <div className="lab-stage" data-step={step}>
-            <div className="lab-chart" aria-hidden="true">
-              <svg viewBox="0 0 600 260" preserveAspectRatio="xMidYMid meet">
-                <rect className="lab-warm" x="20" y="14" width="280" height="200" rx="8" />
-                <rect className="lab-dec" x="300" y="14" width="280" height="200" rx="8" />
-                <text className="lab-axis" x="30" y="32">721 warmup candles</text>
-                <text className="lab-axis" x="570" y="32" textAnchor="end">720 decision candles</text>
-                <path className="lab-price" d={PRICE_D} pathLength={1} />
-                <g className="lab-layer" data-on={step >= 1 ? "1" : "0"}>
-                  <path className="lab-prem" d={PREMIUM_D} />
-                  <text className="lab-axis lab-axis-ember" x="30" y="252">Modeled premium (not a quote)</text>
-                </g>
-                <g className="lab-layer" data-on={step >= 2 ? "1" : "0"}>
-                  {Array.from({ length: 36 }, (_, i) => <line key={i} className="lab-tickmark" x1={304 + i * 7.7} x2={304 + i * 7.7} y1="196" y2="212" />)}
-                  <line className="lab-head" x1="300" x2="300" y1="14" y2="214" />
-                </g>
-              </svg>
-              <p className="lab-ill">Illustrative shape. Not market data.</p>
+            <div className="lab-chart" role="group" aria-label="Historical replay process illustration">
+              <p className="lab-chart-kicker mono">REPLAY WINDOW · CLOSED HOURLY CANDLES</p>
+              <div className="lab-windows">
+                <div className="lab-window lab-warm" data-state={step === 0 ? "active" : "done"}>
+                  <span className="lab-window-label mono">VOLATILITY WARMUP</span>
+                  <b>721</b>
+                  <span>historical candles</span>
+                </div>
+                <span className="lab-window-link" aria-hidden="true"><i /></span>
+                <div className="lab-window lab-dec" data-state={step === 2 ? "active" : step > 2 ? "done" : "upcoming"}>
+                  <span className="lab-window-label mono">STRATEGY DECISIONS</span>
+                  <b>720</b>
+                  <span>historical candles</span>
+                </div>
+              </div>
+              <div className="lab-range" aria-hidden="true">
+                <span className="lab-range-label mono">REPLAY POSITION</span>
+                <i className="lab-range-track"><b className="lab-range-cursor" /></i>
+                <span className="lab-range-end mono">1,441 candles</span>
+              </div>
+              <div className="lab-premium" data-on={step >= 1 ? "1" : "0"}>
+                <div className="lab-model-input">
+                  <span className="lab-layer-label mono">OBSERVED INPUT</span>
+                  <b>Underlying prices</b>
+                  <small>Verified historical candle data</small>
+                </div>
+                <span className="lab-model-link" aria-hidden="true"><i /></span>
+                <div className="lab-model-output">
+                  <span className="lab-layer-label mono">MODELED OUTPUT</span>
+                  <b>Put premium</b>
+                  <small>Black–Scholes · RV30 × 1.1 · 30 days</small>
+                  <em>Not an option quote</em>
+                </div>
+              </div>
+              <div className="lab-replay" data-on={step >= 2 ? "1" : "0"}>
+                <span>Same paper engine evaluates every decision candle</span>
+                <span className="lab-replay-count mono">720 decisions</span>
+              </div>
+              <p className="lab-ill">Process illustration · no market prices are plotted.</p>
             </div>
             <div className="lab-side">
               <h3 key={current.id}>{current.title}</h3>
-              <ul className="lab-slots" aria-label="Benchmark results" data-on={step >= 3 ? "1" : "0"}>
+              <ul className="lab-slots" aria-label="Benchmark availability" data-on={step >= 3 ? "1" : "0"}>
                 {[["Strategy", "Modeled premiums"], ["Buy and hold", "Price only, no dividends"], ["Flat USD cash", "Zero yield, not USDG"]].map(([label, note]) => (
-                  <li key={label}><span><b>{label}</b><small>{note}</small></span><i /><em>After a run</em></li>
+                  <li key={label}><span><b>{label}</b><small>{note}</small></span><em>No value before a complete run</em></li>
                 ))}
               </ul>
               <p className="lab-note">No result is shown here because none was run. Flat USD is an accounting baseline, not a measured USDG return.</p>

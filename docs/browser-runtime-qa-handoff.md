@@ -1,12 +1,26 @@
 # OPTRA Browser Runtime QA Handoff
 
-Updated: 2026-11-13 (Asia/Jakarta)
+Updated: 2026-11-15 (Asia/Jakarta)
+
+## Current-source recovery run — 2026-11-15
+
+The isolated Playwright snapshot ran on port 3100 without restarting SENTERA or existing OPTRA processes. The current source completed **80/80 Chromium tests**, including Forge/Core, Hooks, Tape, Lab, How, app shell, runtime hydration, and the browser-to-database paper journey. Forge/Core covers keyboard interaction, forward/reverse scroll, sticky release, 390px/820px/1440px layout, reduced motion, Save-Data, Canvas fallback, offscreen pause, and no paper writes. The focused Forge suite passed **8/8**.
+
+The runtime smoke loaded 25 scripts, issued `GET /api/me` and received the expected signed-out 401, recorded zero HMR errors, and allowed a dev Strict Mode cancellation. The browser journey obtains a server-verified session with a test signer, then uses real UI/API handlers for draft, backtest, benchmark, launch, paper tick, and Tape refresh against disposable PGlite. Its captured quote is correctly treated as stale, so that tick records a zero-order skip; the Vitest PGlite integration covers a successful modeled order and persisted position. This is not extension acceptance. The journey confirms sign-in alone creates no agent. E2E also asserts the Lab draft selector remains controlled as `/api/agents` loads.
+
+Forge, Hooks, Tape, and Lab were captured and visually reviewed at 1440×900, 820×900, and 390×844. The Forge Intelligence Core is a catalog-derived Canvas particle object with an SVG first-frame fallback. Five screenshots show Agent Core, Strategy Formation, Hook Evaluation, Risk Protection, and Decision & Evidence; the latter is labeled illustrative and says no recorded trade. The screenshots and network proof video remain in ignored `.local/optra-e2e-results/`. Browser checks cover responsive widths and no horizontal overflow.
+
+The isolated browser environment did not expose an actual MetaMask or Phantom extension prompt. The supplied Chrome screenshot shows both wallet toolbar icons, but the current Chrome main process had no remote-debugging flag or listening CDP endpoint, so there was no extension-backed target to attach. OPTRA remained active on port 3003 (`/` returned 200 and signed-out `GET /api/me` returned 401); Chrome was left untouched. Real extension signing remains unverified. The wallet lifecycle is covered by unit tests for connector reuse and session transitions, and the isolated browser tests verify the no-extension state. Manual acceptance steps are in `docs/tasks/optra-fullstack-progress.md`.
+
+Production build was run from a temporary source snapshot after installing the locked dependencies, with `OPTRA_E2E_DIST_DIR=.local/optra-next-build bun run build`; it passed without stopping the development servers. The snapshot and output directory kept generated build files out of the checkout's `.next`.
 
 ## Result
 
 The Playwright runtime is now reproducible without using SENTERA's ports or sharing Next.js generated files with the existing OPTRA dev server. The isolated app hydrated, resolved the unauthenticated wallet session, and the full browser suite passed.
 
-## Findings
+## Historical port-3001 investigation (superseded for current QA by the recovery run above)
+
+### Findings
 
 `AuthSessionProvider` starts in `loading` and only leaves that state after its client effect calls `GET /api/me`. On the existing OPTRA server at `127.0.0.1:3001`, a direct browser probe returned the `/agents` document and all 25 JavaScript chunks with status 200, but stayed on “Checking wallet session…” and issued no `/api/me` request. There were no React page errors, hydration warnings, or failed script requests. The session API itself returned the expected 401 when called directly.
 
@@ -16,13 +30,14 @@ The reproducible E2E failure came from sharing one Next.js project root between 
 
 The final test server runs from a temporary, non-Git source snapshot. It has its own `next-env.d.ts`, generated output, and local PGlite directory. Dependencies are installed from the lockfile inside the snapshot; a symlink to the checkout's `node_modules` was rejected by Turbopack because it resolves outside the workspace root. The browser therefore exercises the current working tree, including staged and unstaged UI files, without making Next write generated state into the checkout.
 
-## Changes
+### Changes
 
 - `playwright.config.ts` defaults to `127.0.0.1:3100`, rejects 3000/3001/3002, never reuses an existing server, runs serially, and waits for `/agents`.
-- `scripts/optra-e2e-isolated-server.ts` copies the current source tree to an OS temporary directory, excludes `.git`, generated output, `.local`, `node_modules`, and secret `.env*` files, installs locked dependencies, and starts Next there.
+- `scripts/optra-e2e-isolated-server.ts` copies the current source tree to an OS temporary directory, excludes `.git`, generated output, `.local`, `node_modules`, and secret `.env*` files, installs locked dependencies, and starts Next there with a disposable PGlite path and loopback market fixture server. It removes inherited `DATABASE_URL` so this test server cannot target a developer database.
+- `tests/e2e/paper-flow-live-api.spec.ts` signs a server challenge with a test key, then covers the real browser/API route workflow and verifies the persisted skip in Tape after refresh. It is not real MetaMask or Phantom acceptance.
 - `tests/e2e/runtime-smoke.spec.ts` verifies page hydration, session resolution, template API response, script loads, interactivity, browser errors, failed requests, and HMR socket errors. It permits only the dev Strict Mode cancellation of an initial templates request when a successful template response also arrives.
 
-## Verification
+### Verification
 
 | Command / probe | Result |
 |---|---|
@@ -36,7 +51,7 @@ The final test server runs from a temporary, non-Git source snapshot. It has its
 
 Backend tests and build were not rerun. This pass changed only test/runtime setup, and the existing OPTRA dev server owns the checkout's `.next/dev/lock`. The accepted backend audit remains the prior 103-test result.
 
-## Port and working tree boundaries
+### Port and working tree boundaries
 
 - SENTERA remained on ports 3000 and 3002. Its listener PIDs were unchanged by the E2E runs.
 - The existing OPTRA dev server remained on port 3001 and was not restarted or stopped.
@@ -46,7 +61,7 @@ Backend tests and build were not rerun. This pass changed only test/runtime setu
 
 The Playwright runner creates one disposable source snapshot under the operating system temporary directory per run; it is not a Git worktree and does not copy the local database or `.env` secrets.
 
-## Reproduction
+### Reproduction
 
 Run the smoke gate first:
 
