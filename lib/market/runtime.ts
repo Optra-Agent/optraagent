@@ -2,8 +2,14 @@ import { createMarketHandlers } from "./handlers";
 import { createCriusHistoryFeed } from "./crius-history";
 import { createRobinhoodMarketFeed } from "./robinhood-feed";
 
-const feed = createRobinhoodMarketFeed();
-const historyFeed = createCriusHistoryFeed({ listMarkets: () => feed.listMarkets() });
+const robinhoodBaseUrl = process.env.OPTRA_MARKET_ROBINHOOD_BASE_URL;
+const criusBaseUrl = process.env.OPTRA_MARKET_CRIUS_BASE_URL;
+const feed = createRobinhoodMarketFeed(robinhoodBaseUrl ? { baseUrl: robinhoodBaseUrl } : {});
+const historyFeed = createCriusHistoryFeed({
+  ...(criusBaseUrl ? { criusBaseUrl } : {}),
+  ...(robinhoodBaseUrl ? { robinhoodBaseUrl } : {}),
+  listMarkets: () => feed.listMarkets(),
+});
 const handlers = createMarketHandlers(feed);
 
 export function getMarketHandlers() {

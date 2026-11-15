@@ -37,6 +37,14 @@ test("wallet dialog opens from the topbar, closes with Escape, and is reachable 
   const dialog = page.getByRole("dialog", { name: "Choose an EVM wallet" });
   await expect(dialog.getByRole("button", { name: "MetaMask", exact: true })).toBeVisible();
   await expect(dialog.getByRole("button", { name: "Phantom EVM", exact: true })).toBeVisible();
+  const walletMarks = dialog.locator(".wallet-mark img");
+  await expect(walletMarks).toHaveCount(2);
+  await expect(walletMarks.nth(0)).toHaveAttribute("src", "/wallets/metamask.svg");
+  await expect(walletMarks.nth(1)).toHaveAttribute("src", "/wallets/phantom.svg");
+  await expect.poll(() => walletMarks.evaluateAll((images) => images.every((image) => {
+    const logo = image as HTMLImageElement;
+    return logo.complete && logo.naturalWidth > 0;
+  }))).toBe(true);
   await page.keyboard.press("Escape");
   await expect(dialog).toBeHidden();
 

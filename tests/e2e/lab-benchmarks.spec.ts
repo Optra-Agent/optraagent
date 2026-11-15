@@ -29,6 +29,12 @@ async function setup(page: Page, metrics: object) {
 }
 
 test("Lab shows the server's same-window benchmarks next to the strategy result", async ({ page }) => {
+  const selectWarnings: string[] = [];
+  page.on("console", (message) => {
+    if (message.type() === "warning" && message.text().includes("Select is changing from uncontrolled to controlled")) {
+      selectWarnings.push(message.text());
+    }
+  });
   await setup(page, { totalReturnPct: "-0.75", maxDrawdownPct: "1.80", endingCashUsd: "99250.00", benchmarks });
   await page.goto(`/lab?agent=${agentId}`);
   await page.getByRole("button", { name: "Run paper backtest" }).click();
@@ -42,6 +48,7 @@ test("Lab shows the server's same-window benchmarks next to the strategy result"
   await expect(bench.getByText("-0.75 pp")).toBeVisible();
   await expect(bench.getByText(/not a measured USDG return/)).toBeVisible();
   await expect(bench.getByText(/price only/i).first()).toBeVisible();
+  expect(selectWarnings).toEqual([]);
 });
 
 test("Lab says the comparison is unavailable for an older run without benchmarks", async ({ page }) => {

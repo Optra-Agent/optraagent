@@ -1,5 +1,6 @@
 import { spawn, type ChildProcess } from "node:child_process";
-import { cp, mkdtemp } from "node:fs/promises";
+import { createServer } from "node:http";
+import { cp, mkdtemp, readFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
@@ -43,10 +44,12 @@ console.log(`[optra-e2e] Isolated source snapshot: ${snapshotRoot}`);
 
 let stopping = false;
 let activeChild: ChildProcess | null = null;
+let closeMarketFixtureServer: (() => void) | null = null;
 const stopServer = () => {
   if (stopping) return;
   stopping = true;
   activeChild?.kill("SIGTERM");
+  closeMarketFixtureServer?.();
 };
 
 process.on("SIGINT", stopServer);
@@ -78,9 +81,52 @@ if (installExitCode !== 0) {
   process.exit(installExitCode);
 }
 
+const fixture = JSON.parse(await readFile(path.join(snapshotRoot, "tests/fixtures/aapl-crius-hourly-capture.json"), "utf8")) as {
+  asset: unknown;
+  quote: unknown;
+  candles: unknown;
+  corpActions: unknown[];
+};
+const marketFixtureServer = createServer((request, response) => {
+  const pathname = new URL(request.url ?? "/", `http://${hostname}`).pathname;
+  let body: unknown;
+  if (pathname === "/rhj/assets") body = { assets: [fixture.asset] };
+  else if (pathname === "/rhj/prices/AAPL") body = fixture.quote;
+  else if (pathname === "/rhj/corporate-actions") body = { corpActions: fixture.corpActions };
+  else if (pathname.endsWith("/candles")) body = fixture.candles;
+  else {
+    response.writeHead(404, { "cache-control": "no-store" });
+    response.end();
+    return;
+  }
+  response.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" });
+  response.end(JSON.stringify(body));
+});
+await new Promise<void>((resolve, reject) => {
+  marketFixtureServer.once("error", reject);
+  marketFixtureServer.listen(0, hostname, resolve);
+});
+const marketFixtureAddress = marketFixtureServer.address();
+if (!marketFixtureAddress || typeof marketFixtureAddress === "string") {
+  throw new Error("The isolated market fixture server did not bind to a TCP port.");
+}
+closeMarketFixtureServer = () => {
+  if (marketFixtureServer.listening) marketFixtureServer.close();
+};
+const marketFixtureBaseUrl = `http://${hostname}:${marketFixtureAddress.port}`;
+
 const serverExitCode = await runBun(
   ["run", "dev", "--hostname", hostname, "--port", String(port)],
   `Starting isolated Next.js on ${hostname}:${port}`,
-  { ...process.env, OPTRA_E2E_DIST_DIR: ".local/optra-next-e2e" },
+  {
+    ...process.env,
+    DATABASE_URL: undefined,
+    PGLITE_DATA_DIR: ".local/optra-db",
+    APP_BASE_URL: `http://${hostname}:${port}`,
+    OPTRA_MARKET_ROBINHOOD_BASE_URL: marketFixtureBaseUrl,
+    OPTRA_MARKET_CRIUS_BASE_URL: `${marketFixtureBaseUrl}/v1/robinhood/token`,
+    OPTRA_E2E_DIST_DIR: ".local/optra-next-e2e",
+  },
 );
+closeMarketFixtureServer?.();
 process.exitCode = serverExitCode;

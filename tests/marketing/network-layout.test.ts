@@ -12,8 +12,10 @@ describe("agent network layout", () => {
     expect([count("stage"), count("hook") + count("risk"), count("risk"), count("locked"), count("decision"), count("tape")]).toEqual([5, 15, 5, 5, 1, 1]);
   });
 
-  it("grows outward: stages appear before hooks, hooks before the decision, and each child blooms after its branch starts", () => {
-    expect(layout.nodes.filter((node) => node.kind === "stage").map((node) => node.phase).sort()).toEqual([1, 1, 1, 2, 2]);
+  it("grows through six distinct states: stages, hooks, Breaker, decision, and Tape", () => {
+    expect(layout.nodes.filter((node) => node.kind === "stage").map((node) => node.phase).sort()).toEqual([1, 1, 1, 1, 1]);
+    expect(layout.nodes.filter((node) => node.kind === "hook" || node.kind === "locked").map((node) => node.phase).every((phase) => phase === 2)).toBe(true);
+    expect(layout.nodes.filter((node) => node.kind === "risk").map((node) => node.phase).every((phase) => phase === 3)).toBe(true);
     for (const edge of layout.edges.filter((row) => row.kind === "branch" || row.kind === "hook" || row.kind === "lock")) {
       const parent = edge.from === "root" ? layout.nodes[0]! : byId.get(edge.from)!;
       const child = byId.get(edge.to)!;
@@ -22,7 +24,8 @@ describe("agent network layout", () => {
       expect(child.delay, `${child.id} should bloom after its branch starts`).toBeGreaterThanOrEqual(edge.delay + 600);
     }
     expect(byId.get("decision")!.phase).toBe(4);
-    expect(layout.ring.phase).toBe(2);
+    expect(byId.get("tape")!.phase).toBe(5);
+    expect(layout.ring.phase).toBe(3);
   });
 
   it("keeps every node inside the canvas and never lets two nodes overlap", () => {
@@ -42,7 +45,7 @@ describe("agent network layout", () => {
   });
 
   it("zooms out as the network grows", () => {
-    const scales = [0, 1, 2, 3, 4].map((phase) => layout.camera[phase as 0 | 1 | 2 | 3 | 4].s);
+    const scales = [0, 1, 2, 3, 4, 5].map((phase) => layout.camera[phase as 0 | 1 | 2 | 3 | 4 | 5].s);
     expect(scales).toEqual([...scales].sort((a, b) => b - a));
     expect(scales[0]).toBeGreaterThan(scales[4]! * 1.4);
   });
