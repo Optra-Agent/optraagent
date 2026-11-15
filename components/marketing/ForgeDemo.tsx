@@ -2,15 +2,14 @@
 
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
-import { ArrowUpRight, Check, ChevronDown, Lock, Pause, Play, RotateCcw, TriangleAlert } from "lucide-react";
+import { ArrowUpRight, ChevronDown, Lock, Pause, Play, RotateCcw, TriangleAlert } from "lucide-react";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { PayoffMark } from "../app/agents/TemplateCard";
 import { Chip } from "../app/ui";
 import { PinnedStory } from "./PinnedStory";
 import type { ForgeDemoData } from "./section-data";
-import { IntelligenceCore } from "./IntelligenceCore";
-import type { IntelligenceCoreModel } from "./intelligence-core-model";
+import { ForgeWorkflowPreview } from "./ForgeWorkflowPreview";
 
 /* The Forge strategy studio: choose an agent, configure rules, validate, backtest.
    Only the 15 rules that run today are shown by default; the 21 locked rules sit behind one disclosure. The strategy
@@ -18,7 +17,7 @@ import type { IntelligenceCoreModel } from "./intelligence-core-model";
    real validator's message. Nothing is computed locally: messages and the hash were produced by the real validator on
    the server and are looked up by rule. The workflow rail uses the same classes as the real /forge screen. */
 
-export function ForgeDemo({ data, intelligenceCore }: { data: ForgeDemoData; intelligenceCore: IntelligenceCoreModel }) {
+export function ForgeDemo({ data }: { data: ForgeDemoData }) {
   const [on, setOn] = useState<Set<string>>(() => new Set(data.required));
   const [note, setNote] = useState<{ title: string; text: string } | null>(null);
   const [agent, setAgent] = useState("protective_put");
@@ -31,17 +30,19 @@ export function ForgeDemo({ data, intelligenceCore }: { data: ForgeDemoData; int
   const [inView, setInView] = useState(false);
   const [saveData, setSaveData] = useState(false);
   const started = useRef(false);
-  const manual = useRef(false);
   const stageCount = data.stages.length;
   const demoPhase = tick === null ? "settled" : tick < 2 ? "agent" : tick < 2 + stageCount ? "rules" : tick < 4 + stageCount ? "validate" : "valid";
   const lit = tick === null ? stageCount : demoPhase === "agent" ? 0 : demoPhase === "rules" ? tick - 1 : stageCount;
   const END = 7 + stageCount;
+  const stepTicks = [1, 1 + stageCount, 2 + stageCount, 4 + stageCount, null];
+  const stageForTick = (value: number) => value < 2 ? 0 : value < 2 + stageCount ? 1 : value < 4 + stageCount ? 2 : value < 5 + stageCount ? 3 : 4;
+  const activeStage = playing && tick !== null ? stageForTick(tick) : story;
 
   useEffect(() => {
     if (!playing || !inView || tick === null) return;
     const timer = window.setTimeout(() => {
-      if (tick >= END) { setTick(null); setPlaying(false); } else setTick(tick + 1);
-    }, tick === 0 ? 500 : 620);
+      if (tick >= END) { setStory(4); setTick(null); setPlaying(false); } else setTick(tick + 1);
+    }, tick === 0 ? 560 : 760);
     return () => window.clearTimeout(timer);
   }, [playing, inView, tick, END]);
 
@@ -72,33 +73,39 @@ export function ForgeDemo({ data, intelligenceCore }: { data: ForgeDemoData; int
     return () => observer.disconnect();
   }, [data.required]);
 
-  // Scrolling (or clicking a rail step) takes over from the timer and shows that step of the demo. Nothing real runs.
-  const stepTicks = [1, 1 + stageCount, 2 + stageCount, 5 + stageCount, null];
-  const onStory = (index: number) => {
+  // A scroll or direct selection takes over immediately; autoplay never restores edited rules.
+  const onStory = (index: number, source: "scroll" | "go") => {
     started.current = true;
     setStory(index);
-    // Once the visitor has edited the rules, scrolling no longer replays the demo over their edit.
-    if (manual.current) return;
+    if (source === "go") return;
     setPlaying(false);
     setNote(null);
-    // The rules the visitor chose are kept: scrolling changes the phase, never an edit they made.
     setTick(stepTicks[index] ?? null);
   };
-  const stopAutoplay = () => { started.current = true; manual.current = true; setPlaying(false); setTick(null); };
-  const markRulesEdited = () => { stopAutoplay(); manual.current = true; };
-  const replay = () => { started.current = true; manual.current = false; setOn(new Set(data.required)); setNote(null); setTick(0); setPlaying(true); };
+  const stopAutoplay = () => { started.current = true; setStory(activeStage); setPlaying(false); setTick(null); };
+  const markRulesEdited = () => { stopAutoplay(); };
+  const replay = () => { started.current = true; setStory(0); setOn(new Set(data.required)); setNote(null); setTick(0); setPlaying(true); };
+  const selectStory = (index: number) => {
+    started.current = true;
+    setPlaying(false);
+    setStory(index);
+    setNote(null);
+    setTick(stepTicks[index] ?? null);
+    coreGoRef.current?.(index);
+  };
 
   const issues = [...new Set(data.required.filter((id) => !on.has(id)).flatMap((id) => data.issuesIfRemoved[id] ?? []))];
   const valid = issues.length === 0;
-  const steps = [
-    { label: "Choose agent", done: demoPhase !== "agent" || (tick ?? 0) >= 1 },
-    { label: "Configure rules", done: on.size > 0 && (demoPhase === "settled" || demoPhase === "validate" || demoPhase === "valid") },
-    { label: "Validate strategy", done: valid && (demoPhase === "settled" || demoPhase === "valid") },
-    { label: "Backtest in Lab", done: false },
-  ];
-  const current = steps.findIndex((step) => !step.done);
   const lockedCount = data.stages.reduce((total, stage) => total + stage.hooks.filter((hook) => !hook.live).length, 0);
   const inProgress = playing && inView;
+  const togglePlayback = () => {
+    if (playing) {
+      started.current = true;
+      setStory(activeStage);
+      setPlaying(false);
+    } else if (tick === null) replay();
+    else { started.current = true; setPlaying(true); }
+  };
   const coreGoRef = useRef<((index: number) => void) | null>(null);
 
   const toggle = (id: string) => {
@@ -114,22 +121,11 @@ export function ForgeDemo({ data, intelligenceCore }: { data: ForgeDemoData; int
 
   return (
     <div className="fs" ref={rootRef} data-demo={demoPhase} data-live={inView ? "1" : "0"} data-save-data={saveData ? "1" : "0"}>
-      <ol className="fd-rail" aria-label="Forge workflow">
-        {steps.map((step, index) => {
-          const state = step.done ? "done" : index === current ? "current" : "next";
-          return (
-              <li key={step.label} className={`journey-step journey-${state}`} aria-current={state === "current" ? "step" : undefined}>
-              <button type="button" className="journey-static fs-rail-btn" onClick={() => coreGoRef.current?.([0, 1, 3, 4][index] ?? 4)}><span className="journey-index">{step.done ? <Check aria-hidden /> : index + 1}</span><span className="journey-label">{step.label}</span></button>
-            </li>
-          );
-        })}
-      </ol>
-
       <div className="fs-demo-bar">
         <Chip tone="ember">{inProgress ? "Demonstration running" : "Demonstration"}</Chip>
         <span className="fs-demo-text">A short UI demo of the supported recipe. It runs no backtest and no paper tick.</span>
         <div className="fs-demo-controls" role="group" aria-label="Demonstration controls">
-          <button type="button" className={buttonVariants({ variant: "outline", size: "sm" })} onClick={() => { if (playing) setPlaying(false); else if (tick === null) replay(); else setPlaying(true); }} aria-pressed={inProgress}>{inProgress ? <Pause aria-hidden /> : <Play aria-hidden />}{inProgress ? "Pause" : tick === null ? "Play" : "Resume"}</button>
+          <button type="button" className={buttonVariants({ variant: "outline", size: "sm" })} onClick={togglePlayback} aria-pressed={inProgress}>{inProgress ? <Pause aria-hidden /> : <Play aria-hidden />}{inProgress ? "Pause" : tick === null ? "Play" : "Resume"}</button>
           <button type="button" className={buttonVariants({ variant: "ghost", size: "sm" })} onClick={replay}><RotateCcw aria-hidden />Replay</button>
         </div>
       </div>
@@ -148,7 +144,7 @@ export function ForgeDemo({ data, intelligenceCore }: { data: ForgeDemoData; int
         </div>
 
         <PinnedStory id="forge-core" count={5} step={story} onStep={onStory} variant="stack" beat="32vh" className="fs-story" goRef={coreGoRef}>
-          {({ go, progressRef }) => <IntelligenceCore model={intelligenceCore} progressRef={progressRef} activeState={story} onSelectState={go} />}
+          {() => <ForgeWorkflowPreview data={data} agent={agent} selected={on} valid={valid} issues={issues} activeStage={activeStage} autoPlaying={inProgress} onSelectStage={selectStory} onToggleRule={toggle} />}
         </PinnedStory>
 
         <div className="fs-grid">
@@ -222,7 +218,7 @@ export function ForgeDemo({ data, intelligenceCore }: { data: ForgeDemoData; int
             <div className="fs-next" data-point={demoPhase === "valid" ? "1" : "0"}>
               <Link className={cn(buttonVariants({ size: "sm" }), !valid && "fd-disabled")} href="/lab" aria-disabled={!valid}>Backtest in Lab<ArrowUpRight aria-hidden /></Link>
               <Link className={buttonVariants({ variant: "outline", size: "sm" })} href="/forge">Open Forge</Link>
-              <button type="button" className={buttonVariants({ variant: "ghost", size: "sm" })} onClick={() => { stopAutoplay(); manual.current = false; setOn(new Set(data.required)); setNote(null); }} disabled={valid}>Restore recipe</button>
+              <button type="button" className={buttonVariants({ variant: "ghost", size: "sm" })} onClick={() => { stopAutoplay(); setOn(new Set(data.required)); setNote(null); }} disabled={valid}>Restore recipe</button>
             </div>
             <details className="fs-tech" onToggle={stopAutoplay}>
               <summary>Technical details</summary>
