@@ -7,7 +7,7 @@ async function story(page: Page, section: string, fraction: number) {
     const track = document.querySelector(`${sel} .ps`) as HTMLElement;
     const pin = track.querySelector(".ps-pin") as HTMLElement;
     const top = track.getBoundingClientRect().top + window.scrollY;
-    window.scrollTo(0, top - 104 + (track.offsetHeight - pin.offsetHeight) * (f as number));
+    window.scrollTo({ top: top - 104 + (track.offsetHeight - pin.offsetHeight) * (f as number), behavior: "instant" });
   }, [section, fraction] as [string, number]);
   await page.waitForTimeout(450);
   return page.evaluate((sel) => ({ step: Number((document.querySelector(`${sel} .ps`) as HTMLElement).dataset.step), pin: Math.round((document.querySelector(`${sel} .ps-pin`) as HTMLElement).getBoundingClientRect().top) }), section);
@@ -128,7 +128,8 @@ test.describe("Optra Agent Network (desktop)", () => {
 
   test("the decision flow is labeled illustrative and ends in a decision", async ({ page }) => {
     await page.goto("/");
-    await page.evaluate(() => document.querySelector("#agents .pn")!.scrollIntoView({ block: "center", behavior: "instant" }));
+    await net(page).scrollIntoViewIfNeeded();
+    await expect(net(page)).toBeInViewport({ ratio: 0.12 });
     await expect(net(page)).toHaveAttribute("data-playing", "1");
     await state(page, 6).click();
     await expect(net(page)).toHaveAttribute("data-phase", "5");
@@ -152,7 +153,8 @@ test.describe("Optra Agent Network (desktop)", () => {
   test("the network grows by itself once, Pause stops it, Back to start returns to one agent, Explore agent plays it again", async ({ page }) => {
     await page.goto("/");
     const controls = net(page).locator(".pn-head .pn-controls");
-    await page.evaluate(() => document.querySelector("#agents .pn")!.scrollIntoView({ block: "start" }));
+    await net(page).scrollIntoViewIfNeeded();
+    await expect(net(page)).toBeInViewport({ ratio: 0.12 });
     // Scrolling the network into view starts one automatic growth.
     await expect(net(page)).toHaveAttribute("data-playing", "1");
     await expect.poll(async () => Number(await net(page).getAttribute("data-phase")), { timeout: 10_000 }).toBeGreaterThanOrEqual(2);
@@ -251,7 +253,8 @@ test("with reduced motion the complete network is shown without growth, and noth
 
 test("network autoplay pauses offscreen and resumes when the story returns", async ({ page }) => {
   await page.goto("/");
-  await page.evaluate(() => document.querySelector("#agents .pn")!.scrollIntoView({ block: "start", behavior: "instant" }));
+  await net(page).scrollIntoViewIfNeeded();
+  await expect(net(page)).toBeInViewport({ ratio: 0.12 });
   await expect(net(page)).toHaveAttribute("data-live", "1");
   await expect(net(page)).toHaveAttribute("data-playing", "1");
   await expect.poll(async () => Number(await net(page).getAttribute("data-phase"))).toBeGreaterThan(0);

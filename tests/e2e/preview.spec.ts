@@ -46,7 +46,9 @@ test("the hero preview is an interactive, read-only miniature of the real app", 
   await navigation.getByRole("button", { name: "Tape", exact: true }).click();
   await expect(shell.getByRole("link", { name: "Open app", exact: true })).toHaveAttribute("href", "/tape");
   await expect(shell.getByText("Illustrative only", { exact: true })).toBeVisible();
-  await expect(shell.getByText("An example of the shape, not a recorded trade.", { exact: false })).toBeVisible();
+  const tapeExample = shell.locator(".preview-page .pv-note").first();
+  await expect(tapeExample).toBeVisible();
+  await expect(tapeExample).toContainText("An example of the shape, not a recorded trade.");
 
   // The journey rail never claims progress.
   await expect(shell.locator(".journey-done")).toHaveCount(0);

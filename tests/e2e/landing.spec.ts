@@ -126,23 +126,21 @@ test("scroll-driven reveals settle to full opacity, and revisiting a section rep
 
   const headOpacity = (id: string) => page.evaluate((target) => parseFloat(getComputedStyle(document.querySelector(`#${target} .section-head`)!).opacity), id);
   const goTo = async (id: string) => {
-    await page.evaluate((target) => { const el = document.getElementById(target)!; window.scrollTo(0, el.getBoundingClientRect().top + window.scrollY - 70); }, id);
-    await page.waitForTimeout(350);
+    await page.evaluate((target) => { const el = document.getElementById(target)!; window.scrollTo({ top: el.getBoundingClientRect().top + window.scrollY - 70, behavior: "instant" }); }, id);
   };
 
   for (const id of sectionIds) {
     await goTo(id);
-    expect(await headOpacity(id), `${id} on the way down`).toBeGreaterThanOrEqual(0.95);
+    await expect.poll(() => headOpacity(id), { message: `${id} on the way down` }).toBeGreaterThanOrEqual(0.95);
   }
   await goTo("agents");
-  expect(await headOpacity("agents"), "agents on the way back up").toBeGreaterThanOrEqual(0.95);
+  await expect.poll(() => headOpacity("agents"), { message: "agents on the way back up" }).toBeGreaterThanOrEqual(0.95);
   const cards = await page.locator("#verify .ev-group:nth-of-type(1) ul > *").count();
   expect(cards).toBe(4);
   for (let index = 0; index < cards; index += 1) {
-    await page.evaluate((i) => document.querySelectorAll("#verify .ev-group:nth-of-type(1) ul > *")[i].scrollIntoView({ block: "center" }), index);
-    await page.waitForTimeout(300);
-    const opacity = await page.evaluate((i) => parseFloat(getComputedStyle(document.querySelectorAll("#verify .ev-group:nth-of-type(1) ul > *")[i]).opacity), index);
-    expect(opacity, `verify claim ${index} once in view`).toBeGreaterThanOrEqual(0.95);
+    const claim = page.locator("#verify .ev-group:nth-of-type(1) ul > *").nth(index);
+    await claim.scrollIntoViewIfNeeded();
+    await expect.poll(() => claim.evaluate((element) => parseFloat(getComputedStyle(element).opacity)), { message: `verify claim ${index} once in view` }).toBeGreaterThanOrEqual(0.95);
   }
 });
 
