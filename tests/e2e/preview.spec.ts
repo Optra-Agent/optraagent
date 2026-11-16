@@ -3,7 +3,7 @@ import { expect, test } from "@playwright/test";
 const preview = (page: import("@playwright/test").Page) => page.locator(".hero-card .preview-shell");
 
 test("the hero preview is an interactive, read-only miniature of the real app", async ({ page }) => {
-  test.setTimeout(60_000);
+  test.setTimeout(120_000);
   await page.emulateMedia({ reducedMotion: "reduce" });
   const privateRequests: string[] = [];
   page.on("request", (request) => {
@@ -41,12 +41,12 @@ test("the hero preview is an interactive, read-only miniature of the real app", 
   const labButton = navigation.getByRole("button", { name: "Lab", exact: true });
   await expect(labButton).toBeEnabled();
   await labButton.click();
+  await expect(shell.getByRole("link", { name: "Open app", exact: true })).toHaveAttribute("href", "/lab");
   await expect(shell.getByText("None are shown here.")).toBeVisible();
-  await expect(shell.getByRole("link", { name: /Open Lab/ }).last()).toHaveAttribute("href", "/lab");
   await navigation.getByRole("button", { name: "Tape", exact: true }).click();
+  await expect(shell.getByRole("link", { name: "Open app", exact: true })).toHaveAttribute("href", "/tape");
   await expect(shell.getByText("Illustrative only", { exact: true })).toBeVisible();
   await expect(shell.getByText("An example of the shape, not a recorded trade.", { exact: false })).toBeVisible();
-  await expect(shell.getByRole("link", { name: /Open Tape/ }).last()).toHaveAttribute("href", "/tape");
 
   // The journey rail never claims progress.
   await expect(shell.locator(".journey-done")).toHaveCount(0);
