@@ -33,7 +33,10 @@ test("the hero preview is an interactive, read-only miniature of the real app", 
   await expect(shell.getByRole("link", { name: /Open Forge/ }).last()).toHaveAttribute("href", "/forge");
 
   // Lab and Tape: labeled, no numbers, linked to the real routes.
-  await shell.locator(".sidebar").getByRole("button", { name: "Lab" }).click();
+  const labButton = shell.locator(".sidebar").getByRole("button", { name: "Lab" });
+  await labButton.evaluate((element) => element.scrollIntoView({ block: "center", behavior: "instant" }));
+  await expect(labButton).toBeVisible();
+  await labButton.click();
   await expect(shell.getByText("None are shown here.")).toBeVisible();
   await expect(shell.getByRole("link", { name: /Open Lab/ }).last()).toHaveAttribute("href", "/lab");
   await shell.locator(".sidebar").getByRole("button", { name: "Tape" }).click();

@@ -27,9 +27,16 @@ test("test-signed session completes the paper journey through browser routes and
   });
   expect(verifyResponse.status()).toBe(200);
 
+  const marketResponse = await page.request.get(new URL("/api/markets", origin).toString());
+  const marketBody = await marketResponse.text();
+  expect(marketResponse.status(), `Market registry response: ${marketBody}`).toBe(200);
+  const marketRegistry = JSON.parse(marketBody) as { markets: Array<{ symbol: string }> };
+  expect(marketRegistry.markets.map((market) => market.symbol), "The isolated AAPL market fixture must be visible to the app.").toContain("AAPL");
+
   const coverageResponse = await page.request.get(new URL("/api/backtests/coverage?symbol=AAPL", origin).toString());
-  expect(coverageResponse.status()).toBe(200);
-  const coverage = await coverageResponse.json() as { ready: boolean; reason: string };
+  const coverageBody = await coverageResponse.text();
+  expect(coverageResponse.status(), `Backtest coverage response: ${coverageBody}`).toBe(200);
+  const coverage = JSON.parse(coverageBody) as { ready: boolean; reason: string };
   expect(coverage.ready, `E2E market fixture is not backtest-ready: ${coverage.reason}`).toBe(true);
 
   await page.goto("/agents");

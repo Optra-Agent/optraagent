@@ -134,7 +134,7 @@ test.describe("Optra Agent Network (desktop)", () => {
     const decision = card(page).getByRole("button", { name: /Paper decision The verdicts become one action/ });
     await expect(decision).toBeEnabled({ timeout: 15_000 });
     await decision.click();
-    await expect(card(page).getByText("Entry blocked by calmo.")).toBeVisible({ timeout: 15_000 });
+    await expect(card(page).getByText("Entry blocked by calmo.", { exact: true }).first()).toBeVisible({ timeout: 15_000 });
     await card(page).getByRole("button", { name: "Entry opens" }).click();
     await expect(card(page).getByText("Opened modeled one-share Protective Put units for paper execution.")).toBeVisible({ timeout: 15_000 });
     await expect(svg(page).getByText("ILLUSTRATIVE ONLY · NO RECORDED TRADE")).toBeAttached();
