@@ -237,7 +237,7 @@ test("network autoplay pauses offscreen and resumes when the story returns", asy
   await page.evaluate(() => document.querySelector("#agents .pn")!.scrollIntoView({ block: "start", behavior: "instant" }));
   await expect(net(page)).toHaveAttribute("data-live", "1");
   await expect(net(page)).toHaveAttribute("data-playing", "1");
-  await expect(net(page)).toHaveAttribute("data-phase", "0");
+  await expect.poll(async () => Number(await net(page).getAttribute("data-phase"))).toBeGreaterThan(0);
 
   await page.evaluate(() => window.scrollTo({ top: 0, behavior: "instant" }));
   await expect(net(page)).toHaveAttribute("data-live", "0");

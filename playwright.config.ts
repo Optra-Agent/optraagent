@@ -20,7 +20,7 @@ export default defineConfig({
   projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
   webServer: {
     command: "bun scripts/optra-e2e-isolated-server.ts",
-    url: `${baseURL}/agents`,
+    url: `${baseURL}/api/health/ready`,
     reuseExistingServer: false,
     timeout: 180_000,
     env: { OPTRA_E2E_PORT: String(port) },

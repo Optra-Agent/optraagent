@@ -127,8 +127,10 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p /tmp/optra-playwright-failure-context
-          find .local/optra-e2e-results -type f -name error-context.md \
-            -exec cp --parents {} /tmp/optra-playwright-failure-context/ \;
+          while IFS= read -r -d '' context; do
+            test_name="$(basename "$(dirname "$context")")"
+            cp "$context" "/tmp/optra-playwright-failure-context/${test_name}.md"
+          done < <(find .local/optra-e2e-results -type f -name error-context.md -print0)
 
       - name: Upload browser failure snapshots
         if: ${{ always() && steps.browser_regression.outcome == 'failure' }}
