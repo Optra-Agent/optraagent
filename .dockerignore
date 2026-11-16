@@ -1,0 +1,13 @@
+.git
+.local
+.next
+.turbo
+.vercel
+node_modules
+contracts/
+coverage
+playwright-report
+test-results
+.env*
+*.log
+.DS_Store

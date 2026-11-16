@@ -82,6 +82,7 @@ if (installExitCode !== 0) {
 }
 
 const fixture = JSON.parse(await readFile(path.join(snapshotRoot, "tests/fixtures/aapl-crius-hourly-capture.json"), "utf8")) as {
+  capturedAt: string;
   asset: unknown;
   quote: unknown;
   candles: unknown;
@@ -125,6 +126,7 @@ const serverExitCode = await runBun(
     APP_BASE_URL: `http://${hostname}:${port}`,
     OPTRA_MARKET_ROBINHOOD_BASE_URL: marketFixtureBaseUrl,
     OPTRA_MARKET_CRIUS_BASE_URL: `${marketFixtureBaseUrl}/v1/robinhood/token`,
+    OPTRA_E2E_MARKET_AS_OF: fixture.capturedAt,
     OPTRA_E2E_DIST_DIR: ".local/optra-next-e2e",
   },
 );

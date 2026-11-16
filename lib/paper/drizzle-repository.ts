@@ -215,6 +215,13 @@ export class DrizzlePaperRepository {
     return rows.map(toAgent);
   }
 
+  async listRunningAgents(): Promise<StoredPaperAgent[]> {
+    const rows = await this.db.select().from(agents)
+      .where(eq(agents.status, "running"))
+      .orderBy(desc(agents.updatedAt));
+    return rows.map(toAgent);
+  }
+
   async transitionAgent(
     ownerId: string,
     agentId: string,
