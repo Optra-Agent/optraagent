@@ -28,6 +28,7 @@ test("the hero preview is an interactive, read-only miniature of the real app", 
 
   // Forge: toggling hooks changes the count but never claims a validation result.
   await navigation.getByRole("button", { name: "Forge", exact: true }).click();
+  await expect(shell.getByRole("link", { name: "Open app", exact: true })).toHaveAttribute("href", "/forge");
   await expect(shell.getByText("15 of 15 selected")).toBeVisible();
   const calmo = shell.getByRole("button", { name: "Calmo", exact: true });
   await expect(calmo).toHaveAttribute("aria-pressed", "true");
@@ -35,7 +36,6 @@ test("the hero preview is an interactive, read-only miniature of the real app", 
   await expect(calmo).toHaveAttribute("aria-pressed", "false");
   await expect(shell.getByText("14 of 15 selected")).toBeVisible();
   await expect(shell.getByText("Not run in preview")).toBeVisible();
-  await expect(shell.getByRole("link", { name: /Open Forge/ }).last()).toHaveAttribute("href", "/forge");
 
   // Lab and Tape: labeled, no numbers, linked to the real routes.
   const labButton = navigation.getByRole("button", { name: "Lab", exact: true });
