@@ -131,6 +131,9 @@ test.describe("Optra Agent Network (desktop)", () => {
     await state(page, 6).click();
     await net(page).getByRole("button", { name: "View decision flow" }).first().click();
     await expect(card(page).getByText("Illustrative only", { exact: true }).first()).toBeVisible();
+    const decision = card(page).getByRole("button", { name: /Paper decision The verdicts become one action/ });
+    await expect(decision).toBeEnabled({ timeout: 15_000 });
+    await decision.click();
     await expect(card(page).getByText("Entry blocked by calmo.")).toBeVisible({ timeout: 15_000 });
     await card(page).getByRole("button", { name: "Entry opens" }).click();
     await expect(card(page).getByText("Opened modeled one-share Protective Put units for paper execution.")).toBeVisible({ timeout: 15_000 });
@@ -157,15 +160,20 @@ test.describe("Optra Agent Network (desktop)", () => {
   });
 
   test("a Preview agent never grows and never appears paper ready", async ({ page }) => {
+    await page.emulateMedia({ reducedMotion: "reduce" });
     await page.goto("/");
-    await net(page).locator(".pn-agents").getByRole("button", { name: /Covered Call/ }).click();
+    const previewAgent = net(page).locator(".pn-agents").getByRole("button", { name: /Covered Call/ });
+    await previewAgent.evaluate((element) => element.scrollIntoView({ block: "center", behavior: "instant" }));
+    await expect(previewAgent).toBeVisible();
+    await previewAgent.click();
     await expect(card(page).getByRole("heading", { name: "Covered Call" })).toBeVisible();
     await expect(card(page).getByText("Not yet available", { exact: true })).toBeVisible();
     await expect(card(page).getByText("Paper ready")).toHaveCount(0);
     await expect(svg(page).getByText("PREVIEW", { exact: true })).toBeAttached();
     await expect(net(page).locator(".pn-head .pn-controls")).toHaveCount(0);
     await expect(shown(page, "stage")).toHaveCount(0);
-    await net(page).locator(".pn-agents").getByRole("button", { name: /Protective Put/ }).click();
+    const paperAgent = net(page).locator(".pn-agents").getByRole("button", { name: /Protective Put/ });
+    await paperAgent.click();
     await expect(card(page)).toHaveCount(0);
     await expect(svg(page).getByText("PAPER AGENT", { exact: true })).toBeAttached();
   });

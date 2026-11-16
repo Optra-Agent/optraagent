@@ -139,7 +139,6 @@ test("scroll-driven reveals settle to full opacity, and revisiting a section rep
   const cards = await page.locator("#verify .ev-group:nth-of-type(1) ul > *").count();
   expect(cards).toBe(4);
   for (let index = 0; index < cards; index += 1) {
-    await page.locator("#verify .ev-group:nth-of-type(1) ul > *").nth(index).scrollIntoViewIfNeeded();
     await page.evaluate((i) => document.querySelectorAll("#verify .ev-group:nth-of-type(1) ul > *")[i].scrollIntoView({ block: "center" }), index);
     await page.waitForTimeout(300);
     const opacity = await page.evaluate((i) => parseFloat(getComputedStyle(document.querySelectorAll("#verify .ev-group:nth-of-type(1) ul > *")[i]).opacity), index);

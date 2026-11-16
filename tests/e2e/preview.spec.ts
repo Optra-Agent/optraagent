@@ -3,6 +3,7 @@ import { expect, test } from "@playwright/test";
 const preview = (page: import("@playwright/test").Page) => page.locator(".hero-card .preview-shell");
 
 test("the hero preview is an interactive, read-only miniature of the real app", async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: "reduce" });
   const privateRequests: string[] = [];
   page.on("request", (request) => {
     const path = new URL(request.url()).pathname;
@@ -12,6 +13,8 @@ test("the hero preview is an interactive, read-only miniature of the real app", 
   await page.goto("/");
 
   const shell = preview(page);
+  await shell.evaluate((element) => element.scrollIntoView({ block: "center", behavior: "instant" }));
+  await expect(shell).toBeVisible();
   await expect(shell.getByRole("link", { name: /Open app/ })).toHaveAttribute("href", "/agents");
   await expect(shell.getByRole("banner").or(shell.locator(".topbar")).getByText("Agents", { exact: true })).toBeVisible();
 

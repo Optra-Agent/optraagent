@@ -27,6 +27,11 @@ test("test-signed session completes the paper journey through browser routes and
   });
   expect(verifyResponse.status()).toBe(200);
 
+  const coverageResponse = await page.request.get(new URL("/api/backtests/coverage?symbol=AAPL", origin).toString());
+  expect(coverageResponse.status()).toBe(200);
+  const coverage = await coverageResponse.json() as { ready: boolean; reason: string };
+  expect(coverage.ready, `E2E market fixture is not backtest-ready: ${coverage.reason}`).toBe(true);
+
   await page.goto("/agents");
   await expect(page.getByText("Signed in ·", { exact: false })).toBeVisible();
   await expect(page.getByRole("heading", { name: "No saved agents", exact: true })).toBeVisible();

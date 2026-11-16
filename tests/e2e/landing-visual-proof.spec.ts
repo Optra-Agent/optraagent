@@ -9,7 +9,12 @@ const shown = (page: Page, kind: string) => svg(page).locator(`.pn-n[data-kind="
 
 test("captures the real six-state autoplay as frames and a browser video", async ({ page }, testInfo) => {
   await page.goto("/");
-  await page.evaluate(() => document.querySelector("#agents .pn")?.scrollIntoView({ block: "start", behavior: "instant" }));
+  await page.evaluate(() => {
+    const network = document.querySelector<HTMLElement>("#agents .pn");
+    if (!network) throw new Error("The Protective Put network is missing from the landing page.");
+    const top = network.getBoundingClientRect().top + window.scrollY;
+    window.scrollTo({ top: Math.max(0, top - 96), behavior: "instant" });
+  });
   await expect(net(page)).toHaveAttribute("data-live", "1");
   await expect(net(page)).toHaveAttribute("data-phase", "0", { timeout: 3000 });
   await page.screenshot({ path: testInfo.outputPath("agent-state-0-awakens.png") });
