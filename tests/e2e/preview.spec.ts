@@ -17,6 +17,7 @@ test("the hero preview is an interactive, read-only miniature of the real app", 
   await expect(shell).toBeVisible();
   await expect(shell.getByRole("link", { name: /Open app/ })).toHaveAttribute("href", "/agents");
   await expect(shell.getByRole("banner").or(shell.locator(".topbar")).getByText("Agents", { exact: true })).toBeVisible();
+  const navigation = shell.getByRole("navigation", { name: "Main navigation" });
 
   // Agents: picking a Preview agent explains why it is unavailable and never shows a create action.
   await shell.getByRole("button", { name: /Covered Call/ }).click();
@@ -25,7 +26,7 @@ test("the hero preview is an interactive, read-only miniature of the real app", 
   await expect(shell.getByRole("link", { name: /Configure in the app/ })).toHaveAttribute("href", "/agents#configure");
 
   // Forge: toggling hooks changes the count but never claims a validation result.
-  await shell.locator(".sidebar").getByRole("button", { name: "Forge" }).click();
+  await navigation.getByRole("button", { name: "Forge", exact: true }).click();
   await expect(shell.getByText("15 of 15 selected")).toBeVisible();
   await shell.getByRole("button", { name: "Calmo" }).click();
   await expect(shell.getByText("14 of 15 selected")).toBeVisible();
@@ -33,13 +34,12 @@ test("the hero preview is an interactive, read-only miniature of the real app", 
   await expect(shell.getByRole("link", { name: /Open Forge/ }).last()).toHaveAttribute("href", "/forge");
 
   // Lab and Tape: labeled, no numbers, linked to the real routes.
-  const labButton = shell.locator(".sidebar").getByRole("button", { name: "Lab" });
-  await labButton.evaluate((element) => element.scrollIntoView({ block: "center", behavior: "instant" }));
-  await expect(labButton).toBeVisible();
+  const labButton = navigation.getByRole("button", { name: "Lab", exact: true });
+  await expect(labButton).toBeEnabled();
   await labButton.click();
   await expect(shell.getByText("None are shown here.")).toBeVisible();
   await expect(shell.getByRole("link", { name: /Open Lab/ }).last()).toHaveAttribute("href", "/lab");
-  await shell.locator(".sidebar").getByRole("button", { name: "Tape" }).click();
+  await navigation.getByRole("button", { name: "Tape", exact: true }).click();
   await expect(shell.getByText("Illustrative only", { exact: true })).toBeVisible();
   await expect(shell.getByText("An example of the shape, not a recorded trade.", { exact: false })).toBeVisible();
   await expect(shell.getByRole("link", { name: /Open Tape/ }).last()).toHaveAttribute("href", "/tape");

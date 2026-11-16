@@ -128,15 +128,24 @@ test.describe("Optra Agent Network (desktop)", () => {
 
   test("the decision flow is labeled illustrative and ends in a decision", async ({ page }) => {
     await page.goto("/");
+    await page.evaluate(() => document.querySelector("#agents .pn")!.scrollIntoView({ block: "center", behavior: "instant" }));
+    await expect(net(page)).toHaveAttribute("data-playing", "1");
     await state(page, 6).click();
+    await expect(net(page)).toHaveAttribute("data-phase", "5");
+    await expect(net(page)).toHaveAttribute("data-playing", "0");
+    await page.waitForTimeout(2200);
+    await expect(net(page)).toHaveAttribute("data-phase", "5");
+    // Let the decision flow reach its decision stage, then use reduced motion when
+    // switching scenarios so the asserted explanation does not depend on autoplay.
     await net(page).getByRole("button", { name: "View decision flow" }).first().click();
     await expect(card(page).getByText("Illustrative only", { exact: true }).first()).toBeVisible();
     const decision = card(page).getByRole("button", { name: /Paper decision The verdicts become one action/ });
     await expect(decision).toBeEnabled({ timeout: 15_000 });
     await decision.click();
     await expect(card(page).getByText("Entry blocked by calmo.", { exact: true }).first()).toBeVisible({ timeout: 15_000 });
+    await page.emulateMedia({ reducedMotion: "reduce" });
     await card(page).getByRole("button", { name: "Entry opens" }).click();
-    await expect(card(page).getByText("Opened modeled one-share Protective Put units for paper execution.")).toBeVisible({ timeout: 15_000 });
+    await expect(card(page).locator(".pn-result-text")).toHaveText("Opened modeled one-share Protective Put units for paper execution.", { timeout: 15_000 });
     await expect(svg(page).getByText("ILLUSTRATIVE ONLY · NO RECORDED TRADE")).toBeAttached();
   });
 
@@ -328,6 +337,7 @@ test.describe("section visuals", () => {
   });
 
   test("the Tape replay is pinned, follows scroll, names the blocking hook, and never changes the picked tick by itself", async ({ page }) => {
+    await page.emulateMedia({ reducedMotion: "reduce" });
     await page.goto("/");
     const tape = page.locator("#tape");
     await expect(tape.getByText("Illustrative example", { exact: true })).toBeVisible();
