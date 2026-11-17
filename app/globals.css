@@ -40,11 +40,16 @@
   --text: #f3f4f6;
   --muted: #a1a6b0;
   --dim: #868c97;
-  --azure: #1e8fff;
-  --azure-hover: #4aa8ff;
+  /* The primary accent is the logo's orange. The old blue stays as --blue for data and agent drawings. The names keep "azure" so nothing else had to be renamed. */
+  --azure: #ff5a1f;
+  --azure-hover: #ff7a45;
   --azure-ink: #0b0c0e;
-  --azure-wash: rgb(30 143 255 / 0.12);
-  --azure-line: rgb(30 143 255 / 0.45);
+  --azure-wash: rgb(255 90 31 / 0.13);
+  --azure-line: rgb(255 106 71 / 0.5);
+  --blue: #1e8fff;
+  --blue-hover: #4aa8ff;
+  --blue-wash: rgb(255 90 31 / 0.12);
+  --blue-line: rgb(255 90 31 / 0.45);
   --ember: #ff5a1f;
   --ember-text: #ff6a47;
   --ember-wash: rgb(255 90 31 / 0.1);
@@ -213,7 +218,7 @@ h3 { margin: 0; font-size: 15px; font-weight: 600; line-height: 1.3; }
 .journey-done::before { background: var(--azure-line); }
 .journey-done .journey-index { border-color: var(--azure); background: var(--azure); color: var(--azure-ink); }
 .journey-done .journey-label { color: var(--muted); }
-.journey-current .journey-index { border-color: var(--azure); background: #0c1a2b; color: var(--azure-hover); box-shadow: 0 0 0 4px rgb(30 143 255 / 0.14); }
+.journey-current .journey-index { border-color: var(--azure); background: #22150f; color: var(--azure-hover); box-shadow: 0 0 0 4px rgb(255 90 31 / 0.14); }
 .journey-current .journey-label { color: var(--text); font-weight: 600; }
 .journey-step a:hover .journey-label { color: var(--text); }
 
@@ -231,7 +236,7 @@ h3 { margin: 0; font-size: 15px; font-weight: 600; line-height: 1.3; }
 .template-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
 .template-card { display: flex; flex-direction: column; gap: 12px; padding: 18px; border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--surface); transition: border-color var(--ease-dur, 200ms) var(--ease); }
 .template-card:not(.template-card-featured) { border-style: dashed; background: transparent; }
-.template-card-featured { grid-column: 1 / -1; gap: 16px; padding: 26px; border-color: var(--azure-line); background: radial-gradient(120% 140% at 0% 0%, rgb(30 143 255 / 0.16), transparent 55%), var(--surface); }
+.template-card-featured { grid-column: 1 / -1; gap: 16px; padding: 26px; border-color: var(--azure-line); background: radial-gradient(120% 140% at 0% 0%, rgb(255 90 31 / 0.16), transparent 55%), var(--surface); }
 .template-card-head { display: flex; align-items: center; gap: 14px; }
 .template-card-head > .template-name { flex: 1; min-width: 0; }
 .template-card-head .badge, .template-card-head [data-slot="badge"] { margin-left: auto; }
@@ -245,7 +250,7 @@ h3 { margin: 0; font-size: 15px; font-weight: 600; line-height: 1.3; }
 .payoff-sm { width: 44px; height: 38px; padding: 4px; }
 .payoff-axis { fill: none; stroke: var(--line); stroke-width: 1.5; stroke-dasharray: 2 3; }
 .payoff-line { fill: none; stroke: var(--dim); stroke-width: 3.2; stroke-linecap: round; stroke-linejoin: round; }
-.payoff-mark[data-ready="1"] { border-color: var(--azure-line); background: #0b1624; }
+.payoff-mark[data-ready="1"] { border-color: var(--azure-line); background: #1d130e; }
 .payoff-mark[data-ready="1"] .payoff-line { stroke: var(--azure-hover); }
 .template-summary { margin: 0; max-width: 62ch; color: var(--text); font-size: 15px; line-height: 1.55; }
 .template-facts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin: 0; }
@@ -281,8 +286,8 @@ a.template-cta:hover svg { transform: translateX(3px); }
 .strategy-line b { font-weight: 600; }
 .strategy-sub { margin: 0; color: var(--muted); font-size: 12.5px; line-height: 1.5; }
 .field-hint-error { color: var(--ember-text); }
-.connect-card { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 20px; margin-bottom: 32px; padding: 22px 26px; border: 1px solid var(--line); border-radius: var(--r-lg); background: radial-gradient(90% 160% at 0% 0%, rgb(30 143 255 / 0.12), transparent 60%), var(--surface); }
-.connect-icon { display: grid; place-items: center; width: 48px; height: 48px; border: 1px solid var(--azure-line); border-radius: var(--r); background: #0b1624; color: var(--azure-hover); }
+.connect-card { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 20px; margin-bottom: 32px; padding: 22px 26px; border: 1px solid var(--line); border-radius: var(--r-lg); background: radial-gradient(90% 160% at 0% 0%, rgb(255 90 31 / 0.12), transparent 60%), var(--surface); }
+.connect-icon { display: grid; place-items: center; width: 48px; height: 48px; border: 1px solid var(--azure-line); border-radius: var(--r); background: #1d130e; color: var(--azure-hover); }
 .connect-icon svg { width: 22px; height: 22px; }
 .connect-copy h2 { margin: 0 0 4px; font-size: 22px; }
 .connect-copy p { margin: 0; color: var(--text); }
@@ -381,7 +386,7 @@ a.template-cta:hover svg { transform: translateX(3px); }
 .forge-hook span { display: inline-flex; align-items: center; gap: 8px; }
 .forge-hook strong { font-weight: 500; font-size: 13.5px; }
 .forge-hook:hover { border-color: #4b5058; color: var(--text); }
-.forge-hook:has(input:checked) { border-color: var(--azure); background: #0c1a2b; color: var(--text); }
+.forge-hook:has(input:checked) { border-color: var(--azure); background: #22150f; color: var(--text); }
 .forge-hook:has(input:checked) strong::before { content: ""; display: inline-block; width: 7px; height: 7px; margin-right: 8px; border-radius: 50%; background: var(--azure); }
 .forge-hook:has(input:focus-visible) { outline: 2px solid var(--azure-hover); outline-offset: 2px; }
 .forge-hook-locked { border-style: dashed; background: transparent; color: var(--dim); cursor: not-allowed; }
@@ -588,7 +593,7 @@ a.template-cta:hover svg { transform: translateX(3px); }
 .mk-head { min-height: 38px; background: var(--raised); color: var(--dim); font-size: 12px; }
 .mk-row { width: 100%; min-height: 58px; border-top: 1px solid var(--line-soft); text-align: left; cursor: pointer; transition: background-color var(--m-fast, 160ms) var(--ease); }
 .mk-row:hover { background: rgb(255 255 255 / 0.03); }
-.mk-row[aria-pressed="true"] { background: linear-gradient(90deg, rgb(30 143 255 / 0.16), transparent 80%); box-shadow: inset 2px 0 0 var(--azure); }
+.mk-row[aria-pressed="true"] { background: linear-gradient(90deg, rgb(255 90 31 / 0.16), transparent 80%); box-shadow: inset 2px 0 0 var(--azure); }
 .mk-asset { display: flex; align-items: center; gap: 12px; min-width: 0; }
 .mk-asset-text { display: grid; gap: 1px; min-width: 0; }
 .mk-asset-text b { color: var(--text); font-size: 15px; font-weight: 600; }
@@ -631,16 +636,16 @@ a.template-cta:hover svg { transform: translateX(3px); }
 }
 
 /* ───────── Wallet dialog ───────── */
-.wallet-badge { display: grid; place-items: center; width: 48px; height: 48px; margin-bottom: 4px; border: 1px solid var(--azure-line); border-radius: 14px; background: #0b1624; color: var(--azure-hover); }
+.wallet-badge { display: grid; place-items: center; width: 48px; height: 48px; margin-bottom: 4px; border: 1px solid var(--azure-line); border-radius: 14px; background: #1d130e; color: var(--azure-hover); }
 .wallet-badge svg { width: 22px; height: 22px; }
 .wallet-steps { display: flex; gap: 6px; margin: 4px 0 0; padding: 0; list-style: none; }
 .wallet-steps li { display: flex; flex: 1; align-items: center; gap: 8px; padding: 8px 10px; border: 1px solid var(--line); border-radius: var(--r); color: var(--dim); font-size: 12px; line-height: 1.25; }
 .wallet-steps li span { display: grid; place-items: center; flex: none; width: 20px; height: 20px; border: 1px solid var(--line); border-radius: 50%; font-family: var(--font-data); font-size: 11px; }
 .wallet-steps li span svg { width: 11px; height: 11px; }
-.wallet-steps li[data-on="1"] { border-color: var(--azure); background: #0c1a2b; color: var(--text); }
+.wallet-steps li[data-on="1"] { border-color: var(--azure); background: #22150f; color: var(--text); }
 .wallet-steps li[data-on="1"] span { border-color: var(--azure); background: var(--azure); color: var(--azure-ink); }
 .wallet-option { display: flex; align-items: center; gap: 14px; width: 100%; min-height: 64px; padding: 10px 16px 10px 12px; border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--bg); text-align: left; transition: border-color 160ms var(--ease), background-color 160ms var(--ease); }
-.wallet-option:hover:not(:disabled) { border-color: var(--azure); background: #0c1a2b; }
+.wallet-option:hover:not(:disabled) { border-color: var(--azure); background: #22150f; }
 .wallet-option:disabled { opacity: 0.55; }
 .wallet-option > svg { width: 18px; height: 18px; margin-left: auto; color: var(--dim); }
 .wallet-mark { display: grid; place-items: center; flex: none; width: 40px; height: 40px; }
@@ -725,7 +730,7 @@ a.ag-pill:hover svg { transform: translateX(3px); }
 .mk-head { min-height: 44px; padding-inline: 22px; background: transparent; border-bottom: 1px solid var(--line-soft); font-size: 12px; letter-spacing: 0.04em; text-transform: uppercase; }
 .mk-row { min-height: 64px; padding-inline: 22px; transition: background-color 140ms var(--ease); }
 .mk-row:first-of-type { border-top: 0; }
-.mk-row[aria-pressed="true"] { background: rgb(30 143 255 / 0.08); box-shadow: inset 2px 0 0 var(--azure); }
+.mk-row[aria-pressed="true"] { background: rgb(255 90 31 / 0.08); box-shadow: inset 2px 0 0 var(--azure); }
 .mk-detail { border-radius: 22px; padding: 24px; }
 .mk-quote section, .mk-cover { border-radius: 14px; }
 .mk-skel { display: grid; margin: 0; padding: 0; list-style: none; border: 1px solid var(--line-soft); border-radius: 22px; background: var(--surface); overflow: hidden; }
@@ -842,3 +847,7 @@ a.ag-pill:hover svg { transform: translateX(3px); }
   .topbar-context { overflow: visible; }
   .topbar-live, .topbar-paper { flex: none; }
 }
+
+/* Where blue means data or an agent, not an action: the network graph, the hero cast, the payoff drawings and the phones keep it. */
+.pn, .ens, .fd, .ph-row, .splash-box { --azure: var(--blue); --azure-hover: var(--blue-hover); --azure-wash: var(--blue-wash); --azure-line: var(--blue-line); }
+.fl-legend [data-k="kept"] i { background: var(--blue); }
