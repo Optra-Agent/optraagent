@@ -1,5 +1,6 @@
 "use client";
 
+import { AgentCharacter, CharacterBody, characterColor, type StageCharacterId } from "./characters";
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, KeyboardEvent, ReactNode } from "react";
@@ -22,19 +23,6 @@ import type { LayoutEdge, LayoutNode, Phase } from "./network-layout";
    whether they are visible, so CSS transitions make the network visibly grow. No physics, no animation library. */
 
 type AgentId = GraphAgent["id"];
-
-const PAYOFF: Record<AgentId, string> = {
-  protective_put: "M-24 12 H-6 L24 -14",
-  covered_call: "M-24 14 L2 -10 H24",
-  cash_secured_put: "M-24 10 L-6 -6 H24",
-  earnings_straddle: "M-24 -14 L0 14 L24 -14",
-};
-const SMALL_PAYOFF: Record<AgentId, string> = {
-  protective_put: "M2 22 H12 L36 4",
-  covered_call: "M2 24 L22 6 H36",
-  cash_secured_put: "M2 22 L14 10 H36",
-  earnings_straddle: "M2 4 L19 24 L36 4",
-};
 
 /** Hold time before the next phase while auto-playing, in milliseconds. */
 const PHASE_HOLD: Record<Phase, number> = { 0: 1800, 1: 2600, 2: 3600, 3: 3000, 4: 2200, 5: 1800 };
@@ -60,10 +48,10 @@ const px = (value: number) => `${value}px`;
 /* ───────────── SVG pieces ───────────── */
 
 function Edge({ edge, show, hot, done, dim, pulse }: { edge: LayoutEdge; show: boolean; hot?: boolean; done?: boolean; dim?: boolean; pulse?: number }) {
-  const solid = edge.kind !== "lock";
   return (
-    <g className="pn-edge" data-kind={edge.kind} data-show={show ? "1" : "0"} data-hot={hot ? "1" : "0"} data-done={done ? "1" : "0"} data-dim={dim ? "1" : "0"} style={{ "--d": `${edge.delay}ms` } as CSSProperties} aria-hidden="true">
-      <path className="pn-line" d={edge.d} pathLength={solid ? 1 : undefined} />
+    <g className="pn-edge" data-kind={edge.kind} data-show={show ? "1" : "0"} data-hot={hot ? "1" : "0"} data-done={done ? "1" : "0"} data-dim={dim ? "1" : "0"} style={{ "--d": `${edge.delay}ms`, "--flow": characterColor(edge.stage ?? "") } as CSSProperties} aria-hidden="true">
+      {/* A neat row of dots. When the route is selected the dots run along it, in the colour of the stage they lead to. */}
+      <path className="pn-line" d={edge.d} />
       {pulse !== undefined && show ? <path className="pn-pulse" d={edge.d} pathLength={1} style={{ "--signal-delay": `${pulse}ms` } as CSSProperties} /> : null}
     </g>
   );
@@ -101,14 +89,6 @@ function Node({ node, show, label, pressed, onActivate, state, className, childr
       {...(interactive ? { role: "button", tabIndex: 0, "aria-label": label, "aria-pressed": pressed, onClick: onActivate, onKeyDown: onKey } : {})}
     >
       <g className="pn-in">{children}</g>
-    </g>
-  );
-}
-
-function Glyph({ id, ready }: { id: AgentId; ready: boolean }) {
-  return (
-    <g className="pn-glyph" data-ready={ready ? "1" : "0"} aria-hidden="true">
-      <path d={PAYOFF[id]} />
     </g>
   );
 }
@@ -159,7 +139,7 @@ function Card({ c }: { c: Ctl }) {
       <div className="pn-card" key={`preview-${agent.id}`}>
         <p className="pn-kicker">House Agent</p>
         <h3>{agent.name}</h3>
-        <div className="pn-chips"><Chip>Preview</Chip><Chip>Not yet available</Chip></div>
+        <div className="pn-chips"><Chip>Preview</Chip><Chip>Strategy overview</Chip></div>
         <p className="pn-lead">{agent.summary}</p>
         <p className="pn-note">{agent.reason}</p>
         <p className="pn-hint">No recipe exists for this agent, so there is no network to grow. It cannot be created until its venue and data requirements are verified.</p>
@@ -483,7 +463,7 @@ export function AgentGraph({ data, recorded = null }: GraphProps) {
   const stageData = (name: string | undefined) => [...data.stages, data.breaker].find((row) => row.stage === name);
 
   const statusText = !ready
-    ? `${agent.name}, Preview. Not yet available.`
+    ? `${agent.name}, strategy overview. Paper launch is not enabled.`
     : flowOn
       ? `Decision flow, step ${step + 1} of ${FLOW_STEPS.length}: ${STEP_LABEL[FLOW_STEPS[step] ?? "gate"]}.${step >= FLOW_STEPS.length - 1 ? ` Illustrative result: ${flow?.action}. ${flow?.reason}` : ""}`
       : sel
@@ -542,7 +522,7 @@ export function AgentGraph({ data, recorded = null }: GraphProps) {
           {data.agents.map((row) => (
             <li key={row.id}>
               <button type="button" className="pn-agent" aria-pressed={row.id === agentId} data-ready={row.ready ? "1" : "0"} onClick={() => pickAgent(row.id)}>
-                <span className="pn-agent-mark"><svg viewBox="0 0 38 28" aria-hidden="true"><path d={SMALL_PAYOFF[row.id]} /></svg></span>
+                <span className="pn-agent-mark"><AgentCharacter id={row.id} size={32} /></span>
                 <span className="pn-agent-text"><b>{row.name}</b><small>{row.ready ? "Paper ready" : "Preview"}</small></span>
                 {row.ready ? null : <Lock className="pn-agent-lock" aria-hidden />}
               </button>
@@ -588,7 +568,7 @@ export function AgentGraph({ data, recorded = null }: GraphProps) {
 
             {layout.edges.map((edge) => {
               const stage = edge.stage;
-              const hot = edge.kind !== "flow" && stage !== undefined && selStage === stage;
+              const hot = edge.kind !== "flow" && ((stage !== undefined && selStage === stage) || (sel === "root" && edge.kind === "branch"));
               const flowStep = edge.kind === "flow" ? (edge.to === "decision" ? 6 : 7) : stage !== undefined ? stepOf(stage) : 0;
               const done = flowOn && step >= flowStep;
               const selectedHook = edge.to.startsWith("hook:") && firstHookIds.has(edge.to.slice(5));
@@ -600,7 +580,7 @@ export function AgentGraph({ data, recorded = null }: GraphProps) {
             <Node
               node={nodeById("root")}
               show
-              label={`${agent.name}. ${ready ? "Paper agent. Explore it." : "Preview, not yet available. Show details."}`}
+              label={`${agent.name}. ${ready ? "Paper agent. Explore it." : "Preview, strategy overview. Show details."}`}
               pressed={sel === "root"}
               onActivate={() => (ready && idle && !reduced() ? c.explore() : c.select("root"))}
               state={{ active: sel === "root" ? "1" : "0", ready: ready ? "1" : "0" }}
@@ -615,13 +595,8 @@ export function AgentGraph({ data, recorded = null }: GraphProps) {
                   return <path key={index} className={index === 5 ? "pn-seg pn-seg-risk" : "pn-seg"} d={`M${(Math.cos(start) * r).toFixed(1)} ${(Math.sin(start) * r).toFixed(1)} A${r} ${r} 0 0 1 ${(Math.cos(end) * r).toFixed(1)} ${(Math.sin(end) * r).toFixed(1)}`} />;
                 })}
               </g>
-              <path className="pn-root-shell" d="M0 -72 L62.4 -36 V36 L0 72 L-62.4 36 V-36 Z" fill="url(#pn-root-fill)" />
-              <path className="pn-root-inner" d="M0 -60 L52 -30 V30 L0 60 L-52 30 V-30 Z" />
-              <circle className="pn-root-disc" r="40" />
-              <path className="pn-focus" d="M0 -80 L69 -40 V40 L0 80 L-69 40 V-40 Z" />
-              <g transform="translate(0 -6) scale(1.35)"><Glyph id={agent.id} ready={ready} /></g>
-              <path className="pn-root-strike" d="M-30 22 H30" />
-              <circle className="pn-root-dot" cx="18" cy="22" r="3.4" />
+              <circle className="pn-focus" r="92" />
+              <g className="pn-character" transform="scale(1.12)"><CharacterBody id={agent.id} /></g>
               <g className="pn-root-check" transform="translate(46 -46)" aria-hidden="true">
                 <circle r="12" />
                 <path d="M-5 0.5 L-1.5 4 L5.5 -3.5" />
@@ -629,7 +604,7 @@ export function AgentGraph({ data, recorded = null }: GraphProps) {
               <text className="pn-root-name" y="118" textAnchor="middle">{agent.name}</text>
               <g className="pn-root-more" data-compact={phase >= 2 ? "1" : "0"}>
                 <text className="pn-root-tag pn-mono" y="140" textAnchor="middle" data-ready={ready ? "1" : "0"}>{ready ? "PAPER AGENT" : "PREVIEW"}</text>
-                <text className="pn-root-sub" y="160" textAnchor="middle">{ready ? "15 hooks · paper only · modeled premiums" : "Not yet available"}</text>
+                <text className="pn-root-sub" y="160" textAnchor="middle">{ready ? "15 hooks · paper only · modeled premiums" : "Strategy overview · research preview"}</text>
               </g>
             </Node>
 
@@ -637,10 +612,11 @@ export function AgentGraph({ data, recorded = null }: GraphProps) {
               const stage = stageData(node.stage)!;
               return (
                 <Node key={node.id} node={node} show={visible(node)} label={`${stage.label} stage. ${stage.live} of ${stage.total} hooks implemented. Show details.`} pressed={sel === node.id} onActivate={() => c.select(node.id)} className="pn-stage-node" state={{ active: sel === node.id || (flowOn && (flowFocus === node.stage || (flowFocus === null && step === stepOf(node.stage ?? "")))) ? "1" : "0", dim: dimmed(node.stage) ? "1" : "0" }}>
-                  <polygon className="pn-box" points="-58,0 -44,-25 44,-25 58,0 44,25 -44,25" />
-                  <polygon className="pn-focus" points="-64,0 -47,-31 47,-31 64,0 47,31 -47,31" />
-                  <text className="pn-stage-name pn-mono" y="-3" textAnchor="middle">{stage.label.toUpperCase()}</text>
-                  <text className="pn-stage-count" y="14" textAnchor="middle">{stage.live} of {stage.total}</text>
+                  <circle className="pn-focus" r="50" />
+                  <g className="pn-stage-char"><g transform="scale(0.62)"><CharacterBody id={node.stage as StageCharacterId} /></g></g>
+                  {/* The bottom stage keeps its label beside it, clear of the hooks that fan out below. */}
+                  <text className="pn-stage-name pn-mono" x={node.stage === "pulse" ? -50 : 0} y={node.stage === "pulse" ? 0 : 58} textAnchor={node.stage === "pulse" ? "end" : "middle"}>{stage.label.toUpperCase()}</text>
+                  <text className="pn-stage-count" x={node.stage === "pulse" ? -50 : 0} y={node.stage === "pulse" ? 17 : 74} textAnchor={node.stage === "pulse" ? "end" : "middle"}>{stage.live} of {stage.total}</text>
                 </Node>
               );
             })}
@@ -700,9 +676,9 @@ export function AgentGraph({ data, recorded = null }: GraphProps) {
         {ready ? <div className="pm-bar">{controls}</div> : null}
         {caption}
         <button type="button" className="pm-root" onClick={() => (ready && idle && !reduced() ? c.explore() : c.select("root"))} aria-pressed={sel === "root"} data-ready={ready ? "1" : "0"}>
-          <svg viewBox="0 0 38 28" aria-hidden="true"><path d={SMALL_PAYOFF[agent.id]} /></svg>
+          <AgentCharacter id={agent.id} size={40} />
           <span className="pm-root-name">{agent.name}</span>
-          <small>{ready ? "PAPER AGENT · 15 hooks" : "PREVIEW · Not yet available"}</small>
+          <small>{ready ? "PAPER AGENT · 15 hooks" : "PREVIEW · Strategy overview"}</small>
         </button>
         {ready ? (
           <ol className="pm-tree" style={{ "--grow": phase / 5 } as CSSProperties} aria-label="Protective Put hook stages">

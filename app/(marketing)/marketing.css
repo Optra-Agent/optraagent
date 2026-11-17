@@ -142,23 +142,23 @@
    One easing, three durations, one travel distance. Content is visible by default (no JS, no support, no problem).
    Where scroll-driven animation is supported, sections enter with a short fade and 16px rise tied to scroll position,
    so scrolling back up replays it with no state to get stuck. Only transform and opacity animate. */
-:root { --m-ease: cubic-bezier(0.2, 0, 0, 1); --m-fast: 160ms; --m-base: 240ms; --m-slow: 420ms; --m-rise: 16px; interpolate-size: allow-keywords; }
+:root { --m-ease: cubic-bezier(0.2, 0, 0, 1); --m-fast: 160ms; --m-base: 240ms; --m-slow: 420ms; --m-rise: 44px; interpolate-size: allow-keywords; }
 
 @media (hover: hover) {
 }
 
 @media (prefers-reduced-motion: no-preference) {
   @supports (animation-timeline: view()) {
-    @keyframes reveal-in { from { opacity: 0; translate: 0 var(--m-rise); } to { opacity: 1; translate: 0 0; } }
-    @keyframes reveal-out { from { opacity: 1; translate: 0 0; } to { opacity: 0.55; translate: 0 -10px; } }
+    @keyframes reveal-in { from { opacity: 0; translate: 0 var(--m-rise); scale: 0.965; } to { opacity: 1; translate: 0 0; scale: 1; } }
+    @keyframes reveal-out { from { opacity: 1; translate: 0 0; } to { opacity: 0.18; translate: 0 -30px; } }
     @keyframes draw-x { from { transform: scaleX(0); } to { transform: scaleX(1); } }
     @keyframes draw-y { from { transform: scaleY(0); } to { transform: scaleY(1); } }
 
-    .reveal { animation: reveal-in linear both; animation-timeline: view(); animation-range: entry 4% entry 48%; }
+    .reveal { animation: reveal-in linear both; animation-timeline: view(); animation-range: entry 2% entry 66%; }
     /* Section heads also settle back slightly as they leave the top; they never fully fade. */
-    .reveal-lead { animation: reveal-in linear both, reveal-out linear both; animation-timeline: view(), view(); animation-range: entry 4% entry 48%, exit 55% exit 100%; }
+    .reveal-lead { animation: reveal-in linear both, reveal-out linear both; animation-timeline: view(), view(); animation-range: entry 2% entry 66%, exit 45% exit 100%; }
     /* Groups enter in sequence: each child starts a little later than the one before. */
-    .reveal-stagger > * { animation: reveal-in linear both; animation-timeline: view(); animation-range: entry calc(2% + var(--i, 0) * 7%) entry calc(46% + var(--i, 0) * 7%); }
+    .reveal-stagger > * { animation: reveal-in linear both; animation-timeline: view(); animation-range: entry min(calc(2% + var(--i, 0) * 6%), 40%) entry min(calc(55% + var(--i, 0) * 6%), 100%); }
   }
   .faq-list details::details-content { block-size: 0; overflow: clip; transition: block-size var(--m-base) var(--m-ease), content-visibility var(--m-base) allow-discrete; }
   .faq-list details[open]::details-content { block-size: auto; }

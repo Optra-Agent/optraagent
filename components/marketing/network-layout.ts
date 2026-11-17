@@ -64,7 +64,7 @@ const RING = { rx: 545, ry: 285 };
 const STAGE_ANGLE: Record<string, number> = { gate: -126, strike: -54, size: 18, pulse: 90, expiry: 162 };
 const HOOK_SPREAD: Record<number, number[]> = { 1: [0], 2: [-11, 11], 3: [-21, 0, 21] };
 /** Where each stage's dashed "locked" satellite sits, relative to the stage: tucked beside it, clear of its hooks. */
-const LOCK_OFFSET: Record<string, { x: number; y: number }> = { gate: { x: -95, y: 64 }, strike: { x: 95, y: 64 }, size: { x: -62, y: 80 }, pulse: { x: 118, y: 36 }, expiry: { x: 62, y: 80 } };
+const LOCK_OFFSET: Record<string, { x: number; y: number }> = { gate: { x: -108, y: 64 }, strike: { x: 108, y: 64 }, size: { x: -104, y: 66 }, pulse: { x: 118, y: 36 }, expiry: { x: 104, y: 66 } };
 /** Branch drawing time and the ring's drawing time, in ms. A node blooms when its branch reaches it. */
 export const BLOOM = 700;
 export const RING_DRAW = 1800;

@@ -11,15 +11,13 @@
 .pn-agents { display: flex; flex-wrap: wrap; gap: 8px; margin: 0; padding: 0; list-style: none; }
 .pn-agent { position: relative; display: inline-flex; align-items: center; gap: 12px; min-height: 56px; padding: 8px 16px 8px 8px; border: 1px dashed var(--line); border-radius: var(--r-lg); background: transparent; color: var(--muted); text-align: left; cursor: pointer; transition: border-color var(--m-fast) var(--m-ease), background-color var(--m-fast) var(--m-ease), box-shadow var(--m-base) var(--m-ease); }
 .pn-agent-mark { display: grid; place-items: center; flex: none; width: 40px; height: 40px; border: 1px solid var(--line); border-radius: var(--r); background: var(--bg); }
-.pn-agent-mark svg { width: 26px; height: 20px; }
-.pn-agent path { fill: none; stroke: var(--dim); stroke-width: 2.8; stroke-linecap: round; stroke-linejoin: round; }
+.pn-agent-mark .ch-svg { width: 30px; height: 30px; }
 .pn-agent-text { display: grid; gap: 1px; line-height: 1.25; }
 .pn-agent-text b { color: var(--muted); font-size: 14px; font-weight: 600; }
 .pn-agent-text small { color: var(--dim); font-family: var(--font-data); font-size: 10.5px; letter-spacing: 0.08em; text-transform: uppercase; }
 .pn-agent-lock { width: 14px; height: 14px; margin-left: 2px; color: var(--dim); }
 .pn-agent[data-ready="1"] { border-style: solid; border-color: var(--azure-line); }
 .pn-agent[data-ready="1"] .pn-agent-mark { border-color: var(--azure-line); background: #0b1624; }
-.pn-agent[data-ready="1"] path { stroke: var(--azure-hover); }
 .pn-agent[data-ready="1"] .pn-agent-text b { color: var(--text); }
 .pn-agent[data-ready="1"] small { color: var(--azure-hover); }
 .pn-agent:hover { border-color: #5a606a; background: rgb(255 255 255 / 0.02); }
@@ -77,29 +75,22 @@
 .pn .pn-orbit-ring { fill: none; stroke: var(--azure-line); stroke-width: 1.4; stroke-dasharray: 3 8; stroke-linecap: round; transform-box: fill-box; transform-origin: center; }
 .pn .pn-seg { fill: none; stroke: var(--azure); stroke-width: 3; stroke-linecap: round; opacity: 0.9; }
 .pn .pn-seg-risk { stroke: var(--ember-text); }
-.pn .pn-root-shell { stroke: var(--azure); stroke-width: 2.2; stroke-linejoin: round; filter: drop-shadow(0 0 14px rgb(30 143 255 / 0.35)); }
-.pn .pn-root-inner { fill: none; stroke: rgb(255 255 255 / 0.07); stroke-width: 1; stroke-linejoin: round; }
-.pn .pn-root-disc { fill: #070d16; stroke: var(--azure-line); stroke-width: 1.2; }
 .pn .pn-root-check circle { fill: #0b1624; stroke: var(--azure); stroke-width: 1.6; }
 .pn .pn-root-check path { fill: none; stroke: var(--azure-hover); stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
-.pn .pn-glyph path { fill: none; stroke: var(--azure-hover); stroke-width: 3.2; stroke-linecap: round; stroke-linejoin: round; }
-.pn .pn-glyph[data-ready="0"] path { stroke: var(--muted); }
-.pn .pn-root-strike { fill: none; stroke: var(--ember-line); stroke-width: 1.6; stroke-dasharray: 4 5; stroke-linecap: round; }
-.pn .pn-root-dot { fill: var(--ember); }
 .pn .pn-root-name { fill: var(--text); font-family: var(--font-head); font-size: 27px; font-weight: 600; }
 .pn .pn-root-tag { fill: var(--dim); font-size: 11px; letter-spacing: 0.16em; }
 .pn .pn-root-tag[data-ready="1"] { fill: var(--azure-hover); }
 .pn .pn-root-more { transition: opacity 500ms var(--m-ease); }
 .pn .pn-root-more[data-compact="1"] { opacity: 0; }
 .pn .pn-root-sub { fill: var(--muted); font-size: 13px; }
-.pn-root[data-ready="0"] .pn-root-shell { stroke: var(--muted); stroke-dasharray: 7 6; filter: none; }
+.pn-root[data-active="1"] .ch-body { filter: brightness(1.1); }
 .pn-root[data-ready="0"] .pn-seg { stroke: var(--line); }
 .pn-root[data-ready="0"] .pn-root-check { display: none; }
 .pn-root[data-ready="0"] .pn-orbit-ring { stroke: var(--line); }
 .pn-root[data-ready="0"] .pn-root-name { fill: var(--muted); }
-.pn-root[data-active="1"] .pn-root-shell { stroke: var(--azure-hover); stroke-width: 3; }
 
-.pn .pn-stage-node .pn-box { fill: var(--raised); }
+.pn .pn-stage-char { transform-box: fill-box; transform-origin: center; transition: transform 380ms var(--pn-ease); }
+.pn .pn-stage-node[data-active="1"] .pn-stage-char { transform: scale(1.16); }
 .pn .pn-stage-name { fill: var(--azure-hover); font-family: var(--font-data); font-size: 13px; font-weight: 500; letter-spacing: 0.12em; }
 .pn .pn-stage-count { fill: var(--muted); font-size: 12px; }
 .pn .pn-hook-name { fill: var(--text); font-size: 13.5px; }
@@ -131,12 +122,15 @@
 .pn .pn-line { fill: none; stroke: var(--azure-line); stroke-width: 1.8; stroke-linecap: round; }
 .pn .pn-edge { transition: opacity 240ms var(--m-ease); }
 .pn .pn-edge[data-dim="1"] { opacity: 0.18; }
-.pn .pn-edge[data-kind="hook"] .pn-line { stroke-width: 1.4; }
-.pn .pn-edge:not([data-kind="lock"]) .pn-line { stroke-dasharray: 1; stroke-dashoffset: 1; transition: stroke-dashoffset 300ms var(--m-ease), stroke 200ms var(--m-ease), stroke-width 200ms var(--m-ease); }
-.pn .pn-edge[data-show="1"]:not([data-kind="lock"]) .pn-line { stroke-dashoffset: 0; transition: stroke-dashoffset 850ms var(--pn-ease) var(--d, 0ms), stroke 200ms var(--m-ease), stroke-width 200ms var(--m-ease); }
+.pn .pn-edge { --period: 8.1px; }
+.pn .pn-edge[data-kind="hook"] { --period: 7.1px; }
+.pn .pn-edge:not([data-kind="lock"]) .pn-line { stroke: rgb(125 160 205 / 0.5); stroke-width: 2.6; stroke-dasharray: 0.1 8; opacity: 0; transition: opacity 200ms var(--m-ease), stroke 200ms var(--m-ease), stroke-width 200ms var(--m-ease); }
+.pn .pn-edge[data-kind="hook"]:not([data-kind="lock"]) .pn-line { stroke-width: 2.1; stroke-dasharray: 0.1 7; }
+.pn .pn-edge[data-show="1"]:not([data-kind="lock"]) .pn-line { opacity: 1; transition: opacity 700ms var(--m-ease) calc(var(--d, 0ms) + 300ms), stroke 200ms var(--m-ease), stroke-width 200ms var(--m-ease); }
 .pn .pn-edge[data-kind="lock"] .pn-line { stroke: var(--line); stroke-width: 1.2; stroke-dasharray: 3 5; opacity: 0; transition: opacity 200ms var(--m-ease); }
 .pn .pn-edge[data-kind="lock"][data-show="1"] .pn-line { opacity: 1; transition: opacity 500ms var(--m-ease) var(--d, 0ms); }
-.pn .pn-edge[data-hot="1"] .pn-line, .pn .pn-edge[data-done="1"] .pn-line { stroke: var(--azure-hover); stroke-width: 2.4; }
+.pn .pn-edge[data-hot="1"]:not([data-kind="lock"]) .pn-line, .pn .pn-edge[data-done="1"] .pn-line { stroke: var(--flow, var(--azure-hover)); stroke-width: 3.8; animation: pn-flow 760ms linear infinite; }
+@keyframes pn-flow { to { stroke-dashoffset: calc(var(--period) * -1); } }
 .pn .pn-edge[data-kind="lock"][data-hot="1"] .pn-line { stroke: var(--muted); stroke-width: 1.4; }
 .pn .pn-edge[data-kind="flow"] .pn-line { stroke-width: 2; }
 
@@ -250,8 +244,8 @@
 .pm { display: none; }
 .pm-bar { display: grid; gap: 12px; margin-bottom: 16px; }
 .pm-root { display: grid; grid-template-columns: 38px minmax(0, 1fr); align-items: center; gap: 2px 12px; width: 100%; min-height: 64px; padding: 12px 14px; border: 1px dashed var(--line); border-radius: var(--r-lg); background: var(--bg); color: var(--muted); text-align: left; cursor: pointer; }
-.pm-root svg { grid-row: span 2; width: 36px; height: 28px; }
-.pm-root path { fill: none; stroke: var(--dim); stroke-width: 2.6; stroke-linecap: round; stroke-linejoin: round; }
+.pm-root .ch-svg { grid-row: span 2; width: 40px; height: 40px; }
+.pm-root svg:not(.ch-svg) path { fill: none; stroke: var(--dim); stroke-width: 2.6; stroke-linecap: round; stroke-linejoin: round; }
 .pm-root-name { font-family: var(--font-head); font-size: 22px; font-weight: 600; line-height: 1.1; }
 .pm-root small { color: var(--dim); font-family: var(--font-data); font-size: 11px; letter-spacing: 0.08em; }
 .pm-root[data-ready="1"] { border-style: solid; border-color: var(--azure); background: #0c1a2b; color: var(--text); }
@@ -309,7 +303,7 @@
   .pn-n { transform: translate(var(--ox), var(--oy)) !important; visibility: visible !important; transition: none !important; pointer-events: auto !important; }
   .pn-n > .pn-in { opacity: 1 !important; transform: none !important; transition: none !important; }
   .pn-n[data-dim="1"] > .pn-in { opacity: 0.28 !important; }
-  .pn .pn-edge:not([data-kind="lock"]) .pn-line { stroke-dashoffset: 0 !important; transition: none !important; }
+  .pn .pn-edge:not([data-kind="lock"]) .pn-line { opacity: 1 !important; animation: none !important; transition: none !important; }
   .pn .pn-edge[data-kind="lock"] .pn-line { opacity: 1 !important; transition: none !important; }
   .pn .pn-ring-line { stroke-dashoffset: 0 !important; transition: none !important; }
   .pn .pn-ring-label, .pn .pn-illus { opacity: 1 !important; transition: none !important; }

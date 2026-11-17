@@ -48,7 +48,7 @@ function AgentsScreen({ facts }: { facts: Facts }) {
         <Panel className="creator preview-creator" key={pickedPreview.id}>
           <div className="panel-head"><div><p className="eyebrow">HOUSE AGENT</p><p className="preview-sub">{pickedPreview.name}</p></div><Chip>Preview</Chip></div>
           <p className="pv-note">{pickedPreview.reason}</p>
-          <p className="pv-note pv-note-strong"><Lock aria-hidden />Not yet available. No draft can be created for this agent.</p>
+          <p className="pv-note pv-note-strong"><Lock aria-hidden />Strategy overview. Paper drafts are created for Protective Put only.</p>
         </Panel>
       ) : (
         <Panel className="creator preview-creator" key="ready">

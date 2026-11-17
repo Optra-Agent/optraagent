@@ -22,7 +22,7 @@ test("the hero preview is an interactive, read-only miniature of the real app", 
 
   // Agents: picking a Preview agent explains why it is unavailable and never shows a create action.
   await shell.getByRole("button", { name: /Covered Call/ }).click();
-  await expect(shell.getByText("Not yet available. No draft can be created for this agent.")).toBeVisible();
+  await expect(shell.getByText("Strategy overview. Paper drafts are created for Protective Put only.")).toBeVisible();
   await shell.getByRole("button", { name: /Protective Put/ }).click();
   await expect(shell.getByRole("link", { name: /Configure in the app/ })).toHaveAttribute("href", "/agents#configure");
 
