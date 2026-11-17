@@ -4,7 +4,8 @@
 
 /* ───────── Opening ─────────
    Boot: particles stream in. Form: the first agent pops in and opens its eyes. Cast: the others arrive and the routes run. Lift: it dissolves into the page. */
-.splash { position: fixed; inset: 0; z-index: 200; display: grid; place-items: center; overflow: hidden; background: radial-gradient(70% 60% at 50% 46%, #0f1624 0%, var(--bg) 70%); pointer-events: none; }
+.splash { position: fixed; inset: 0; z-index: 200; display: grid; place-items: center; overflow: hidden; pointer-events: none; }
+.splash::before { content: ""; position: absolute; inset: 0; background: radial-gradient(70% 60% at 50% 46%, #0f1624 0%, var(--bg) 70%); }
 .splash[data-state="wait"] { animation: splash-failsafe 1ms linear 2.6s forwards; }
 .splash[data-state="gone"], html[data-splash="done"] .splash:not([data-state="lift"]) { display: none; }
 .splash-canvas { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; transition: opacity 400ms ease; }
@@ -34,17 +35,17 @@
 .splash-tag { color: var(--azure-hover); font-family: var(--font-data); font-size: 12px; letter-spacing: 0.28em; }
 .splash[data-state="form"] .splash-word, .splash[data-state="cast"] .splash-word, .splash[data-state="lift"] .splash-word { animation: splash-rise 800ms var(--m-ease) 500ms both; }
 .splash[data-state="form"] .splash-tag, .splash[data-state="cast"] .splash-tag, .splash[data-state="lift"] .splash-tag { animation: splash-rise 800ms var(--m-ease) 750ms both; }
-/* The exit is meant to be felt: the whole opening blurs, grows and fades while the page appears underneath. */
-.splash[data-state="lift"] { animation: splash-out 1150ms cubic-bezier(0.5, 0, 0.2, 1) forwards; }
-.splash[data-state="lift"] .splash-mark { animation: splash-mark-out 600ms ease-in forwards; }
+/* The hand-over: the backdrop lifts and everything but the first agent lets go, while Splash.tsx carries that agent to its place in the hero. */
+.splash[data-state="lift"]::before { animation: splash-veil 760ms ease 260ms forwards; }
+.splash[data-state="lift"] :is(.splash-canvas, .splash-cast, .splash-lines, .splash-mark, .splash-status, .splash-count, .splash-bar) { animation: splash-shed 460ms ease-in forwards; }
 
 @keyframes splash-pop { 0% { transform: scale(0.5); opacity: 0; } 55% { transform: scale(1.12); opacity: 1; } 100% { transform: scale(1); opacity: 1; } }
 @keyframes splash-eyes { 0% { transform: scaleY(0); } 14% { transform: scaleY(1.18); } 22%, 56% { transform: scaleY(1); } 61% { transform: scaleY(0.05); } 68%, 82% { transform: scaleY(1); } 87% { transform: scaleY(0.05); } 95%, 100% { transform: scaleY(1); } }
 @keyframes splash-cast-in { 0% { opacity: 0; transform: scale(0.2) rotate(-70deg); } 60% { opacity: 1; transform: scale(1.14) rotate(6deg); } 100% { opacity: 1; transform: scale(1) rotate(0); } }
 @keyframes splash-line-in { from { opacity: 0; } to { opacity: 0.85; } }
 @keyframes splash-rise { from { opacity: 0; transform: translateY(22px); } to { opacity: 1; transform: translateY(0); } }
-@keyframes splash-out { 0% { opacity: 1; transform: scale(1); filter: blur(0); } 100% { opacity: 0; transform: scale(1.22); filter: blur(16px); } }
-@keyframes splash-mark-out { to { opacity: 0; transform: translate(-50%, 18px); } }
+@keyframes splash-veil { to { opacity: 0; } }
+@keyframes splash-shed { to { opacity: 0; } }
 @keyframes splash-failsafe { to { visibility: hidden; opacity: 0; } }
 @media (prefers-reduced-motion: reduce) { .splash { display: none; } }
 
@@ -269,11 +270,10 @@
 /* ───────── The ensemble (hero object) ─────────
    A container-query box so the characters, the dotted routes and their labels keep their proportions at any width. */
 .ens { --lead: 0ms; --sp: 0; --sy: 0px; container-type: inline-size; position: relative; width: 100%; max-width: 760px; aspect-ratio: 6 / 5; margin-inline: auto; transform: translate3d(0, var(--sy), 0); }
-html:not([data-splash="done"]) .ens { --lead: 3900ms; }
 .ens[data-gone="1"] { visibility: hidden; }
 .ens-lines[data-set="compact"] { display: none; }
 .ens-lines { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
-.ens-line { --period: 8.1px; fill: none; stroke: rgb(140 175 220 / 0.72); stroke-width: 3.2; stroke-dasharray: 0.1 8; stroke-linecap: round; vector-effect: non-scaling-stroke; animation: ens-fade 800ms var(--m-ease) calc(var(--lead) + 900ms + var(--i) * 70ms) both; opacity: calc(1 - var(--sp)); transition: stroke 200ms var(--m-ease), stroke-width 200ms var(--m-ease); }
+.ens-line { --period: 8.1px; fill: none; stroke: rgb(140 175 220 / 0.72); stroke-width: 3.2; stroke-dasharray: 0.1 8; stroke-linecap: round; vector-effect: non-scaling-stroke; animation: ens-fade 800ms var(--m-ease) calc(520ms + var(--i) * 70ms) both; opacity: calc(1 - var(--sp)); transition: stroke 200ms var(--m-ease), stroke-width 200ms var(--m-ease); }
 .ens-line[data-ring="outer"] { stroke: rgb(140 175 220 / 0.45); }
 .ens-line[data-hot="1"] { stroke: var(--flow, var(--azure-hover)); stroke-width: 4.2; animation: ens-fade 0s both, pn-flow 760ms linear infinite; }
 @keyframes ens-fade { from { opacity: 0; } }
@@ -281,8 +281,19 @@ html:not([data-splash="done"]) .ens { --lead: 3900ms; }
 .ens-n { position: absolute; left: var(--x); top: var(--y); width: calc(var(--s) * 1cqw); margin: calc(var(--s) * -0.5cqw) 0 0 calc(var(--s) * -0.5cqw); padding: 0; border: 0; border-radius: 18%; background: none; color: inherit; font: inherit; cursor: pointer; --gx: 0; --gy: 0; }
 .ens-n:focus-visible { outline: 2px solid var(--azure-hover); outline-offset: 6px; }
 .ens-drift { display: block; transform: translate(calc(var(--dx) * var(--sp) * 1cqw), calc(var(--dy) * var(--sp) * 1cqw)) rotate(calc(var(--dr) * var(--sp) * 1deg)); opacity: calc(1 - var(--sp)); }
-.ens-pop { display: block; animation: ens-assemble 1200ms cubic-bezier(0.2, 0.8, 0.2, 1) calc(var(--lead) + var(--i) * 80ms) both; }
-@keyframes ens-assemble { from { opacity: 0; transform: translate(calc(var(--fx) * 1cqw), calc(var(--fy) * 1cqw)) rotate(calc(var(--fr) * 1deg)) scale(0.35); } }
+.ens-pop { display: block; }
+/* The rest of the cast leaves the centre: each piece starts on the agent and travels out to its own place. */
+@keyframes ens-branch { from { opacity: 0; transform: translate(calc(var(--ox) * 1cqw), calc(var(--oy) * 1cqw)) scale(0.25); } }
+@keyframes ens-branch-compact { from { opacity: 0; transform: translate(calc(var(--ocx) * 1cqw), calc(var(--ocy) * 1cqw)) scale(0.25); } }
+@keyframes ens-reveal { from { opacity: 0; } }
+.ens-n:not([data-ring="center"]) .ens-pop { animation: ens-branch 1000ms cubic-bezier(0.2, 1.05, 0.3, 1) calc(260ms + var(--i) * 85ms) both; }
+.ens-n[data-ring="center"] .ens-label { animation: ens-reveal 600ms var(--m-ease) 80ms both; }
+/* While the opening runs, the hero's own cast is not there yet. Without scripting nothing is hidden. */
+@media (scripting: enabled) {
+  html[data-splash="active"] .ens .ens-n .ens-pop, html[data-splash="lift"] .ens .ens-n .ens-pop,
+  html[data-splash="active"] .ens .ens-line, html[data-splash="lift"] .ens .ens-line { animation: none; opacity: 0; }
+  html[data-splash="active"] .ens .ens-n[data-ring="center"] .ens-label, html[data-splash="lift"] .ens .ens-n[data-ring="center"] .ens-label { animation: none; opacity: 0; }
+}
 .ens-char { display: block; transition: transform 320ms var(--m-ease); }
 .ens-char .ch-svg { width: 100%; height: auto; }
 .ens-n:hover .ens-char, .ens-n[data-active="1"] .ens-char { transform: scale(1.12); }
@@ -305,6 +316,7 @@ html:not([data-splash="done"]) .ens { --lead: 3900ms; }
   .ens-lines[data-set="wide"] { display: none; }
   .ens-lines[data-set="compact"] { display: block; }
   .ens-n { left: var(--mx); top: var(--my); }
+  .ens-n:not([data-ring="center"]) .ens-pop { animation-name: ens-branch-compact; }
   .ens-bubble { max-width: 64cqw; }
   .ens-n[data-ring="outer"] { display: none; }
   .ens-n[data-ring="stage"] { width: calc(var(--s) * 1.7cqw); margin: calc(var(--s) * -0.85cqw) 0 0 calc(var(--s) * -0.85cqw); }
@@ -317,7 +329,7 @@ html:not([data-splash="done"]) .ens { --lead: 3900ms; }
 }
 @media (prefers-reduced-motion: reduce) {
   .ens, .ens-drift { transform: none; opacity: 1; }
-  .ens-pop, .ens-line { animation: none; }
+  .ens-pop, .ens-line, .ens-n:not([data-ring="center"]) .ens-pop, .ens-n[data-ring="center"] .ens-label { animation: none; }
   .ens-line[data-hot="1"] { animation: none; }
   .ens-char, .ens-bubble { transition: none; animation: none; }
 }

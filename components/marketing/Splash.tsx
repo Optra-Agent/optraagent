@@ -9,7 +9,8 @@ import { AgentCharacter, characterColor, characterDrawing, type CharacterId } fr
  * The opening, on every full page load (not when you move between pages inside the site).
  * Particles are scattered at random across the whole screen, drifting in the dark while a counter runs. It collapses into the first agent, which leaves holes where its eyes will be.
  * The real character pops into place, opens its eyes and blinks. The rest of the cast arrives around it, joined by dotted routes that start to run.
- * Then the whole thing dissolves into the page: it blurs, grows and fades, and the hero assembles underneath.
+ * Then it hands over to the page: the backdrop and the cast let go, and the first agent glides to the exact place it holds in the hero, where it lands alone.
+ * The hero's routes and the rest of its cast then branch out of it.
  * Any key, scroll or tap skips it. Reduced motion skips it entirely. It never blocks input (pointer events pass through), it is under five seconds,
  * and a CSS failsafe removes it without JavaScript. The counter follows the opening's own timeline; it does not claim to measure loading.
  * The recipe line is the real hash of the default Protective Put recipe, computed on the server.
@@ -18,6 +19,7 @@ import { AgentCharacter, characterColor, characterDrawing, type CharacterId } fr
 const CONVERGE = 2300;
 const CAST = 3000;
 const TOTAL = 4800;
+const DOCK = 1000;
 const RING: CharacterId[] = ["gate", "strike", "size", "pulse", "expiry", "covered_call", "cash_secured_put", "earnings_straddle"];
 const RADIUS = 37;
 const STATUS: [number, string][] = [[0, "LOADING THE AGENT CAST"], [0.4, "ASSEMBLING SIX RULE STAGES"], [0.64, "CONNECTING THE ROUTES"], [0.86, "PAPER MODE READY"]];
@@ -134,16 +136,37 @@ export function Splash({ recipeHash }: { recipeHash: string }) {
     let leaving = false;
     let exitTimer = 0;
     let removeTimer = 0;
+    const done = () => {
+      root.dataset.state = "gone";
+      html.dataset.splash = "done";
+      window.dispatchEvent(new Event("optra:splash-done"));
+    };
+    /** Carry the splash agent to where the hero keeps its own copy of it. Returns false when there is nowhere to land. */
+    const dock = (agent: SVGElement | null) => {
+      const target = document.querySelector<HTMLElement>('.ens:not([data-gone="1"]) .ens-n[data-ring="center"] .ens-char');
+      if (!agent || !target) return false;
+      agent.style.animation = "none";
+      agent.style.opacity = "1";
+      agent.style.transform = "scale(1)";
+      const from = agent.getBoundingClientRect();
+      const to = target.getBoundingClientRect();
+      if (to.width < 8 || from.width < 8 || to.bottom < 0 || to.top > window.innerHeight) return false;
+      agent.style.transition = `transform ${DOCK}ms cubic-bezier(0.65, 0, 0.2, 1)`;
+      agent.style.transform = `translate(${(to.left + to.width / 2 - (from.left + from.width / 2)).toFixed(1)}px, ${(to.top + to.height / 2 - (from.top + from.height / 2)).toFixed(1)}px) scale(${(to.width / from.width).toFixed(4)})`;
+      return true;
+    };
     const lift = () => {
       if (leaving) return;
       leaving = true;
       played = true;
+      const seen = root.dataset.state;
       if (countRef.current) countRef.current.textContent = "100";
       root.style.setProperty("--p", "1");
       root.dataset.state = "lift";
-      html.dataset.splash = "done";
-      window.dispatchEvent(new Event("optra:splash-done"));
-      removeTimer = window.setTimeout(() => { root.dataset.state = "gone"; }, 1250);
+      html.dataset.splash = "lift";
+      // Only an agent that has already appeared can travel; an early skip simply lets go.
+      const docked = (seen === "form" || seen === "cast") && dock(root.querySelector<SVGElement>(".splash-agent"));
+      removeTimer = window.setTimeout(done, docked ? DOCK + 40 : 520);
     };
 
     const draw = (now: number) => {

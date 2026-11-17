@@ -91,7 +91,7 @@ export function AgentEnsemble({ stages }: { stages: { id: StageCharacterId; labe
     };
     const observer = new IntersectionObserver(([entry]) => { visible = Boolean(entry?.isIntersecting); }, { threshold: 0.2 });
     observer.observe(root);
-    if (document.documentElement.dataset.splash === "active") window.addEventListener("optra:splash-done", begin, { once: true });
+    if (document.documentElement.dataset.splash === "active" || document.documentElement.dataset.splash === "lift") window.addEventListener("optra:splash-done", begin, { once: true });
     else timer = window.setTimeout(begin, 1500);
 
     return () => {
@@ -144,7 +144,7 @@ export function AgentEnsemble({ stages }: { stages: { id: StageCharacterId; labe
           aria-pressed={active === node.id}
           aria-label={`${node.label}. ${node.sub}. ${node.line}`}
           onClick={() => choose(node.id)}
-          style={{ "--x": `${node.x}%`, "--y": `${node.y}%`, "--mx": `${node.m[0]}%`, "--my": `${node.m[1]}%`, "--s": node.s, "--i": index, "--fx": node.scatter[0], "--fy": node.scatter[1], "--fr": node.scatter[2], "--dx": node.drift[0], "--dy": node.drift[1], "--dr": node.drift[2] } as CSSProperties}
+          style={{ "--x": `${node.x}%`, "--y": `${node.y}%`, "--mx": `${node.m[0]}%`, "--my": `${node.m[1]}%`, "--s": node.s, "--i": index, "--fx": node.scatter[0], "--fy": node.scatter[1], "--fr": node.scatter[2], "--ox": 50 - node.x, "--oy": (50 - node.y) * (5 / 6), "--ocx": node.ring === "center" ? 0 : 50 - node.m[0], "--ocy": node.ring === "center" ? 0 : 44 - node.m[1], "--dx": node.drift[0], "--dy": node.drift[1], "--dr": node.drift[2] } as CSSProperties}
         >
           <span className="ens-drift">
             <span className="ens-pop">
