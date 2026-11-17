@@ -803,17 +803,6 @@ a.ag-pill:hover svg { transform: translateX(3px); }
 }
 .ag-head-side { display: flex; flex: none; align-items: center; gap: 12px; }
 
-/* The Live half of the topbar mode switch: a real button that explains Live. */
-.topbar-live { border-style: dashed; background: transparent; color: var(--muted); cursor: pointer; transition: border-color var(--m-fast) var(--m-ease), color var(--m-fast) var(--m-ease); }
-.topbar-live:hover { border-color: var(--muted); color: var(--text); }
-.topbar-live:focus-visible { outline: 2px solid var(--azure-hover); outline-offset: 2px; }
-.topbar-live-tag { padding-left: 8px; border-left: 1px solid var(--line); color: var(--dim); font-family: var(--font-data); font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; }
-.live-needs { display: grid; gap: 10px; margin: 6px 0 0; padding: 0; list-style: none; }
-.live-needs li { display: grid; gap: 2px; padding-bottom: 10px; border-bottom: 1px solid var(--line-soft); }
-.live-needs b { color: var(--text); font-size: 14px; font-weight: 600; }
-.live-needs span { color: var(--muted); font-size: 13px; line-height: 1.5; }
-.live-note { margin: 4px 0 0; color: var(--dim); font-size: 12.5px; }
-
 /* ───────── Phone tab bar ───────── */
 .tabbar { display: none; }
 @media (max-width: 1000px) {
@@ -832,9 +821,7 @@ a.ag-pill:hover svg { transform: translateX(3px); }
 .stage-tile-name svg.ch-svg { width: 30px; height: 30px; }
 
 @media (max-width: 700px) {
-  .topbar-live-tag { display: none; }
   .topbar-context { min-width: 0; overflow: hidden; }
-  .topbar-live { padding-inline: 8px; }
 }
 .detail-head { align-items: center; }
 .detail-head .detail-agent { flex: none; margin-right: 4px; }
@@ -845,7 +832,7 @@ a.ag-pill:hover svg { transform: translateX(3px); }
   /* The tab bar already says where you are, so the topbar gives its room to the mode chips and the wallet. */
   .topbar-where { display: none; }
   .topbar-context { overflow: visible; }
-  .topbar-live, .topbar-paper { flex: none; }
+  .topbar-paper { flex: none; }
 }
 
 /* Where blue means data or an agent, not an action: the network graph, the hero cast, the payoff drawings and the phones keep it. */

@@ -16,6 +16,7 @@ import type { FlowScenario } from "./graph-flow";
 import { HeroStage } from "./HeroStage";
 import { AgentPhones } from "./AgentPhones";
 import { AgentEnsemble } from "./AgentEnsemble";
+import { FinaleCast } from "./FinaleCast";
 import { LIVE_REQUIREMENTS } from "../app/live-requirements";
 import { STAGE_ORDER, STAGE_QUESTION, getLandingFacts, stageLabel } from "./data";
 
@@ -51,7 +52,7 @@ export function Hero({ facts }: { facts: Facts }) {
             <Link className={cn(buttonVariants({ size: "lg" }))} href="/agents">Launch a paper agent</Link>
             <a className={cn(buttonVariants({ variant: "outline", size: "lg" }))} href="#floor">See the protective floor</a>
           </div>
-          <p className="hero-micro">Paper first. Synthetic options on stock prices. Not shares. Not investment advice.</p>
+          <p className="hero-micro">Start on paper with virtual money and no deposit. The options are synthetic and modeled. Not shares, not investment advice.</p>
         </div>
         <div className="hero-slot">
           <AgentEnsemble stages={STAGE_ORDER.map((stage) => ({ id: stage, label: stageLabel(stage), line: STAGE_QUESTION[stage] }))} />
@@ -309,16 +310,24 @@ export function Faq({ facts }: { facts: Facts }) {
 export function FinalCta() {
   return (
     <section className="m-final" aria-labelledby="final-title">
-      <span className="m-final-curtain m-final-curtain-l" aria-hidden="true" />
-      <span className="m-final-curtain m-final-curtain-r" aria-hidden="true" />
-      <span className="m-final-edge" aria-hidden="true" />
-      <div className="m-wrap m-final-inner">
-        <p className="m-eyebrow">PAPER FIRST</p>
-        <h2 id="final-title">Your first agent runs on paper.</h2>
-        <p>Create the draft, backtest it, launch it, and read the first tick on the Tape. No deposit, no real money.</p>
-        <div className="m-actions">
-          <Link className={buttonVariants({ size: "lg" })} href="/agents">Launch app</Link>
-          <Link className={buttonVariants({ variant: "outline", size: "lg" })} href="/verify">Inspect what is verified</Link>
+      <div className="fin-track">
+        <div className="fin-pin">
+          <span className="fin-light" aria-hidden="true" />
+          <FinaleCast />
+          <span className="fin-floor" aria-hidden="true" />
+          <div className="m-wrap m-final-inner">
+            <p className="m-eyebrow">PAPER FIRST</p>
+            <h2 id="final-title">Your first agent runs on paper.</h2>
+            <p>Pick Protective Put, backtest it on past prices, launch it with virtual money, and read why it acted on the Tape. Nothing here needs a deposit or touches real money.</p>
+            <div className="m-actions">
+              <Link className={buttonVariants({ size: "lg" })} href="/agents">Launch a paper agent</Link>
+              <Link className={buttonVariants({ variant: "outline", size: "lg" })} href="/verify">See what is verified</Link>
+            </div>
+            <p className="fin-note">Virtual USDG. Modeled premiums. Not investment advice.</p>
+          </div>
+          <span className="fin-curtain fin-curtain-l" aria-hidden="true" />
+          <span className="fin-curtain fin-curtain-r" aria-hidden="true" />
+          <span className="fin-valance" aria-hidden="true" />
         </div>
       </div>
     </section>

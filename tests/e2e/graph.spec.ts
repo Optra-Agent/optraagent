@@ -519,8 +519,8 @@ test.describe("section visuals", () => {
     await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
     await page.waitForTimeout(600);
     const final = page.locator(".m-final");
-    await expect(final.getByRole("link", { name: "Launch app" })).toBeVisible();
-    await expect(final.getByRole("link", { name: "Inspect what is verified" })).toHaveAttribute("href", "/verify");
+    await expect(final.getByRole("link", { name: "Launch a paper agent" })).toBeVisible();
+    await expect(final.getByRole("link", { name: "See what is verified" })).toHaveAttribute("href", "/verify");
     await expect(page.locator(".m-footer")).toBeVisible();
   });
 

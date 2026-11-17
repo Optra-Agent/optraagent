@@ -5,7 +5,7 @@ test("landing states the product within the first viewport and keeps the paper-f
 
   await expect(page.getByRole("heading", { level: 1, name: "No-Code Options Trading Agents." })).toBeVisible();
   await expect(page.locator("#intro").getByText("BUILD · DEPLOY · CONTROL", { exact: true })).toBeVisible();
-  await expect(page.getByText("Paper first. Synthetic options on stock prices. Not shares. Not investment advice.", { exact: true })).toBeVisible();
+  await expect(page.getByText("Start on paper with virtual money and no deposit. The options are synthetic and modeled. Not shares, not investment advice.", { exact: true })).toBeVisible();
   await expect(page.getByRole("link", { name: "Launch a paper agent" }).first()).toHaveAttribute("href", "/agents");
   await expect(page.getByRole("link", { name: "See the protective floor" })).toHaveAttribute("href", "#floor");
   // The hero preview is the real Agents screen: same sidebar, journey rail and template cards, read-only.

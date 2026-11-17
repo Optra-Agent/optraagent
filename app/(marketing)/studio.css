@@ -427,24 +427,9 @@
 .ev .ev-foot { margin: 0; color: var(--dim); font-size: 12px; }
 
 /* ───────── Closing: curtain ───────── */
-.m-final { position: relative; isolation: isolate; overflow: clip; padding: 140px 0 150px; background: radial-gradient(70% 120% at 50% 110%, rgb(255 90 31 / 0.16), transparent 62%), radial-gradient(60% 90% at 0% 0%, rgb(255 90 31 / 0.14), transparent 60%), var(--bg); }
-.m-final-edge { position: absolute; inset: auto 0 0; z-index: -1; height: 2px; background: linear-gradient(90deg, transparent, var(--ember) 30%, #ffb08c 50%, var(--ember) 70%, transparent); box-shadow: 0 0 40px 6px rgb(255 90 31 / 0.35); }
-.m-final-curtain { position: absolute; top: 0; bottom: 0; z-index: 2; width: 50.5%; background: linear-gradient(180deg, #0b0c0e, #101216); pointer-events: none; opacity: 0; }
-.m-final-curtain-l { left: 0; border-right: 1px solid var(--line); }
-.m-final-curtain-r { right: 0; border-left: 1px solid var(--line); }
-.m-final-inner { position: relative; z-index: 1; display: grid; justify-items: start; }
+.m-final { position: relative; isolation: isolate; overflow: clip; background: var(--bg); }
 .m-final h2 { max-width: 12ch; font-size: clamp(48px, 8vw, 104px); line-height: 0.95; }
 .m-final p:not(.m-eyebrow) { max-width: 520px; font-size: 18px; }
-@media (prefers-reduced-motion: no-preference) {
-  @supports (animation-timeline: view()) {
-    @keyframes curtain-l { from { transform: translateX(0); opacity: 1; } 85% { opacity: 1; } to { transform: translateX(-101%); opacity: 0; } }
-    @keyframes curtain-r { from { transform: translateX(0); opacity: 1; } 85% { opacity: 1; } to { transform: translateX(101%); opacity: 0; } }
-    .m-final-curtain-l { animation: curtain-l linear both; animation-timeline: view(); animation-range: entry 5% entry 85%; }
-    .m-final-curtain-r { animation: curtain-r linear both; animation-timeline: view(); animation-range: entry 5% entry 85%; }
-    @keyframes edge-glow { from { opacity: 0; transform: scaleX(0.3); } to { opacity: 1; transform: none; } }
-    .m-final-edge { animation: edge-glow linear both; animation-timeline: view(); animation-range: entry 30% cover 55%; }
-  }
-}
 .m-footer { background: #0e0f12; }
 
 @media (max-width: 1099px) {
@@ -471,7 +456,6 @@
 @media (prefers-reduced-motion: reduce) {
   .st-marker, .fs-next[data-point="1"] a:first-child, .fs-group[data-now="1"] .fd-chip { animation: none !important; }
   .lab-window, .lab-model-input, .lab-model-output, .lab-replay { transition: none; transform: none; }
-  .m-final-curtain { display: none; }
 }
 
 /* fixes after first visual pass */

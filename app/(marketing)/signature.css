@@ -340,3 +340,84 @@ html:not([data-splash="done"]) .ens { --lead: 3900ms; }
 .hero-preview::after { content: ""; position: absolute; inset: auto 0 0; z-index: 4; height: clamp(80px, 10vw, 160px); background: linear-gradient(0deg, var(--bg) 0%, transparent 100%); pointer-events: none; }
 .hero-preview .pv-lead { z-index: 5; }
 .hero-preview .hero-laser { mask-image: linear-gradient(180deg, transparent 0, rgb(0 0 0 / 0.55) 90px, #000 220px); -webkit-mask-image: linear-gradient(180deg, transparent 0, rgb(0 0 0 / 0.55) 90px, #000 220px); }
+
+/* ───────── Closing: the curtain opens on a stage ─────────
+   The section is a tall track with one sticky stage. Two pleated curtains cover the stage; as the track scrolls they gather to the sides, the spotlight comes up
+   and six more characters step out onto the floor line beside the call to action. Without scroll-driven animation, or with reduced motion, the curtains are
+   not drawn at all and everything simply stands there. Below 1001px (or under 640px of height) there is no pin: the cast stands in a row above the copy. */
+.m-final { padding: 0; background: var(--bg); }
+.fin-track { position: relative; view-timeline: --fin block; }
+.fin-pin { position: relative; isolation: isolate; display: grid; align-items: center; padding: 96px 0 112px; overflow: clip; background: radial-gradient(60% 80% at 50% 100%, rgb(255 90 31 / 0.2), transparent 70%), var(--bg); }
+.fin-light { position: absolute; inset: 0; z-index: -1; background: radial-gradient(38% 60% at 50% 46%, rgb(255 140 80 / 0.17), transparent 72%); pointer-events: none; }
+.fin-floor { position: absolute; inset: auto 0 0; z-index: 0; height: 2px; background: linear-gradient(90deg, transparent, var(--ember) 24%, #ffb08c 50%, var(--ember) 76%, transparent); box-shadow: 0 0 44px 8px rgb(255 90 31 / 0.34); }
+.m-final-inner { position: relative; z-index: 2; display: grid; justify-items: center; text-align: center; }
+.m-final h2 { max-width: 15ch; margin-inline: auto; font-size: clamp(38px, 5.2vw, 68px); line-height: 0.98; }
+.m-final-inner > p:not(.m-eyebrow):not(.fin-note) { max-width: 540px; margin-inline: auto; font-size: 17px; }
+.m-final .m-final-inner > p.fin-note { max-width: none; margin: 18px 0 0; color: var(--dim); font-family: var(--font-data); font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; }
+
+/* The cast. On a desktop stage it is placed around the copy and its feet rest on the floor line. */
+.fin-cast { --gx: 0; --gy: 0; position: absolute; inset: 0; z-index: 1; container-type: size; pointer-events: none; }
+.fin-b { position: absolute; left: var(--x); bottom: var(--y); width: calc(var(--s) * 1cqw); transform: translateX(-50%); }
+.fin-pop { display: block; }
+.fin-char { position: relative; display: block; transform: rotate(var(--tilt)); transform-origin: 50% 100%; }
+.fin-char::after { content: ""; position: absolute; inset: auto 12% -6% 12%; z-index: -1; height: 10%; border-radius: 50%; background: rgb(0 0 0 / 0.55); filter: blur(5px); }
+.fin-char .ch-svg { display: block; width: 100%; height: auto; }
+
+/* The curtains: pleats, a shaded hem, and a fold line where they meet. */
+.fin-curtain { position: absolute; top: 0; bottom: 0; z-index: 3; width: 50.3%; display: none; pointer-events: none;
+  background:
+    linear-gradient(180deg, rgb(0 0 0 / 0.5), transparent 16%, transparent 84%, rgb(0 0 0 / 0.55)),
+    repeating-linear-gradient(90deg, #17191f 0 34px, #0f1014 34px 68px, #1b1d24 68px 92px, #0d0e12 92px 130px); }
+.fin-curtain-l { left: 0; transform-origin: 0 50%; border-right: 1px solid rgb(255 255 255 / 0.1); box-shadow: 18px 0 48px -12px rgb(0 0 0 / 0.8); }
+.fin-curtain-r { right: 0; transform-origin: 100% 50%; border-left: 1px solid rgb(255 255 255 / 0.1); box-shadow: -18px 0 48px -12px rgb(0 0 0 / 0.8); }
+.fin-valance { position: absolute; inset: 0 0 auto; z-index: 4; display: none; height: 18px; pointer-events: none; background: linear-gradient(180deg, #08090b, #14161b); border-bottom: 2px solid var(--ember); box-shadow: 0 10px 28px -8px rgb(0 0 0 / 0.9); }
+
+/* Wide and tall enough to pin. */
+@media (min-width: 1001px) and (min-height: 640px) {
+  .fin-track { height: 240svh; }
+  .fin-pin { position: sticky; top: 66px; height: calc(100svh - 66px); padding: 0 0 7svh; align-items: center; }
+  .fin-cast { top: 0; bottom: 0; }
+}
+@media (min-width: 1001px) and (max-height: 639px) {
+  .fin-pin { min-height: 620px; }
+}
+
+/* Smaller screens: no pin and no placed cast. The six stand in one row above the copy, and the curtains part once as the section arrives. */
+@media (max-width: 1000px) {
+  .fin-pin { padding: 72px 0 88px; }
+  .fin-cast { position: relative; inset: auto; order: -1; z-index: 1; display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); align-items: end; gap: 6px; width: min(100% - 32px, 520px); margin: 0 auto 32px; container-type: normal; }
+  .fin-pin { grid-template-rows: auto auto; align-content: center; }
+  .fin-b { position: relative; left: auto; bottom: auto; width: 100%; transform: none; }
+  .fin-b[data-guest="visor"], .fin-b[data-guest="plus"] { width: 86%; justify-self: center; }
+  .fin-floor { display: none; }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  @supports (animation-timeline: view()) {
+    .fin-curtain, .fin-valance { display: block; }
+    @keyframes fin-gather-l { from { transform: scaleX(1); } to { transform: scaleX(0.05); } }
+    @keyframes fin-gather-r { from { transform: scaleX(1); } to { transform: scaleX(0.05); } }
+    @keyframes fin-hang { from { transform: translateY(0); } to { transform: translateY(-100%); } }
+    @keyframes fin-step { from { opacity: 0; transform: translateY(46%) scale(0.5); } to { opacity: 1; transform: none; } }
+    @keyframes fin-glow { from { opacity: 0; } to { opacity: 1; } }
+    @keyframes fin-copy { from { opacity: 0; transform: translateY(28px); } to { opacity: 1; transform: none; } }
+    .fin-curtain-l { animation: fin-gather-l cubic-bezier(0.55, 0, 0.35, 1) both; animation-timeline: --fin; animation-range: cover 27% cover 52%; }
+    .fin-curtain-r { animation: fin-gather-r cubic-bezier(0.55, 0, 0.35, 1) both; animation-timeline: --fin; animation-range: cover 27% cover 52%; }
+    .fin-valance { animation: fin-hang linear both; animation-timeline: --fin; animation-range: cover 50% cover 56%; }
+    .fin-light { animation: fin-glow linear both; animation-timeline: --fin; animation-range: cover 33% cover 56%; }
+    .m-final-inner { animation: fin-copy cubic-bezier(0.2, 0.8, 0.2, 1) both; animation-timeline: --fin; animation-range: cover 38% cover 56%; }
+    .fin-pop { animation: fin-step cubic-bezier(0.2, 1.1, 0.3, 1) both; animation-timeline: --fin; animation-range: cover calc(40% + var(--i) * 2.4%) cover calc(56% + var(--i) * 2.4%); }
+  }
+  .fin-b:hover .fin-char { transform: translateY(-10px) rotate(calc(var(--tilt) * -1.4)); transition: transform 320ms cubic-bezier(0.2, 1.2, 0.3, 1); }
+  .fin-char { transition: transform 420ms var(--m-ease); }
+}
+@media (max-width: 1000px) and (prefers-reduced-motion: no-preference) {
+  @supports (animation-timeline: view()) {
+    .fin-curtain-l, .fin-curtain-r { animation-timeline: view(); animation-range: entry 20% entry 100%; }
+    .fin-pop, .fin-light, .m-final-inner, .fin-valance { animation-timeline: view(); }
+    .fin-valance { animation-range: entry 90% entry 100%; }
+    .fin-light { animation-range: entry 40% entry 100%; }
+    .m-final-inner { animation-range: entry 55% entry 100%; }
+    .fin-pop { animation-range: entry calc(60% + var(--i) * 4%) entry 100%; }
+  }
+}

@@ -9,11 +9,13 @@ import type { CSSProperties } from "react";
 
 export type AgentCharacterId = "protective_put" | "covered_call" | "cash_secured_put" | "earnings_straddle";
 export type StageCharacterId = "gate" | "strike" | "size" | "pulse" | "expiry" | "breaker";
-export type CharacterId = AgentCharacterId | StageCharacterId;
+/** Six more bodies for the closing scene. They are not products or rule stages, only company for the three House Agents and the five stages. */
+export type GuestCharacterId = "drop" | "door" | "visor" | "dome" | "slant" | "plus";
+export type CharacterId = AgentCharacterId | StageCharacterId | GuestCharacterId;
 
 type Eye = { x: number; y: number; r: number; /** Vertical radius when the eye is taller or flatter than it is wide. */ ry?: number; seed: number };
 type Spec = {
-  shape: "square" | "triangle" | "hexagon" | "diamond" | "pentagon" | "circle" | "pill" | "octagon";
+  shape: "square" | "triangle" | "hexagon" | "diamond" | "pentagon" | "circle" | "pill" | "octagon" | "drop" | "arch" | "trapezoid" | "dome" | "slant" | "plus";
   fill: string;
   /** Inner outline; the stroke width below rounds its corners. */
   d: string;
@@ -86,9 +88,41 @@ export const CHARACTERS: Record<CharacterId, Spec> = {
     eyes: [{ x: -16, y: -2, r: 10, ry: 7, seed: 53 }, { x: 16, y: -2, r: 10, ry: 7, seed: 59 }],
     blink: 8.1, delay: 1.4, look: 7.5, label: "Octagon agent with two flat painted eyes",
   },
+  // Guests of the closing scene: shapes none of the ten above use.
+  drop: {
+    shape: "drop", fill: "#d3ee6a", d: "M0 -38 C 12 -22 28 -8 28 10 A28 28 0 0 1 -28 10 C -28 -8 -12 -22 0 -38 Z", round: 26,
+    eyes: [{ x: -9, y: 12, r: 13, seed: 61 }, { x: 14, y: 16, r: 7, seed: 67 }],
+    blink: 6.1, delay: 0.9, look: 9, label: "Teardrop agent with one big and one small painted eye",
+  },
+  door: {
+    shape: "arch", fill: "#ece6d6", d: "M-30 28 L-30 -4 A30 30 0 0 1 30 -4 L30 28 Z", round: 54,
+    eyes: [{ x: -19, y: -6, r: 13, seed: 71 }, { x: 19, y: -6, r: 13, seed: 73 }],
+    blink: 7.4, delay: 2.1, look: 8, label: "Arched agent with two big painted eyes",
+  },
+  visor: {
+    shape: "trapezoid", fill: "#b79cff", d: poly([[-22, -24], [22, -24], [34, 26], [-34, 26]]), round: 50,
+    eyes: [{ x: 0, y: 0, r: 25, ry: 9, seed: 79 }],
+    blink: 5.2, delay: 1.6, look: 11, label: "Trapezoid agent with one wide, flat painted eye",
+  },
+  dome: {
+    shape: "dome", fill: "#7fd8f0", d: "M-34 20 A34 34 0 0 1 34 20 Z", round: 42,
+    eyes: [{ x: 0, y: -6, r: 18, seed: 83 }],
+    blink: 6.7, delay: 0.3, look: 10, label: "Dome agent with one big painted eye",
+  },
+  slant: {
+    shape: "slant", fill: "#ff8fa0", d: poly([[-18, -24], [38, -24], [18, 24], [-38, 24]]), round: 44,
+    eyes: [{ x: -8, y: -1, r: 8, ry: 13, seed: 89 }, { x: 18, y: -1, r: 8, seed: 97 }],
+    blink: 5.7, delay: 2.7, look: 9.5, label: "Slanted agent with two painted eyes, one tall and one round",
+  },
+  plus: {
+    shape: "plus", fill: "#ff9a5c", d: poly([[-12, -30], [12, -30], [12, -12], [30, -12], [30, 12], [12, 12], [12, 30], [-12, 30], [-12, 12], [-30, 12], [-30, -12], [-12, -12]]), round: 40,
+    eyes: [{ x: -11, y: 0, r: 9, seed: 101 }, { x: 12, y: -2, r: 6, seed: 103 }],
+    blink: 8.3, delay: 1.2, look: 7.5, label: "Cross-shaped agent with two painted eyes of different sizes",
+  },
 };
 
-export const CHARACTER_IDS = Object.keys(CHARACTERS) as CharacterId[];
+export const GUEST_IDS: GuestCharacterId[] = ["drop", "door", "visor", "dome", "slant", "plus"];
+export const CHARACTER_IDS = (Object.keys(CHARACTERS) as CharacterId[]).filter((id) => !GUEST_IDS.includes(id as GuestCharacterId));
 export const characterColor = (id: string): string => (id in CHARACTERS ? CHARACTERS[id as CharacterId].fill : "#4aa8ff");
 
 /** A small deterministic generator so the server and the browser draw the same brush marks. */
