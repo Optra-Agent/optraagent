@@ -228,22 +228,42 @@
 .fd-floor { stroke: var(--ember-text); stroke-dasharray: 5 5; }
 .fd-floor-label { fill: var(--ember-text); font-family: var(--font-data); font-size: 12px; }
 
-/* ───────── Progress rail ───────── */
-.rail { position: fixed; top: 50%; right: 18px; z-index: 40; display: none; translate: 0 -50%; }
+/* ───────── Progress rail: the page ruler ─────────
+   A fixed strip down the right edge. The tape of ticks and the section names are moved by StageRail (transforms only); this file only styles them.
+   --ex runs 0 to 1 while the ruler stretches on hover. */
+.rail { --ex: 0; --u: 10.5px; position: fixed; inset: 0 0 0 auto; z-index: 40; display: none; width: 76px; pointer-events: none; font-family: var(--font-data); }
 @media (min-width: 1360px) { .rail { display: block; } }
-.rail ol { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; justify-items: end; }
-.rail a { display: flex; align-items: center; gap: 10px; padding: 5px 12px 5px 8px; color: var(--dim); font-family: var(--font-data); font-size: 11px; line-height: 1; letter-spacing: 0.08em; text-transform: uppercase; }
-.rail-label { opacity: 0; transform: translateX(6px); transition: opacity 200ms var(--m-ease), transform 200ms var(--m-ease), color 200ms var(--m-ease); }
-.rail a[data-active="1"] .rail-label, .rail a:hover .rail-label, .rail a:focus-visible .rail-label { opacity: 1; transform: none; color: var(--text); }
-.rail-tick { width: 12px; height: 1px; background: var(--line); transition: width 260ms var(--m-ease), background-color 260ms var(--m-ease); }
-.rail a[data-passed="1"] .rail-tick { background: var(--azure-line); }
-.rail a[data-active="1"] .rail-tick { width: 30px; background: var(--azure-hover); }
-.rail a:focus-visible { outline: 2px solid var(--azure-hover); outline-offset: 1px; border-radius: 3px; }
-.rail-track { position: absolute; top: 0; right: 0; bottom: 0; width: 1px; background: var(--line-soft); }
-.rail-fill { position: absolute; inset: 0; background: var(--azure); transform-origin: top; transform: scaleY(var(--p, 0)); will-change: transform; }
+.rail-bg { position: absolute; inset: 0 0 0 auto; width: calc(100% + 40px + var(--ex) * 120px); pointer-events: none; background: linear-gradient(90deg, transparent, rgb(11 12 14 / 0.55) 65%); opacity: calc(0.7 + var(--ex) * 0.3); -webkit-backdrop-filter: blur(9px); backdrop-filter: blur(9px); -webkit-mask-image: linear-gradient(90deg, transparent, #000 55%); mask-image: linear-gradient(90deg, transparent, #000 55%); }
+.rail-view { position: absolute; inset: 0; overflow: hidden; -webkit-mask-image: linear-gradient(to bottom, transparent, #000 7%, #000 93%, transparent); mask-image: linear-gradient(to bottom, transparent, #000 7%, #000 93%, transparent); }
+.rail-tape { position: absolute; inset: 0 0 auto 0; height: calc(var(--u) * 100); will-change: transform; }
+.rail-tick { position: absolute; right: 16px; top: calc(var(--n) * var(--u)); width: 6px; height: 1px; background: rgb(255 255 255 / 0.5); opacity: 0.55; }
+.rail-tick[data-k="mid"] { width: 11px; opacity: 0.8; }
+.rail-tick[data-k="major"] { width: 19px; opacity: 1; background: rgb(255 255 255 / 0.85); }
+.rail-tick span { position: absolute; right: calc(100% + 8px); top: 50%; translate: 0 -50%; color: var(--dim); font-size: 9.5px; font-style: normal; letter-spacing: 0.04em; font-variant-numeric: tabular-nums; }
+
+.rail-needle { position: absolute; inset: 0 0 auto 0; height: 0; will-change: transform; }
+.rail-needle i { position: absolute; right: 16px; top: -1px; width: 25px; height: 2px; background: var(--azure-hover); box-shadow: 0 0 10px rgb(255 106 71 / 0.75); }
+.rail-needle b { position: absolute; right: 16px; top: -37px; display: flex; align-items: baseline; gap: 3px; padding: 1px 0 1px 4px; background: rgb(11 12 14 / 0.94); box-shadow: -4px 0 0 rgb(11 12 14 / 0.94); color: var(--text); font-size: 15px; font-weight: 700; letter-spacing: 0.04em; font-variant-numeric: tabular-nums; }
+.rail-needle small { color: var(--dim); font-size: 9.5px; font-weight: 500; }
+.rail-hit { position: absolute; inset: 0 0 0 auto; width: 76px; pointer-events: auto; }
+
+.rail-labels { position: absolute; inset: 0; z-index: 1; margin: 0; padding: 0; list-style: none; }
+.rail-labels li { position: absolute; top: 0; right: 0; width: 0; height: 0; }
+.rail-label { position: absolute; top: 0; right: 76px; display: block; height: 21px; padding: 0; color: var(--dim); font-size: 10.5px; font-weight: 500; line-height: 21px; letter-spacing: 0.1em; text-transform: uppercase; text-align: right; white-space: nowrap; pointer-events: auto; will-change: transform; transition: color 220ms var(--m-ease); }
+.rail-g { display: inline-block; will-change: transform; transform-origin: 50% 50%; }
+.rail-label[data-state="passed"] { color: var(--muted); }
+.rail-label[data-state="active"] { color: var(--azure-hover); font-weight: 700; }
+.rail-label:hover, .rail-label:focus-visible { color: var(--text); }
+.rail-label:focus-visible { outline: 2px solid var(--azure-hover); outline-offset: 1px; border-radius: 3px; }
+
+/* The ruler stands in for the browser scrollbar wherever it is drawn. */
+@media (min-width: 1360px) {
+  html:has(.rail) { scrollbar-width: none; }
+  html:has(.rail)::-webkit-scrollbar { display: none; }
+}
 
 @media (prefers-reduced-motion: reduce) {
-  .rail-label, .rail-tick, .fl input[type="range"]::-webkit-slider-thumb { transition: none; }
+  .rail-label, .fl input[type="range"]::-webkit-slider-thumb { transition: none; }
 }
 
 /* ───────── The ensemble (hero object) ─────────
