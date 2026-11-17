@@ -6,7 +6,8 @@ import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Menu } from "lucide-react";
-import { SidebarView } from "./Sidebar";
+import Link from "next/link";
+import { SidebarView, navGroups } from "./Sidebar";
 import { TopbarView, titleFor } from "./Topbar";
 import { WalletSession } from "./WalletSession";
 
@@ -44,6 +45,14 @@ export function AppShell({ children, footer }: { children: React.ReactNode; foot
           </header>
           <div className="app-content">{children}</div>
           {footer}
+          {/* On a phone the five working screens sit in a tab bar within thumb reach. The drawer still holds everything else. */}
+          <nav className="tabbar" aria-label="Primary">
+            {[...navGroups[0].items, navGroups[1].items[1]].map((item) => {
+              const Icon = item.icon;
+              const current = pathname === item.href || pathname?.startsWith(`${item.href}/`);
+              return <Link key={item.href} href={item.href} aria-current={current ? "page" : undefined}><Icon aria-hidden />{item.label}</Link>;
+            })}
+          </nav>
         </div>
       </div>
     </TooltipProvider>

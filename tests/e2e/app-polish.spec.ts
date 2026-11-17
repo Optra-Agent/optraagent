@@ -21,7 +21,7 @@ test("Agents leads with a connect card, a featured Protective Put and locked pre
   await expect(page.getByRole("region", { name: "Wallet session" }).getByRole("button", { name: "Choose a wallet" })).toBeVisible();
   const templates = page.getByRole("region", { name: "House Agent templates" });
   await expect(templates.getByRole("link", { name: /Configure this agent below/ })).toHaveAttribute("href", "#configure");
-  await expect(templates.getByText("Not yet available")).toHaveCount(3);
+  await expect(templates.getByRole("link", { name: /Review the rules/ })).toHaveCount(3);
   await expect(templates.getByText("15", { exact: true })).toBeVisible();
   await expect(templates.getByText("7% OTM")).toBeVisible();
 });

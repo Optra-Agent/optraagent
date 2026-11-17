@@ -26,7 +26,8 @@ const claimTitle: Record<string, string> = {
 const roadmap = [
   ["AI strategy composition", "Planned", "No AI provider is configured. Rules decide; recipes are built by clicking."],
   ["Public agents and Tape", "Planned", "There is no public visibility model, so public lists return empty."],
-  ["Onchain Uniswap v4 hooks", "Not yet available", "Hooks are inspired by Uniswap v4. None are deployed onchain (claim level L0)."],
+  ["Live options trading", "Not enabled", "Needs a verified options execution venue, explicit wallet authorization, enforced risk and transaction limits, and a real order lifecycle with settlement records. Nothing can submit a real-money order today."],
+  ["Onchain Uniswap v4 hooks", "Not deployed", "Hooks are inspired by Uniswap v4. An experimental spot-swap guard exists in the repository and passes local tests. No Optra contract is deployed to Robinhood Testnet or Mainnet, and it is not part of options execution (claim level L0)."],
   ["Listing, Floor, MCP, x402", "Planned", "Roadmap items with no route or service yet."],
 ] as const;
 

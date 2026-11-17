@@ -1,5 +1,6 @@
 "use client";
 
+import { AgentCharacter, CHARACTERS, type CharacterId } from "../../marketing/characters";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -167,11 +168,14 @@ export function AgentDetailScreen({ agentId }: { agentId: string }) {
       {status === "signed_in" && state !== "error" && agent && data ? (
         <>
           <div className="page-heading-row detail-head">
+            <div className="detail-id">
+            {agent.templateId in CHARACTERS ? <AgentCharacter className="detail-agent" id={agent.templateId as CharacterId} size={64} title={`${titleCase(agent.templateId)} agent`} /> : null}
             <div>
               <Link className="back-link" href="/agents">← Agents</Link>
               <p className="eyebrow">{titleCase(agent.templateId)} · PAPER ONLY</p>
               <h1>{agent.name}</h1>
               <p className="page-description mono" title={agent.recipeHash}>Recipe {shortHash(agent.recipeHash, 18, 8)}</p>
+            </div>
             </div>
             <div className="detail-status">
               <span className={`agent-status agent-status-${agent.status}`}>{agent.status}</span>

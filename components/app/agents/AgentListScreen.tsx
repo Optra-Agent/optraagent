@@ -1,16 +1,14 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useState } from "react";
 import { ApiErrorSchema, AgentListResponseSchema } from "../../../lib/domain/contracts";
 import type { Agent } from "../../../lib/domain/contracts";
 import { useAuthSession } from "../AuthSessionProvider";
-import { formatUtc, shortHash, titleCase, errorText } from "../format";
-import { JourneyRail, PageHeader, Skeleton, StateBlock, Panel } from "../ui";
-import { TemplateCatalog } from "./TemplateCatalog";
+import { errorText } from "../format";
+import { JourneyRail, PageHeader, StateBlock, Panel } from "../ui";
+import { AgentGallery } from "./AgentGallery";
 import { HouseAgentCreator } from "./HouseAgentCreator";
-import { Button, buttonVariants } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import { Wallet } from "lucide-react";
 
 async function responseMessage(response: Response): Promise<string> {
@@ -22,13 +20,6 @@ async function responseMessage(response: Response): Promise<string> {
     return "Your agent list is temporarily unavailable.";
   }
 }
-
-const nextAction: Record<Agent["status"], string> = {
-  draft: "Backtest it in Lab, then launch on paper.",
-  running: "Run a paper tick or read its Tape.",
-  paused: "Resume it from the agent page.",
-  stopped: "Stopped. Fork it to start a new draft.",
-};
 
 export function AgentListScreen() {
   const { session, status, setWalletMenuOpen } = useAuthSession();
@@ -60,15 +51,13 @@ export function AgentListScreen() {
   const journeyStep = status !== "signed_in" ? 1 : agents.some((agent) => agent.status !== "draft") ? 5 : agents.length > 0 ? 3 : 2;
 
   return (
-    <main className="page-container">
+    <main className="page-container ag-page">
       <PageHeader
         eyebrow="PAPER ONLY"
         title="Agents"
         description="Rule-driven strategies with recorded inputs and explainable decisions. Start from a House Agent, backtest it, then run it on paper."
-        actions={status === "signed_in" ? <Button variant="outline" type="button" disabled={loadStatus === "loading"} onClick={() => setReload((value) => value + 1)}>Refresh</Button> : null}
+        actions={status === "signed_in" ? <Button variant="outline" type="button" disabled={loadStatus === "loading"} onClick={() => setReload((value) => value + 1)}>Refresh</Button> : <a className="ag-build" href="#configure">Build your agent</a>}
       />
-      <JourneyRail step={journeyStep} />
-
       {status === "loading" ? <StateBlock kind="loading" title="Checking wallet session…" /> : null}
       {status === "error" ? <StateBlock kind="error" title="Wallet session could not be checked">Retry from the wallet control in the header.</StateBlock> : null}
       {status === "signed_out" ? (
@@ -83,46 +72,10 @@ export function AgentListScreen() {
         </div>
       ) : null}
 
-      {status === "signed_in" ? (
-        <section className="agents-owned" aria-label="Your agents">
-          <div className="section-heading">
-            <div><p className="eyebrow">YOUR DESK</p><h2>Your agents</h2></div>
-            {loadStatus === "ready" && agents.length > 0 ? <span>{agents.length} saved</span> : null}
-          </div>
-          {loadStatus === "loading" ? <div className="state-panel" role="status"><Skeleton lines={3} /></div> : null}
-          {loadStatus === "error" ? <StateBlock kind="error" title="Agents could not be loaded" action={<Button variant="outline" type="button" onClick={() => setReload((value) => value + 1)}>Retry</Button>}>{error}</StateBlock> : null}
-          {loadStatus === "ready" && agents.length === 0 ? (
-            <StateBlock kind="empty" title="No saved agents">
-              <p>Create the paper-ready Protective Put draft below, then run its verified backtest in Lab before launch.</p>
-              <p className="subtle mono">Signed in as {session?.user.address}</p>
-            </StateBlock>
-          ) : null}
-          {loadStatus === "ready" && agents.length > 0 ? (
-            <div className="agent-grid">
-              {agents.map((agent) => (
-                <Card className="agent-card" key={agent.id}>
-                  <div className="agent-card-head">
-                    <div><p className="eyebrow">{titleCase(agent.templateId)}</p><h2>{agent.name}</h2></div>
-                    <span className={`agent-status agent-status-${agent.status}`}>{agent.status}</span>
-                  </div>
-                  <p className="agent-next">{nextAction[agent.status]}</p>
-                  <dl className="kv kv-tight">
-                    <div><dt>Recipe</dt><dd className="mono" title={agent.recipeHash}>{shortHash(agent.recipeHash)}</dd></div>
-                    <div><dt>Updated</dt><dd className="mono"><time dateTime={agent.updatedAt}>{formatUtc(agent.updatedAt)}</time></dd></div>
-                  </dl>
-                  <div className="agent-card-actions">
-                    <Link className={buttonVariants({ variant: "outline" })} href={`/agents/${encodeURIComponent(agent.id)}`}>Open agent</Link>
-                    {agent.status === "draft" ? <Link className={buttonVariants({ variant: "default" })} href={`/lab?agent=${encodeURIComponent(agent.id)}`}>Backtest in Lab</Link> : null}
-                  </div>
-                </Card>
-              ))}
-            </div>
-          ) : null}
-        </section>
-      ) : null}
+      <AgentGallery owned={agents} ownedStatus={status === "signed_in" ? loadStatus : "ready"} ownedError={error} signedIn={status === "signed_in"} onRetry={() => setReload((value) => value + 1)} />
 
-      <div className="agents-layout">
-        <TemplateCatalog />
+      <div className="ag-configure">
+        <JourneyRail step={journeyStep} />
         {status === "signed_in" ? <HouseAgentCreator /> : (
           <Panel className="creator creator-locked" id="configure" aria-label="Configure Protective Put draft">
             <div className="panel-head"><div><p className="eyebrow">STEP 2 · CONFIGURE</p><h2>Protective Put draft</h2></div></div>
