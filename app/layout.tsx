@@ -10,9 +10,9 @@ const display = IBM_Plex_Sans_Condensed({ subsets: ["latin"], weight: ["500", "6
 const mono = IBM_Plex_Mono({ subsets: ["latin"], weight: ["400", "500"], variable: "--font-mono", display: "swap" });
 
 export const metadata: Metadata = {
-  title: { default: "Optra Agent | Let agents trade the strike.", template: "%s · Optra Agent" },
+  title: { default: "Optra Agent | No-Code Options Trading Agents", template: "%s · Optra Agent" },
   description:
-    "Rule-based options agents on Robinhood Chain. Choose a House Agent, backtest with modeled premiums, run it on paper, and read every decision on Optra Tape.",
+    "Build custom options agents with modular rules. Backtest strategies, control risk, and understand every decision. Paper trading today, on Robinhood Chain.",
 };
 
 export const viewport: Viewport = {
@@ -22,7 +22,7 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="en" className={`dark ${sans.variable} ${display.variable} ${mono.variable}`}>
+    <html lang="en" suppressHydrationWarning className={`dark ${sans.variable} ${display.variable} ${mono.variable}`}>
       <body>
         <AppProviders>{children}</AppProviders>
       </body>
