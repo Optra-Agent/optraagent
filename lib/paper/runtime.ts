@@ -1,10 +1,11 @@
-import { getDatabase } from "../db/client";
+import { acquirePaperSchedulerLock, getDatabase } from "../db/client";
 import { lookupWalletSession } from "../auth/session-lookup";
 import { getMarketFeed, getMarketHistoryFeed } from "../market/runtime";
 import { DrizzleBacktestRepository } from "../backtest/drizzle-repository";
 import { createAgentHandlers } from "./agents";
 import { DrizzlePaperRepository } from "./drizzle-repository";
 import { createPaperHandlers } from "./handlers";
+import { createPaperScheduler } from "./scheduler";
 
 export async function getPaperHandlers() {
   const repository = new DrizzlePaperRepository(await getDatabase());
@@ -13,6 +14,16 @@ export async function getPaperHandlers() {
     readSession: lookupWalletSession,
     getSnapshot: (symbol) => getMarketFeed().getSnapshot(symbol),
     getHistory: (symbol) => getMarketHistoryFeed().getHistory(symbol),
+  });
+}
+
+export async function getPaperScheduler() {
+  const repository = new DrizzlePaperRepository(await getDatabase());
+  return createPaperScheduler({
+    repository,
+    secret: process.env.CRON_SECRET,
+    getHistory: (symbol) => getMarketHistoryFeed().getHistory(symbol),
+    acquireLock: acquirePaperSchedulerLock,
   });
 }
 

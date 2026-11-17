@@ -122,9 +122,9 @@ export function ForgeDemo({ data }: { data: ForgeDemoData }) {
   return (
     <div className="fs" ref={rootRef} data-demo={demoPhase} data-live={inView ? "1" : "0"} data-save-data={saveData ? "1" : "0"}>
       <div className="fs-demo-bar">
-        <Chip tone="ember">{inProgress ? "Demonstration running" : "Demonstration"}</Chip>
-        <span className="fs-demo-text">A short UI demo of the supported recipe. It runs no backtest and no paper tick.</span>
-        <div className="fs-demo-controls" role="group" aria-label="Demonstration controls">
+        <Chip tone="ember">{inProgress ? "Walkthrough running" : "Walkthrough"}</Chip>
+        <span className="fs-demo-text">A guided walkthrough of the supported recipe. It runs no backtest and no paper tick.</span>
+        <div className="fs-demo-controls" role="group" aria-label="Walkthrough controls">
           <button type="button" className={buttonVariants({ variant: "outline", size: "sm" })} onClick={togglePlayback} aria-pressed={inProgress}>{inProgress ? <Pause aria-hidden /> : <Play aria-hidden />}{inProgress ? "Pause" : tick === null ? "Play" : "Resume"}</button>
           <button type="button" className={buttonVariants({ variant: "ghost", size: "sm" })} onClick={replay}><RotateCcw aria-hidden />Replay</button>
         </div>
@@ -133,14 +133,14 @@ export function ForgeDemo({ data }: { data: ForgeDemoData }) {
         <div className="fs-top">
           <div className="fs-agents" role="group" aria-label="House Agent">
             {data.agents.map((row) => (
-              <button type="button" key={row.id} className="fs-agent" aria-pressed={agent === row.id} data-ready={row.ready ? "1" : "0"} onClick={() => { stopAutoplay(); if (row.ready) { setAgent(row.id); setNote(null); } else setNote({ title: `${row.name} is not available.`, text: row.reason }); }}>
+              <button type="button" key={row.id} className="fs-agent" aria-pressed={agent === row.id} data-ready={row.ready ? "1" : "0"} onClick={() => { stopAutoplay(); if (row.ready) { setAgent(row.id); setNote(null); } else setNote({ title: `${row.name} is a strategy overview.`, text: row.reason }); }}>
                 <PayoffMark id={row.id} ready={row.ready} size="sm" />
                 <span><b>{row.name}</b><small>{row.ready ? "Can be built" : "Locked"}</small></span>
                 {row.ready ? null : <Lock aria-hidden />}
               </button>
             ))}
           </div>
-          <p className="fs-ai"><Chip>Coming soon</Chip> Describe a strategy in words. No AI provider is configured, so rules are chosen by clicking.</p>
+          <p className="fs-ai"><Chip>Next</Chip> Describe a strategy in words. No AI provider is configured, so rules are chosen by clicking.</p>
         </div>
 
         <PinnedStory id="forge-core" count={5} step={story} onStep={onStory} variant="stack" beat="32vh" className="fs-story" goRef={coreGoRef}>
@@ -178,7 +178,7 @@ export function ForgeDemo({ data }: { data: ForgeDemoData }) {
                       <ul>
                         {locked.map((hook) => (
                           <li key={hook.id}>
-                            <button type="button" className="fd-chip is-locked" aria-pressed={note?.title === `${hook.name} is locked.`} onClick={() => { stopAutoplay(); setNote(note?.title === `${hook.name} is locked.` ? null : { title: `${hook.name} is locked.`, text: hook.reason }); }}>
+                            <button type="button" className="fd-chip is-locked" aria-pressed={note?.title === `${hook.name} is in the catalog.`} onClick={() => { stopAutoplay(); setNote(note?.title === `${hook.name} is in the catalog.` ? null : { title: `${hook.name} is in the catalog.`, text: hook.reason }); }}>
                               {hook.name}<span className="sr-only"> (catalog only, locked)</span>
                             </button>
                           </li>

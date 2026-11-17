@@ -83,7 +83,7 @@ export function HowWalkthrough() {
   const current = STEPS[step] ?? STEPS[0];
   const views = STEPS.map((item) => VISUAL[item.id]);
   return (
-    <PinnedStory id="hs" count={STEPS.length} step={step} onStep={setStep} views={views} beat="34vh">
+    <PinnedStory id="hs" count={STEPS.length} step={step} onStep={setStep} views={views} beat="20vh">
       {({ go, views: stage }) => (
         <>
           <nav className="ps-nav" aria-label="How Optra works">

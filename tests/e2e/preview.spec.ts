@@ -3,6 +3,8 @@ import { expect, test } from "@playwright/test";
 const preview = (page: import("@playwright/test").Page) => page.locator(".hero-card .preview-shell");
 
 test("the hero preview is an interactive, read-only miniature of the real app", async ({ page }) => {
+  test.setTimeout(120_000);
+  await page.emulateMedia({ reducedMotion: "reduce" });
   const privateRequests: string[] = [];
   page.on("request", (request) => {
     const path = new URL(request.url()).pathname;
@@ -12,31 +14,41 @@ test("the hero preview is an interactive, read-only miniature of the real app", 
   await page.goto("/");
 
   const shell = preview(page);
+  await shell.evaluate((element) => element.scrollIntoView({ block: "center", behavior: "instant" }));
+  await expect(shell).toBeVisible();
   await expect(shell.getByRole("link", { name: /Open app/ })).toHaveAttribute("href", "/agents");
   await expect(shell.getByRole("banner").or(shell.locator(".topbar")).getByText("Agents", { exact: true })).toBeVisible();
+  const navigation = shell.getByRole("navigation", { name: "Main navigation" });
 
   // Agents: picking a Preview agent explains why it is unavailable and never shows a create action.
   await shell.getByRole("button", { name: /Covered Call/ }).click();
-  await expect(shell.getByText("Not yet available. No draft can be created for this agent.")).toBeVisible();
+  await expect(shell.getByText("Strategy overview. Paper drafts are created for Protective Put only.")).toBeVisible();
   await shell.getByRole("button", { name: /Protective Put/ }).click();
   await expect(shell.getByRole("link", { name: /Configure in the app/ })).toHaveAttribute("href", "/agents#configure");
 
   // Forge: toggling hooks changes the count but never claims a validation result.
-  await shell.locator(".sidebar").getByRole("button", { name: "Forge" }).click();
+  await navigation.getByRole("button", { name: "Forge", exact: true }).click();
+  await expect(shell.getByRole("link", { name: "Open app", exact: true })).toHaveAttribute("href", "/forge");
   await expect(shell.getByText("15 of 15 selected")).toBeVisible();
-  await shell.getByRole("button", { name: "Calmo" }).click();
+  const calmo = shell.getByRole("button", { name: "Calmo", exact: true });
+  await expect(calmo).toHaveAttribute("aria-pressed", "true");
+  await calmo.click();
+  await expect(calmo).toHaveAttribute("aria-pressed", "false");
   await expect(shell.getByText("14 of 15 selected")).toBeVisible();
   await expect(shell.getByText("Not run in preview")).toBeVisible();
-  await expect(shell.getByRole("link", { name: /Open Forge/ }).last()).toHaveAttribute("href", "/forge");
 
   // Lab and Tape: labeled, no numbers, linked to the real routes.
-  await shell.locator(".sidebar").getByRole("button", { name: "Lab" }).click();
+  const labButton = navigation.getByRole("button", { name: "Lab", exact: true });
+  await expect(labButton).toBeEnabled();
+  await labButton.click();
+  await expect(shell.getByRole("link", { name: "Open app", exact: true })).toHaveAttribute("href", "/lab");
   await expect(shell.getByText("None are shown here.")).toBeVisible();
-  await expect(shell.getByRole("link", { name: /Open Lab/ }).last()).toHaveAttribute("href", "/lab");
-  await shell.locator(".sidebar").getByRole("button", { name: "Tape" }).click();
+  await navigation.getByRole("button", { name: "Tape", exact: true }).click();
+  await expect(shell.getByRole("link", { name: "Open app", exact: true })).toHaveAttribute("href", "/tape");
   await expect(shell.getByText("Illustrative only", { exact: true })).toBeVisible();
-  await expect(shell.getByText("An example of the shape, not a recorded trade.", { exact: false })).toBeVisible();
-  await expect(shell.getByRole("link", { name: /Open Tape/ }).last()).toHaveAttribute("href", "/tape");
+  const tapeExample = shell.locator(".preview-page .pv-note").first();
+  await expect(tapeExample).toBeVisible();
+  await expect(tapeExample).toContainText("An example of the shape, not a recorded trade.");
 
   // The journey rail never claims progress.
   await expect(shell.locator(".journey-done")).toHaveCount(0);

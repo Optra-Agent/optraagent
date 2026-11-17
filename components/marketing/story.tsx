@@ -306,7 +306,7 @@ const CLAIM_GROUP: Record<string, string> = { market_data: "works", hook_catalog
 const CLAIM_STATUS: Record<string, { label: string; tone: Tone }> = { verified: { label: "Verified", tone: "azure" }, limited: { label: "Limited", tone: "neutral" }, preview: { label: "Preview", tone: "neutral" }, unavailable: { label: "Unavailable", tone: "ember" }, disabled: { label: "Disabled", tone: "ember" } };
 const ROADMAP = [
   { id: "agents", title: "Other House Agents", label: "Preview", note: "Covered Call, Cash-Secured Put and Earnings Straddle cannot be created yet." },
-  { id: "ai", title: "AI composition", label: "Coming soon", note: "No AI provider is configured." },
+  { id: "ai", title: "AI composition", label: "Next", note: "No AI provider is configured." },
   { id: "later", title: "Session choices, Listing, Floor, MCP, x402", label: "Planned", note: "Roadmap only. No route or service yet." },
 ];
 const gist = (statement: string) => (statement.split(/[.;]\s/)[0] ?? statement).replace(/\.$/, "") + ".";

@@ -154,12 +154,21 @@ export function MarketScreen() {
         description="Every stock token the app can read, with its multiplier and a live quote when you open one. Prices here are underlying references and token quotes, never option prices."
       />
 
-      {listStatus === "loading" ? <StateBlock kind="loading" title="Loading markets…" /> : null}
+      {listStatus === "loading" ? (
+        <ul className="mk-skel" role="status" aria-label="Loading markets">
+          {Array.from({ length: 8 }, (_, row) => <li key={row} aria-hidden="true"><i /><i /><i /><i /></li>)}
+        </ul>
+      ) : null}
       {listStatus === "error" ? <StateBlock kind="error" title="Markets unavailable" action={<button type="button" className={buttonVariants({ variant: "outline" })} onClick={() => { setListStatus("loading"); setReload((value) => value + 1); }}>Retry</button>}><p>{listError}</p></StateBlock> : null}
       {listStatus === "ready" && markets.length === 0 ? <StateBlock kind="empty" title="No markets">No active Robinhood Chain markets are available.</StateBlock> : null}
 
       {markets.length > 0 ? (
         <>
+          <div className="mk-notes" aria-label="About these prices">
+            <span className="ag-chip" data-tone="azure">Read only</span>
+            <span className="ag-chip">Robinhood Chain stock tokens</span>
+            <span className="ag-chip">Token quotes, never option prices</span>
+          </div>
           <div className="mk-bar">
             <div className="mk-search">
               <Label htmlFor="market-search" className="sr-only">Search markets</Label>

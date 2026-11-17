@@ -51,3 +51,19 @@ test("wallet dialog opens from the topbar, closes with Escape, and is reachable 
   await page.getByRole("button", { name: "Choose a wallet", exact: true }).click();
   await expect(page.getByRole("dialog", { name: "Choose an EVM wallet" })).toBeVisible();
 });
+
+test("the topbar names Paper as the mode and Live opens an explanation, never an action", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.goto("/agents");
+  const banner = page.getByRole("banner");
+  await expect(banner.getByText("PAPER", { exact: true })).toBeVisible();
+  await banner.getByRole("button", { name: /Live/ }).click();
+  const dialog = page.getByRole("dialog", { name: "Live trading is not enabled" });
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByText("A verified options execution venue")).toBeVisible();
+  await expect(dialog.getByText("Explicit wallet authorization")).toBeVisible();
+  await expect(dialog.getByText("Nothing in this app can submit a real-money transaction.")).toBeVisible();
+  await expect(dialog.getByRole("button", { name: /Trade|Enable|Connect|Start live/i })).toHaveCount(0);
+  await page.keyboard.press("Escape");
+  await expect(dialog).toBeHidden();
+});

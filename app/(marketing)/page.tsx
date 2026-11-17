@@ -3,14 +3,17 @@ import { PublicTapeResponseSchema, PublicVerificationSchema } from "../../lib/do
 import { createPublicHandlers } from "../../lib/public/handlers";
 import { getLandingFacts } from "../../components/marketing/data";
 import { getGraphData } from "../../components/marketing/graph-data";
-import { getApiDocs, getExplorerData, getForgeDemo, getHealthGuard, getRiskRails } from "../../components/marketing/section-data";
+import { getApiDocs, getForgeDemo, getHealthGuard, getRiskRails } from "../../components/marketing/section-data";
 import { scenarioFromDecision } from "../../components/marketing/graph-flow";
-import { Developers, DualMode, Faq, FinalCta, Forge, Hero, Hooks, HouseAgents, HowItWorks, LabSection, Sessions, Status, TapeSection } from "../../components/marketing/sections";
+import { ProtectiveFloor } from "../../components/marketing/ProtectiveFloor";
+import { SignatureStage } from "../../components/marketing/SignatureStage";
+import { StageRail } from "../../components/marketing/StageRail";
+import { AgentShowcase, Developers, Faq, FinalCta, Forge, Hero, HeroPreview, HouseAgents, HowItWorks, Sessions, Status, TapeSection } from "../../components/marketing/sections";
 
 export const metadata: Metadata = {
-  title: { absolute: "Optra Agent | Let agents trade the strike." },
+  title: { absolute: "Optra Agent | No-Code Options Trading Agents" },
   description:
-    "Rule-driven options agents on Robinhood Chain. Choose a House Agent or build custom rules, backtest with modeled premiums, run on paper, and inspect every decision on Optra Tape.",
+    "Build custom options agents with modular rules. Backtest strategies, control risk, and understand every decision. Paper trading today, with every decision recorded on Optra Tape.",
 };
 
 export default async function LandingPage() {
@@ -27,15 +30,17 @@ export default async function LandingPage() {
   const recorded = latest ? scenarioFromDecision(latest) : null;
   return (
     <>
+      <SignatureStage />
+      <StageRail />
       <Hero facts={facts} />
+      <ProtectiveFloor />
+      <HeroPreview facts={facts} />
       <HouseAgents facts={facts} graph={graph} recorded={recorded} />
+      <AgentShowcase facts={facts} graph={graph} />
       <Forge facts={facts} forge={getForgeDemo()} />
-      <Hooks facts={facts} explorer={getExplorerData()} />
       <HowItWorks />
       <TapeSection graph={graph} />
-      <LabSection />
       <Sessions rails={getRiskRails()} health={getHealthGuard()} />
-      <DualMode />
       <Developers docs={docs} />
       <Status verification={verification} />
       <Faq facts={facts} />

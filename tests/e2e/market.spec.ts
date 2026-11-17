@@ -100,25 +100,24 @@ test("Markets shows the server-verified logo, falls back to initials, and never 
   await expect(aapl.locator("img")).toHaveAttribute("src", logo(apple.tokenAddress));
   await expect(aapl.locator("img")).toHaveJSProperty("complete", true);
   await expect(aapl.locator(".asset-logo")).toHaveAttribute("data-fallback", "0");
-  // No logo from the server: initials, no image at all.
+  // No logo from the server: the ticker's own logo from this app, never a remote host.
   const adbe = rows.filter({ hasText: "ADBE" });
-  await expect(adbe.locator("img")).toHaveCount(0);
-  await expect(adbe.locator(".asset-initials")).toHaveText("ADB");
+  await expect(adbe.locator("img")).toHaveAttribute("src", "/img/stocks/ADBE.png");
   // A logo on a host that is not allowlisted is ignored by the page as well.
   const mu = rows.filter({ hasText: "MU" });
-  await expect(mu.locator("img")).toHaveCount(0);
-  await expect(mu.locator(".asset-initials")).toHaveText("MU");
+  await expect(mu.locator("img")).toHaveAttribute("src", "/img/stocks/MU.png");
   expect(requested.every((url) => url.startsWith("https://cdn.robinhood.com/"))).toBe(true);
   // The details panel carries the larger logo and the quote still shows.
   await expect(page.getByRole("complementary", { name: "AAPL details" }).locator("img")).toHaveAttribute("src", logo(apple.tokenAddress));
   await expect(page.getByRole("complementary", { name: "AAPL details" }).getByText("355.78 USD", { exact: true })).toBeVisible();
 });
 
-test("Markets falls back to initials when a logo fails to load", async ({ page }) => {
+test("Markets falls back to the ticker logo, then to initials, when logos fail to load", async ({ page }) => {
   await page.route("**/api/markets", (route) => route.fulfill({ json: { markets: [{ ...apple, logoUrl: logo(apple.tokenAddress) }] } }));
   await page.route("**/api/markets/AAPL", (route) => route.fulfill({ json: snapshot }));
   await page.route("**/api/backtests/coverage?symbol=AAPL", (route) => route.fulfill({ json: coverage(true) }));
   await page.route("https://cdn.robinhood.com/**", (route) => route.abort());
+  await page.route("**/img/stocks/**", (route) => route.abort());
   await page.goto("/market");
   const row = page.locator(".mk-row").first();
   await expect(row.locator(".asset-logo")).toHaveAttribute("data-fallback", "1");

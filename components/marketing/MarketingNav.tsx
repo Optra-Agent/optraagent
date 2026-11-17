@@ -5,14 +5,16 @@ import { useState } from "react";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
+import { BrandMark } from "../brand";
 
 const sections = [
+  { href: "#floor", label: "Floor" },
   { href: "#agents", label: "Agents" },
   { href: "#forge", label: "Forge" },
-  { href: "#hooks", label: "Hooks" },
+  { href: "/hooks", label: "Hooks" },
   { href: "#how", label: "How it works" },
   { href: "#tape", label: "Tape" },
-  { href: "#lab", label: "Lab" },
+  { href: "/lab", label: "Lab" },
   { href: "#verify", label: "Verify" },
 ];
 
@@ -22,7 +24,7 @@ export function MarketingNav() {
   return (
     <header className="m-header">
       <div className="m-header-inner">
-        <Link className="brand" href="/" aria-label="Optra Agent home">OPTRA <span>AGENT</span></Link>
+        <Link className="brand" href="/" aria-label="Optra Agent home"><BrandMark priority /><span className="brand-word">OPTRA</span> <span className="brand-sub">AGENT</span></Link>
         <nav className="m-nav" aria-label="Page sections">
           {sections.map((item) => <a key={item.href} href={item.href}>{item.label}</a>)}
         </nav>
@@ -36,7 +38,7 @@ export function MarketingNav() {
               <SheetTitle>Page sections</SheetTitle>
               <SheetDescription>Jump to a section of the Optra landing page.</SheetDescription>
             </SheetHeader>
-            <div className="sidebar-brand"><span className="brand">OPTRA <span>AGENT</span></span></div>
+            <div className="sidebar-brand"><span className="brand"><BrandMark /><span className="brand-word">OPTRA</span> <span className="brand-sub">AGENT</span></span></div>
             <nav className="sidebar-nav" aria-label="Page sections menu">
               <div className="sidebar-group">
                 {sections.map((item) => <a key={item.href} className="sidebar-link" href={item.href} onClick={() => setOpen(false)}>{item.label}</a>)}

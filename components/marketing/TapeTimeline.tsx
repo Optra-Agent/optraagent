@@ -139,7 +139,7 @@ export function TapeTimeline({ ticks, stages }: { ticks: FlowScenario[]; stages:
 
   return (
     <figure className="dj">
-      <PinnedStory id="tape" count={STEPS.length} step={step} onStep={setStep} views={views} beat="30vh">
+      <PinnedStory id="tape" count={STEPS.length} step={step} onStep={setStep} views={views} beat="18vh">
         {({ go, views: stage }) => (
           <>
             <div className="dj-left">

@@ -14,6 +14,7 @@ export type AppDatabase = PgDatabase<PgQueryResultHKT, typeof schema>;
 export type DatabaseConnection = {
   db: AppDatabase;
   close: () => Promise<void>;
+  acquirePaperSchedulerLock?: () => Promise<{ release: () => Promise<void> } | null>;
 };
 
 export type DatabaseOptions = {
@@ -39,7 +40,37 @@ export async function createDatabase(options: DatabaseOptions = {}): Promise<Dat
       await client.end({ timeout: 1 });
       throw error;
     }
-    return { db: db as AppDatabase, close: () => client.end({ timeout: 1 }) };
+    return {
+      db: db as AppDatabase,
+      close: () => client.end({ timeout: 1 }),
+      acquirePaperSchedulerLock: async () => {
+        const reserved = await client.reserve();
+        try {
+          const rows = await reserved`select pg_try_advisory_lock(1330668626, 1) as locked`;
+          if (!Boolean((rows[0] as { locked?: unknown } | undefined)?.locked)) {
+            reserved.release();
+            return null;
+          }
+
+          let releasePromise: Promise<void> | null = null;
+          return {
+            release: () => {
+              releasePromise ??= (async () => {
+                try {
+                  await reserved`select pg_advisory_unlock(1330668626, 1)`;
+                } finally {
+                  reserved.release();
+                }
+              })();
+              return releasePromise;
+            },
+          };
+        } catch (error) {
+          reserved.release();
+          throw error;
+        }
+      },
+    };
   }
 
   if (options.nodeEnv === "production") {
@@ -82,6 +113,12 @@ async function connection(): Promise<DatabaseConnection> {
 
 export async function getDatabase(): Promise<AppDatabase> {
   return (await connection()).db;
+}
+
+export async function acquirePaperSchedulerLock(): Promise<{ release: () => Promise<void> } | null> {
+  const active = await connection();
+  if (!active.acquirePaperSchedulerLock) throw new Error("Scheduled paper evaluations require PostgreSQL advisory-lock support.");
+  return active.acquirePaperSchedulerLock();
 }
 
 export async function closeDatabase(): Promise<void> {

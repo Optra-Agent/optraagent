@@ -29,7 +29,7 @@ export function PayoffMark({ id, ready, size = "md" }: { id: string; ready: bool
   );
 }
 
-function featuredFacts() {
+export function featuredFacts() {
   const recipe = buildProtectivePutRecipe({ underlyingSymbol: "AAPL", protectedShares: "1", initialCapitalUsd: "1000" });
   const p = recipe.parameters as Record<string, Record<string, number>>;
   return [
@@ -57,7 +57,7 @@ export function TemplateCard({ template, interactive = true, compact = false, he
       ) : null}
       {compact ? null : (
         <details className="template-why">
-          <summary>{ready ? "How premiums are modeled" : "Why it is not available yet"}</summary>
+          <summary>{ready ? "How premiums are modeled" : "Why this is a strategy overview"}</summary>
           <p>{template.reason}</p>
         </details>
       )}
@@ -65,7 +65,7 @@ export function TemplateCard({ template, interactive = true, compact = false, he
         ? interactive
           ? <a className="template-cta" href={href}>{href === "#configure" ? "Configure this agent below" : "Configure this agent"}<ArrowRight aria-hidden /></a>
           : <span className="template-cta">Configure this agent below<ArrowRight aria-hidden /></span>
-        : <p className="template-unavailable"><Lock aria-hidden />Not yet available</p>}
+        : <p className="template-unavailable"><Lock aria-hidden />Strategy overview. Paper launch is not enabled.</p>}
       {children}
     </Card>
   );

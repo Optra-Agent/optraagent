@@ -182,7 +182,7 @@ That November 14 landing iteration used a data-derived isometric Protective Put 
 
 Real browser extension signing remains unverified: the live Chrome process exposed no CDP listener, and its extension installation state is unknown. Unit mocks prove connector/session state handling; E2E confirms the no-extension UI state in its isolated browser. Do not report real MetaMask/Phantom authentication as browser-verified. Web release remains a candidate pending the manual extension check and owner go/no-go.
 
-Contract inventory is zero source contracts, zero deployed contracts, and zero explorer-verified addresses. The original PM brief supports two conditional modules (`OptraGuardHook`, `GuardRegistry`) after feasibility review and explicit approval. It does not justify six independent contracts. Read-only `eth_chainId` requests to both supplied public RPC endpoints failed TLS validation because each returned an expired certificate for an unrelated host; no chain ID was obtained and no deployment occurred. The paper MVP does not depend on these modules.
+OPTRA contract inventory is zero source contracts, zero deployed contracts, and zero OPTRA explorer-verified addresses. The original PM brief supports two conditional modules (`OptraGuardHook`, `GuardRegistry`) after feasibility review and explicit approval. It does not justify six independent contracts. The initial RPC attempt in this takeover returned an unrelated expired certificate; the subsequent read-only verification and updated readiness boundary are recorded in the on-chain addendum below. The paper MVP does not depend on these modules.
 
 No commit, push, merge, deployment, server restart, or live-money action was performed. Existing ports 3000–3003 were left untouched; E2E used its isolated port 3100.
 
@@ -210,3 +210,72 @@ One intermediate full E2E run timed out on a single `/agents` navigation while t
 **Web release readiness: ready for deployment preparation, not ready for controlled release.** Real-extension and owner visual acceptance, selected-host persistent PostgreSQL and migration verification, HTTPS/origin setup, backups/rollback, host logging/monitoring, cross-browser/device checks, and owner go/no-go remain. The repository has zero Solidity sources, deployments, or verified addresses; there are two conditional PM-backed contract candidates, with no basis for six distinct contracts. Contract deployment does not block the paper MVP.
 
 No web/contract deployment, production migration, commit, push, merge, or server restart was performed. Ports 3000–3003 were left running; Playwright used isolated port 3100. The [tracker](tasks/optra-fullstack-progress.md) contains the original ten-step reconciliation and release checklists.
+
+## 2026-11-15 on-chain takeover — read-only feasibility
+
+### Current status
+
+- No Solidity, Foundry workspace, ABI, deployment script, OPTRA contract test, OPTRA deployment, or OPTRA verified address was added or found. The paper application, database, auth, APIs, frontend, and live-execution flags were not changed.
+- Two conditional modules remain the PM-supported upper bound: `GuardRegistry` and `OptraGuardHook`. Hook rules remain offchain except for the narrowly scoped future enforcement proposal on OPTRA-owned v4 spot pools. The v4 hook does not guard CallPut/Zeno options orders or third-party pools.
+- `LIVE_TRADING_ENABLED=false` and `V4_CLAIM_LEVEL=L0` remain in force. No test suite was rerun because this pass changed documentation only; no source or behavioral code changed.
+
+### Chain and protocol evidence
+
+During read-only `curl` JSON-RPC requests with normal TLS verification, the testnet returned `eth_chainId=0xb626` (46630), `eth_blockNumber=0x9291abc`, and nonempty `eth_getCode` for `0x8366a39cc670b4001a1121b8f6a443a643e40951`. The testnet Blockscout v2 smart-contract endpoint for that address returned `file_path=src/PoolManager.sol` and `creation_status=success`.
+
+## 2026-11-15 autonomous paper worker and PostgreSQL release readiness
+
+### Implementation
+
+- Added `POST /api/cron/paper-evaluations`, protected by a constant-time `CRON_SECRET` check before database initialization. It processes only running, hash-valid Protective Put agents and reuses the existing `runTick` and transactional `persistTick` path.
+- A paper evaluation requires verified Crius one-hour data, a stable multiplier, no fill-forward, positive trade activity/close, 721 contiguous finalized prior candles, a regular US equity session, a five-minute finalization grace, and a maximum two-hour candle age. Data gaps, stale history, bad provenance and transient provider/persistence failures do not create synthetic ticks; failures return retryable 503 and the next host invocation may retry.
+- The PostgreSQL worker lease uses session advisory lock namespace `OPTR/1` on a reserved backend connection. A competing worker returns 202; lifecycle state is filtered on selection and checked again under the existing agent-row lock before persistence. Resume `updatedAt` is combined with the latest Tape timestamp as the lower execution bound. PGlite intentionally has no scheduler-lock implementation and fails closed.
+- Added `/api/health/live` and `/api/health/ready`. In production, readiness requires a PostgreSQL URL, canonical HTTPS origin, cron secret of at least 32 characters, `LIVE_TRADING_ENABLED=false`, and `V4_CLAIM_LEVEL=L0`; it then performs `SELECT 1`. Scheduler events are compact JSON to stdout/stderr, without owner IDs or credentials.
+
+### Verification on November 15
+
+- `bun run test` passed twice: 38 files passed / 2 optional PostgreSQL files skipped, 132 tests passed / 2 skipped per run.
+- `OPTRA_TEST_POSTGRES_URL=... bun run test -- tests/db/postgres-paper-persistence.test.ts tests/db/postgres-scheduler-lock.test.ts` passed both cases on the disposable PostgreSQL 17 cluster. It verified transaction rollback, owner-scoped PAPER Tape persistence/idempotent replay, and cross-connection exclusion/release of the scheduler lease.
+- The full scheduled-flow integration passed with a real signed EVM test challenge and disposable PGlite: draft validation, complete 720-decision backtest, matching launch, scheduled modeled order/position, and Tape. Additional scheduler integration covers a risk-gated `skip` with no order, pause/resume/stop eligibility, missing cron credentials and overlapping invocation.
+- A fresh disposable PostgreSQL database accepted all four checked-in migrations; repeating `bun run db:migrate` succeeded. The migrated database had four migration records and 11 public application tables. The entrypoint applies migrations rather than checking configuration only.
+- A `pg_dump -Fc` backup restored into a second disposable database; the restored database retained all four migration records, 11 application tables, and a seeded row. The production readiness route returned 200 against the migrated disposable database. No production connection was used.
+- `bun run typecheck`, `bun run lint`, `bun run test:e2e` (78/78 isolated Chromium), and a locked-dependency source-snapshot `bun run build` passed. E2E used port 3100 and did not restart the existing development processes.
+
+### Release boundary
+
+No host-specific staging database, external scheduler, DNS/HTTPS origin, log retention/alerts, backup service, rollback owner, or deployment environment is configured in this repository. The host must call `POST $APP_BASE_URL/api/cron/paper-evaluations` with bearer `CRON_SECRET` every 15 minutes (recommended schedule `5,20,35,50 * * * *`) and support persistent PostgreSQL session advisory locks. The endpoint is implemented and tested; real wall-clock scheduling in staging remains unverified until that host configuration exists. Real MetaMask/Phantom extension acceptance and the owner's visual/release approval also remain open.
+
+The final current E2E list has 78 cases. The previously reported 80 cases belonged to the pre-replacement Forge/Core suite: its file had eight cases before the workflow redesign and six afterward. The two-case net difference is explained by replacing the rejected Core-specific behavior tests; Playwright `--list` and the final run agree on 78. No change to the unrelated test files was involved.
+
+Mainnet returned `eth_chainId=0x1237` (4663), `eth_blockNumber=0x6dbbd2f`, and nonempty bytecode at the same PoolManager address. The official Uniswap v4 deployment page maps that address to Robinhood Chain mainnet and lists its periphery, including Universal Router 2.1.2 at `0x204FAca1764B154221e35c0d20aBb3c525710498`. The official list's testnet section does not list Robinhood Chain Testnet. A testnet PoolManager source record does not by itself verify a supported testnet router, usable stock-token pool, OPTRA hook, or integration path.
+
+Robinhood's current Stock Token documentation says these are standard ERC-20s that can be transferred and composed, while also describing them as tokenised debt securities and restricting primary issuance to authorised participants. This supports generic interface feasibility, not the suitability or availability of a specific token/pair. Asset-specific tradability, legal/geographic eligibility, quote asset, existing pools, and liquidity remain unresolved.
+
+After the successful responses, repeat RPC and explorer requests intermittently reset (`curl` error 35). The official public RPC docs mark these endpoints rate-limited and recommend a provider for production. No verification bypass was used. Mainnet explorer API returned HTTP 403 in this environment; mainnet bytecode evidence came from JSON-RPC, and the official address mapping from Uniswap's deployment page.
+
+### Conditional architecture and tests
+
+```text
+Offchain market data + private agent/rule/Tape state
+                  |
+          authorized keeper
+                  v
+ GuardRegistry (only if state must be shared)
+                  ^ otherwise guard state stays in Hook
+                  |
+Wallet -> v4 router -> PoolManager -> OptraGuardHook -> OPTRA spot pool
+                                        |
+                         allow/deny entry swaps
+
+Options venues and third-party pools are outside the hook boundary.
+```
+
+The updated `docs/contract-deployment-plan.md` contains the approval-gated interface/state proposal, role boundaries, fail-closed entry and permitted reducing swaps, unresolved schedule-proof and stale-state decisions, events/errors/invariants, Foundry compiler/dependency pinning, unit/fuzz/property tests, and testnet/mainnet release gates. The spec flags caller-provided `hookData` as untrusted and requires direction verification. No gas estimate was invented: measure it only after reviewed code exists against the chosen RPC.
+
+### Readiness and next milestone
+
+- **Mainnet:** protocol-level v4 PoolManager and periphery are documented, and PoolManager bytecode was read. OPTRA is not ready to deploy: no approved spec, code, test/audit, selected asset/pool, deployer, measured gas, or explicit authorization.
+- **Testnet:** the chain responds and the PoolManager address has a verified source record. OPTRA is not ready to deploy: router support, an approved test asset/pool, hook, test suite, operator, and gas plan remain unverified. Testnet deployment still requires explicit authorization.
+- **Next milestone:** owner approves or rejects future spot-pool enforcement, selects one self-contained hook versus a shared registry, and resolves the target asset/quote pair, session schedule representation, state freshness, entry/exit semantics, and admin/keeper controls. After spec approval, implement and test in the existing repository. Request separate explicit authorization before any testnet signing; mainnet requires a later independent gate after testnet evidence, audit, asset/legal review, and gas assessment.
+
+No RPC signing, token approval, transaction, deployment, migration, commit, push, or live-money action occurred.

@@ -1,16 +1,14 @@
 import { expect, test } from "@playwright/test";
 import type { Page } from "@playwright/test";
 
-/** Scroll to a fraction of a pinned story's travel and report its pin offset and active step. */
+/** Pick the story step that sits at a fraction of the story, by clicking its step control. Stories are tabs, not pinned scroll. */
 async function story(page: Page, section: string, fraction: number) {
-  await page.evaluate(([sel, f]) => {
-    const track = document.querySelector(`${sel} .ps`) as HTMLElement;
-    const pin = track.querySelector(".ps-pin") as HTMLElement;
-    const top = track.getBoundingClientRect().top + window.scrollY;
-    window.scrollTo(0, top - 104 + (track.offsetHeight - pin.offsetHeight) * (f as number));
-  }, [section, fraction] as [string, number]);
+  const track = page.locator(`${section} .ps`);
+  const count = Number(await track.evaluate((element) => getComputedStyle(element).getPropertyValue("--n")));
+  const index = Math.min(count - 1, Math.floor(fraction * count));
+  await track.locator('.ps-nav li button, [role="tab"]').nth(index).click();
   await page.waitForTimeout(450);
-  return page.evaluate((sel) => ({ step: Number((document.querySelector(`${sel} .ps`) as HTMLElement).dataset.step), pin: Math.round((document.querySelector(`${sel} .ps-pin`) as HTMLElement).getBoundingClientRect().top) }), section);
+  return { step: Number(await track.getAttribute("data-step")) };
 }
 
 const net = (page: Page) => page.locator("#agents .pn");
@@ -128,19 +126,33 @@ test.describe("Optra Agent Network (desktop)", () => {
 
   test("the decision flow is labeled illustrative and ends in a decision", async ({ page }) => {
     await page.goto("/");
+    await net(page).scrollIntoViewIfNeeded();
+    await expect(net(page)).toBeInViewport({ ratio: 0.12 });
+    await expect(net(page)).toHaveAttribute("data-playing", "1");
     await state(page, 6).click();
+    await expect(net(page)).toHaveAttribute("data-phase", "5");
+    await expect(net(page)).toHaveAttribute("data-playing", "0");
+    await page.waitForTimeout(2200);
+    await expect(net(page)).toHaveAttribute("data-phase", "5");
+    // Let the decision flow reach its decision stage, then use reduced motion when
+    // switching scenarios so the asserted explanation does not depend on autoplay.
     await net(page).getByRole("button", { name: "View decision flow" }).first().click();
     await expect(card(page).getByText("Illustrative only", { exact: true }).first()).toBeVisible();
-    await expect(card(page).getByText("Entry blocked by calmo.")).toBeVisible({ timeout: 15_000 });
+    const decision = card(page).getByRole("button", { name: /Paper decision The verdicts become one action/ });
+    await expect(decision).toBeEnabled({ timeout: 15_000 });
+    await decision.click();
+    await expect(card(page).getByText("Entry blocked by calmo.", { exact: true }).first()).toBeVisible({ timeout: 15_000 });
+    await page.emulateMedia({ reducedMotion: "reduce" });
     await card(page).getByRole("button", { name: "Entry opens" }).click();
-    await expect(card(page).getByText("Opened modeled one-share Protective Put units for paper execution.")).toBeVisible({ timeout: 15_000 });
+    await expect(card(page).locator(".pn-result-text")).toHaveText("Opened modeled one-share Protective Put units for paper execution.", { timeout: 15_000 });
     await expect(svg(page).getByText("ILLUSTRATIVE ONLY · NO RECORDED TRADE")).toBeAttached();
   });
 
   test("the network grows by itself once, Pause stops it, Back to start returns to one agent, Explore agent plays it again", async ({ page }) => {
     await page.goto("/");
     const controls = net(page).locator(".pn-head .pn-controls");
-    await page.evaluate(() => document.querySelector("#agents .pn")!.scrollIntoView({ block: "start" }));
+    await net(page).scrollIntoViewIfNeeded();
+    await expect(net(page)).toBeInViewport({ ratio: 0.12 });
     // Scrolling the network into view starts one automatic growth.
     await expect(net(page)).toHaveAttribute("data-playing", "1");
     await expect.poll(async () => Number(await net(page).getAttribute("data-phase")), { timeout: 10_000 }).toBeGreaterThanOrEqual(2);
@@ -157,15 +169,20 @@ test.describe("Optra Agent Network (desktop)", () => {
   });
 
   test("a Preview agent never grows and never appears paper ready", async ({ page }) => {
+    await page.emulateMedia({ reducedMotion: "reduce" });
     await page.goto("/");
-    await net(page).locator(".pn-agents").getByRole("button", { name: /Covered Call/ }).click();
+    const previewAgent = net(page).locator(".pn-agents").getByRole("button", { name: /Covered Call/ });
+    await previewAgent.evaluate((element) => element.scrollIntoView({ block: "center", behavior: "instant" }));
+    await expect(previewAgent).toBeVisible();
+    await previewAgent.click();
     await expect(card(page).getByRole("heading", { name: "Covered Call" })).toBeVisible();
-    await expect(card(page).getByText("Not yet available", { exact: true })).toBeVisible();
+    await expect(card(page).getByText("Strategy overview", { exact: true }).first()).toBeVisible();
     await expect(card(page).getByText("Paper ready")).toHaveCount(0);
     await expect(svg(page).getByText("PREVIEW", { exact: true })).toBeAttached();
     await expect(net(page).locator(".pn-head .pn-controls")).toHaveCount(0);
     await expect(shown(page, "stage")).toHaveCount(0);
-    await net(page).locator(".pn-agents").getByRole("button", { name: /Protective Put/ }).click();
+    const paperAgent = net(page).locator(".pn-agents").getByRole("button", { name: /Protective Put/ });
+    await paperAgent.click();
     await expect(card(page)).toHaveCount(0);
     await expect(svg(page).getByText("PAPER AGENT", { exact: true })).toBeAttached();
   });
@@ -234,10 +251,11 @@ test("with reduced motion the complete network is shown without growth, and noth
 
 test("network autoplay pauses offscreen and resumes when the story returns", async ({ page }) => {
   await page.goto("/");
-  await page.evaluate(() => document.querySelector("#agents .pn")!.scrollIntoView({ block: "start", behavior: "instant" }));
+  await net(page).scrollIntoViewIfNeeded();
+  await expect(net(page)).toBeInViewport({ ratio: 0.12 });
   await expect(net(page)).toHaveAttribute("data-live", "1");
   await expect(net(page)).toHaveAttribute("data-playing", "1");
-  await expect(net(page)).toHaveAttribute("data-phase", "0");
+  await expect.poll(async () => Number(await net(page).getAttribute("data-phase"))).toBeGreaterThan(0);
 
   await page.evaluate(() => window.scrollTo({ top: 0, behavior: "instant" }));
   await expect(net(page)).toHaveAttribute("data-live", "0");
@@ -269,7 +287,7 @@ test("Save-Data leaves the network and Forge demo still, while keeping controls 
   const forge = page.locator("#forge .fs");
   await page.evaluate(() => document.querySelector("#forge .fs")!.scrollIntoView({ block: "start", behavior: "instant" }));
   await expect(forge).toHaveAttribute("data-save-data", "1");
-  await expect(forge.getByText("Demonstration running")).toHaveCount(0);
+  await expect(forge.getByText("Walkthrough running")).toHaveCount(0);
   await expect(forge.getByRole("button", { name: "Replay" })).toBeEnabled();
 });
 
@@ -313,13 +331,14 @@ test.describe("section visuals", () => {
     await expect(forge.getByRole("button", { name: /Volra/ })).toBeHidden();
     await forge.getByText("Show the 21 locked rules").click();
     await forge.getByRole("button", { name: /Volra/ }).click();
-    await expect(forge.getByText("Volra is locked.")).toBeVisible();
+    await expect(forge.getByText("Volra is in the catalog.")).toBeVisible();
     await forge.locator(".fs-agents").scrollIntoViewIfNeeded();
     await forge.locator(".fs-agent").filter({ hasText: "Covered Call" }).click();
-    await expect(forge.locator(".fs-note")).toContainText("Covered Call is not available.");
+    await expect(forge.locator(".fs-note")).toContainText("Covered Call is a strategy overview.");
   });
 
-  test("the Tape replay is pinned, follows scroll, names the blocking hook, and never changes the picked tick by itself", async ({ page }) => {
+  test("the Tape replay switches steps, names the blocking hook, and never changes the picked tick by itself", async ({ page }) => {
+    await page.emulateMedia({ reducedMotion: "reduce" });
     await page.goto("/");
     const tape = page.locator("#tape");
     await expect(tape.getByText("Illustrative example", { exact: true })).toBeVisible();
@@ -327,8 +346,6 @@ test.describe("section visuals", () => {
     // Forward: input, hooks, guard, decision, record.
     await expect.poll(async () => (await story(page, "#tape", 0.05)).step).toBe(0);
     await expect(tape.getByText("Latest closed hourly candle and the current quote")).toBeVisible();
-    const mid = await story(page, "#tape", 0.3);
-    expect(mid.pin).toBe(104);
     await expect.poll(async () => (await story(page, "#tape", 0.3)).step).toBe(1);
     await expect(tape.getByText("Sessia blocked").first()).toBeVisible();
     await expect.poll(async () => (await story(page, "#tape", 0.5)).step).toBe(2);
@@ -355,17 +372,14 @@ test.describe("section visuals", () => {
     await expect(tape.getByRole("button", { name: /Tick 3/ })).toHaveAttribute("aria-pressed", "true");
   });
 
-  test("the how-it-works story is pinned, follows scroll in both directions, releases, and links to the real routes", async ({ page }) => {
+  test("the how-it-works story switches steps in both directions and links to the real routes", async ({ page }) => {
     await page.goto("/");
     const how = page.locator("#how");
     await expect(how.getByRole("button", { name: /Configure a strategy/ })).toHaveAttribute("aria-current", "step");
     await expect(how.getByRole("link", { name: /Configure in Agents/ })).toHaveAttribute("href", "/agents#configure");
-    const first = await story(page, "#how", 0.3);
-    expect(first.pin).toBe(104);
     await expect.poll(async () => (await story(page, "#how", 0.3)).step).toBe(1);
     await expect(how.getByRole("link", { name: /Open the Lab/ })).toHaveAttribute("href", "/lab");
     await expect(how.getByText("Results appear only after a complete run in the app. No numbers are shown here.")).toBeVisible();
-    expect((await story(page, "#how", 0.55)).pin).toBe(104);
     await expect.poll(async () => (await story(page, "#how", 0.55)).step).toBe(2);
     await expect(how.getByRole("link", { name: /Open Agents/ })).toHaveAttribute("href", "/agents");
     await expect.poll(async () => (await story(page, "#how", 0.95)).step).toBe(3);
@@ -373,10 +387,6 @@ test.describe("section visuals", () => {
     await expect(how.getByRole("link", { name: /Open the Tape/ })).toHaveAttribute("href", "/tape");
     // Reverse
     await expect.poll(async () => (await story(page, "#how", 0.3)).step).toBe(1);
-    // Release: past the end the pin scrolls away with the section instead of sticking.
-    await page.evaluate(() => { const t = document.querySelector("#how .ps") as HTMLElement; window.scrollTo(0, t.getBoundingClientRect().top + window.scrollY + t.offsetHeight + 120); });
-    await page.waitForTimeout(400);
-    expect(await page.evaluate(() => Math.round(document.querySelector("#how .ps-pin")!.getBoundingClientRect().top))).toBeLessThan(0);
     // Click and keyboard: a step button moves the story and the scroll position together, and the story does not bounce back.
     await how.getByRole("button", { name: /Run on paper/ }).focus();
     await page.keyboard.press("Enter");
@@ -395,50 +405,28 @@ test.describe("section visuals", () => {
     expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBe(0);
   });
 
-  test("the pinned stories fall back to scrollable steps at tablet width without horizontal overflow", async ({ page }) => {
-    await page.setViewportSize({ width: 820, height: 900 });
-    await page.goto("/");
-    const hooks = page.locator("#hooks");
-    expect(await page.evaluate(() => getComputedStyle(document.querySelector("#hooks .ps-pin")!).position)).toBe("static");
-    await hooks.getByRole("navigation", { name: "Hook stages" }).getByRole("button", { name: /^EXPIRY\b/i }).click();
-    await expect(hooks.locator('.ps-view[data-state="active"] h3')).toBeVisible();
-    expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBe(0);
-  });
-
-  test("the pinned story keeps its stages visible without motion and disables the evaluation pulse", async ({ page }) => {
-    await page.emulateMedia({ reducedMotion: "reduce" });
-    await page.goto("/");
-    const hooks = page.locator("#hooks");
-    await expect(hooks.getByRole("button", { name: /Gate/i })).toBeVisible();
-    await expect(hooks.getByRole("button", { name: /Breaker/i })).toBeVisible();
-    expect(await hooks.locator(".fp-pulse").first().evaluate((element) => getComputedStyle(element).animationName)).toBe("none");
-    await hooks.getByRole("button", { name: /Breaker/i }).click();
-    await expect(hooks.locator('.ps-view[data-state="active"] h3')).toBeVisible();
-  });
-
-  test("the Forge demonstration stops when users interact with the studio", async ({ page }) => {
+  test("the Forge walkthrough stops when users interact with the studio", async ({ page }) => {
     await page.goto("/");
     const forge = page.locator("#forge");
-    await story(page, "#forge", 0.01);
-    await expect(forge.getByText("Demonstration running")).toBeVisible({ timeout: 4000 });
+    await forge.scrollIntoViewIfNeeded();
+    await expect(forge.getByText("Walkthrough running")).toBeVisible({ timeout: 4000 });
     await expect(forge.getByText(/runs no backtest and no paper tick/)).toBeVisible();
     await forge.getByRole("button", { name: "Pause" }).click();
-    await expect(forge.getByText("Demonstration", { exact: true })).toBeVisible();
+    await expect(forge.getByText("Walkthrough", { exact: true })).toBeVisible();
     await forge.getByRole("button", { name: "Replay" }).click();
-    await expect(forge.getByText("Demonstration running")).toBeVisible();
+    await expect(forge.getByText("Walkthrough running")).toBeVisible();
     await forge.getByRole("button", { name: "Calmo" }).click();
-    await expect(forge.getByText("Demonstration", { exact: true })).toBeVisible();
+    await expect(forge.getByText("Walkthrough", { exact: true })).toBeVisible();
     await expect(forge.getByText("Blocked", { exact: true })).toBeVisible();
     await forge.getByRole("button", { name: "Restore recipe" }).click();
     await expect(forge.getByText("Valid", { exact: true })).toBeVisible({ timeout: 15_000 });
     await expect(forge.getByRole("link", { name: /Backtest in Lab/ })).toHaveAttribute("href", "/lab");
   });
 
-  test("the Forge studio is pinned and scroll drives it: select, configure, validate, continue to Lab", async ({ page }) => {
+  test("the Forge studio steps through: select, configure, validate, continue to Lab", async ({ page }) => {
     await page.goto("/");
     const forge = page.locator("#forge");
     const at = async (f: number) => story(page, "#forge", f);
-    expect((await at(0.3)).pin).toBe(104);
     await expect.poll(async () => (await at(0.3)).step).toBe(1);
     await expect(forge.getByText("Building")).toBeVisible();
     await expect.poll(async () => (await at(0.55)).step).toBe(2);
@@ -448,7 +436,7 @@ test.describe("section visuals", () => {
     await expect(workflow.getByRole("tab")).toHaveCount(5);
     await expect(workflow.getByRole("tab", { name: /Decision & Tape/ })).toHaveAttribute("aria-selected", "true");
     await expect(forge.getByText("Valid", { exact: true })).toBeVisible();
-    await expect(forge.getByText("Demonstration running")).toHaveCount(0);
+    await expect(forge.getByText("Walkthrough running")).toHaveCount(0);
     // Reverse
     await expect.poll(async () => (await at(0.3)).step).toBe(1);
     await expect(forge.getByText("Building")).toBeVisible();
@@ -457,24 +445,7 @@ test.describe("section visuals", () => {
     await expect(forge.locator(".fww")).toHaveAttribute("data-active-stage", "2");
     await page.waitForTimeout(1200);
     await forge.getByRole("button", { name: "Calmo" }).click();
-    await expect(forge.getByText("Protective Put requires calmo.")).toBeVisible();
-  });
-
-  test("Lab is a pinned four-stage story, stays in step with clicks, and promises no numbers it does not have", async ({ page }) => {
-    await page.goto("/");
-    const lab = page.locator("#lab");
-    await expect(lab.getByRole("heading", { name: "Test the strategy before you run it." })).toBeVisible();
-    expect((await story(page, "#lab", 0.1)).pin).toBe(104);
-    await expect.poll(async () => (await story(page, "#lab", 0.4)).step).toBe(1);
-    await expect(lab.getByText(/Black–Scholes/).first()).toBeVisible();
-    await expect.poll(async () => (await story(page, "#lab", 0.95)).step).toBe(3);
-    await expect(lab.getByText("Process illustration · no market prices are plotted.")).toBeVisible();
-    await expect(lab.getByRole("link", { name: /Test a strategy in the Lab/ })).toHaveAttribute("href", "/lab");
-    await expect.poll(async () => (await story(page, "#lab", 0.05)).step).toBe(0);
-    await lab.getByRole("button", { name: /Strategy replay/ }).click();
-    await page.waitForTimeout(1300);
-    await expect(lab.getByRole("button", { name: /Strategy replay/ })).toHaveAttribute("aria-current", "step");
-    expect(await lab.innerText()).not.toMatch(/\$\s?\d|[+\-−]\s?\d+(\.\d+)?\s?%/);
+    await expect(forge.getByText("Protective Put requires calmo.").first()).toBeVisible();
   });
 
   test("Sessions marks only regular hours as allowed and never claims the market is open now", async ({ page }) => {
@@ -508,13 +479,12 @@ test.describe("section visuals", () => {
     await expect(risk.getByText("Venue spread and error-rate checks are unavailable")).toBeVisible();
   });
 
-  test("Dual Mode shows Agent mode as working and Manual mode as planned without a control", async ({ page }) => {
+  test("Sessions closes with Agent mode as working and Manual mode as planned, without a control", async ({ page }) => {
     await page.goto("/");
-    const dual = page.locator("#dual");
-    await expect(dual.getByText("Working on paper")).toBeVisible();
-    await expect(dual.getByText("Not available. No route or service exists yet.")).toBeVisible();
-    await expect(dual.getByRole("button")).toHaveCount(0);
-    await expect(dual.getByRole("link", { name: "Launch a paper agent" })).toHaveAttribute("href", "/agents");
+    const modes = page.locator("#sessions").getByRole("group", { name: "Agent mode and Manual mode" });
+    await expect(modes.getByText("Working on paper")).toBeVisible();
+    await expect(modes.getByText(/No route or service exists yet/)).toBeVisible();
+    await expect(modes.getByRole("button")).toHaveCount(0);
   });
 
   test("Developers shows real responses, copies them, and keeps MCP and x402 planned", async ({ page, context }) => {

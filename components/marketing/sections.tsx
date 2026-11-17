@@ -6,28 +6,29 @@ import { Chip } from "../app/ui";
 import type { PublicVerification } from "../../lib/domain/contracts";
 import { AgentGraph } from "./AgentGraph";
 import { ForgeDemo } from "./ForgeDemo";
-import { HookExplorer } from "./HookExplorer";
-import { BreakerPanel, DevDocs, EvidenceCenter, LabShowcase, SessionsTimeline } from "./story";
-import { Bot, Check, Circle, Hand, Lock } from "lucide-react";
+import { BreakerPanel, DevDocs, EvidenceCenter, SessionsTimeline } from "./story";
 import { HowWalkthrough } from "./HowWalkthrough";
 import { TapeTimeline } from "./TapeTimeline";
-import type { ApiDoc, ExplorerStage, ForgeDemoData, HealthGuard, RiskRail } from "./section-data";
+import type { ApiDoc, ForgeDemoData, HealthGuard, RiskRail } from "./section-data";
 import { ProductPreview } from "./ProductPreview";
 import type { GraphData } from "./graph-data";
 import type { FlowScenario } from "./graph-flow";
 import { HeroStage } from "./HeroStage";
-import { getLandingFacts } from "./data";
+import { AgentPhones } from "./AgentPhones";
+import { AgentEnsemble } from "./AgentEnsemble";
+import { LIVE_REQUIREMENTS } from "../app/live-requirements";
+import { STAGE_ORDER, STAGE_QUESTION, getLandingFacts, stageLabel } from "./data";
 
 type Facts = ReturnType<typeof getLandingFacts>;
 
 /** Stagger index for `.reveal-stagger` children. */
 const at = (index: number): CSSProperties => ({ "--i": index }) as CSSProperties;
 
-function SectionHead({ eyebrow, title, children, className }: { eyebrow: string; title: string; children?: ReactNode; className?: string }) {
+function SectionHead({ eyebrow, title, titleId, children, className }: { eyebrow: string; title: string; titleId?: string; children?: ReactNode; className?: string }) {
   return (
     <div className={cn("section-head reveal-lead", className)}>
       <p className="m-eyebrow">{eyebrow}</p>
-      <h2>{title}</h2>
+      <h2 id={titleId}>{title}</h2>
       {children}
     </div>
   );
@@ -37,27 +38,44 @@ function SectionHead({ eyebrow, title, children, className }: { eyebrow: string;
 
 export function Hero({ facts }: { facts: Facts }) {
   return (
-    <section className="hero" aria-labelledby="hero-title">
-      <div className="hero-copy">
-        <p className="m-eyebrow">AI OPTIONS AGENTS · ROBINHOOD CHAIN</p>
-        <h1 id="hero-title">Let agents trade the strike.</h1>
-        <p className="hero-sub">
-          Rule-driven agents trade synthetic calls and puts on Robinhood Chain. Pick a House Agent or build your own rules, backtest the strategy, run it on paper, and inspect every decision on Optra Tape.
-        </p>
-        <p className="hero-gloss">The strike is the price an option is struck at. Rules pick it, size it, and explain it.</p>
-        <div className="hero-actions">
-          <Link className={cn(buttonVariants({ size: "lg" }))} href="/agents">Launch a paper agent</Link>
-          <a className={cn(buttonVariants({ variant: "outline", size: "lg" }))} href="#tape">Read the Tape</a>
+    <section className="hero" id="intro" aria-labelledby="hero-title">
+      <div className="m-wrap hero-grid">
+        <div className="hero-copy">
+          <p className="m-eyebrow">BUILD · DEPLOY · CONTROL</p>
+          <h1 id="hero-title">No-Code Options Trading Agents.</h1>
+          <p className="hero-sub">
+            Build custom options agents with modular rules. Backtest strategies, control risk, and understand every decision.
+          </p>
+          <p className="hero-gloss">Hooked agents. Every strike explained.</p>
+          <div className="hero-actions">
+            <Link className={cn(buttonVariants({ size: "lg" }))} href="/agents">Launch a paper agent</Link>
+            <a className={cn(buttonVariants({ variant: "outline", size: "lg" }))} href="#floor">See the protective floor</a>
+          </div>
+          <p className="hero-micro">Paper first. Synthetic options on stock prices. Not shares. Not investment advice.</p>
         </div>
-        <p className="hero-micro">Paper first. Synthetic options on stock prices. Not shares. Not investment advice.</p>
-        <ul className="hero-proof" aria-label="Current scope">
-          <li>Paper only. Live trading disabled</li>
-          <li>{facts.paperReadyTemplates.length} of {facts.templates.length} House Agents paper ready</li>
-          <li>{facts.hookLive} of {facts.hookTotal} hooks implemented</li>
-          <li>Modeled premiums. Venue fees not modeled</li>
-        </ul>
+        <div className="hero-slot">
+          <AgentEnsemble stages={STAGE_ORDER.map((stage) => ({ id: stage, label: stageLabel(stage), line: STAGE_QUESTION[stage] }))} />
+        </div>
       </div>
+      <ul className="hero-proof m-wrap" aria-label="Current scope">
+        <li>Paper only. Live trading disabled</li>
+        <li>{facts.paperReadyTemplates.length} of {facts.templates.length} House Agents paper ready</li>
+        <li>{facts.hookLive} of {facts.hookTotal} hooks implemented</li>
+        <li>Modeled premiums. Venue fees not modeled</li>
+      </ul>
+    </section>
+  );
+}
 
+/** The real app, read only, under the beam. It sits right after the hero so the first screen stays about one idea. */
+export function HeroPreview({ facts }: { facts: Facts }) {
+  return (
+    <section className="hero-preview" id="app" aria-labelledby="app-title">
+      <div className="pv-lead">
+        <p className="m-eyebrow">INSIDE THE APP</p>
+        <h2 id="app-title">The screens you will run on paper.</h2>
+        <p>Same sidebar, same journey, same House Agent cards. Read only here, live in the app.</p>
+      </div>
       <HeroStage>
         <ProductPreview facts={facts} />
       </HeroStage>
@@ -72,7 +90,7 @@ export function HouseAgents({ facts, graph, recorded }: { facts: Facts; graph: G
   return (
     <section className="m-section" id="agents" aria-labelledby="agents-title">
       <div className="m-wrap">
-        <SectionHead eyebrow="HOUSE AGENTS" title="One House Agent runs on paper today. Three are next.">
+        <SectionHead titleId="agents-title" eyebrow="HOUSE AGENTS" title="One House Agent runs on paper today. Three are next.">
           <p>An Optra Agent is a recipe of rules, not a chatbot. Select Protective Put to see its six hook stages, read each rule, and replay how one tick becomes a paper decision. The other three stay in Preview until their venue and data requirements are verified.</p>
         </SectionHead>
         <AgentGraph data={graph} recorded={recorded} />
@@ -85,42 +103,49 @@ export function HouseAgents({ facts, graph, recorded }: { facts: Facts; graph: G
   );
 }
 
+/* ───────────────────────── The agent, in three screens ───────────────────────── */
+
+export function AgentShowcase({ facts, graph }: { facts: Facts; graph: GraphData }) {
+  return (
+    <section className="m-section m-section-clean" id="studio" aria-labelledby="studio-title">
+      <div className="m-wrap">
+        <SectionHead titleId="studio-title" eyebrow="THE AGENT" title="Rules in. A reason out.">
+          <p>An OPTRA agent is a recipe of rules you can read, a backtest you can check, and a decision log that explains every tick, even the ticks where it does nothing.</p>
+        </SectionHead>
+        <AgentPhones facts={facts} ticks={graph.ticks} />
+      </div>
+    </section>
+  );
+}
+
 /* ─────────────────────────── Forge ─────────────────────────── */
 
 export function Forge({ facts, forge }: { facts: Facts; forge: ForgeDemoData }) {
   return (
     <section className="m-section m-section-raised" id="forge" aria-labelledby="forge-title">
       <div className="m-wrap">
-        <SectionHead eyebrow="OPTRA FORGE" title="Click rules together. The server checks every recipe.">
+        <SectionHead titleId="forge-title" eyebrow="OPTRA FORGE" title="Click rules together. The server checks every recipe.">
           <p>An agent is a recipe of rules. Forge validates it, gives it a canonical hash, and blocks anything it cannot run, before it can reach a backtest. Try removing a hook below to see what the validator says.</p>
         </SectionHead>
         <ForgeDemo data={forge} />
+        <div className="hk-strip" role="group" aria-label="Hook library by stage">
+          <p className="hk-strip-head"><b>{facts.hookTotal} hooks, six stages.</b> A Breaker guards every tick and can stop new entries.</p>
+          <ul>
+            {facts.byStage.map((stage) => (
+              <li key={stage.stage} data-risk={stage.stage === "breaker" ? "1" : "0"}>
+                <span className="hk-stage mono">{stage.stage}</span>
+                <span className="hk-count"><b>{stage.live}</b> of {stage.total} run today</span>
+              </li>
+            ))}
+          </ul>
+        </div>
         <ul className="forge-points reveal-stagger">
           <li style={at(0)}><strong>{facts.hookLive} of {facts.hookTotal} hooks run today.</strong> The other {facts.hookCatalogOnly} are documented in the library and locked in Forge.</li>
-          <li style={at(1)}><strong>AI composition: Coming soon.</strong> Rules decide. No AI provider is configured, so recipes are built by clicking.</li>
+          <li style={at(1)}><strong>AI composition: next.</strong> Rules decide. No AI provider is configured, so recipes are built by clicking.</li>
           <li style={at(2)}><strong>Inspired by Uniswap v4 hooks.</strong> Every hook runs in the offchain paper engine. None is deployed onchain.</li>
         </ul>
         <div className="m-actions">
           <Link className={buttonVariants()} href="/forge">Open Forge</Link>
-          <Link className={buttonVariants({ variant: "outline" })} href="/hooks">Browse the hook library</Link>
-        </div>
-      </div>
-    </section>
-  );
-}
-
-/* ─────────────────────────── 36 Hooks ─────────────────────────── */
-
-export function Hooks({ facts, explorer }: { facts: Facts; explorer: ExplorerStage[] }) {
-  return (
-    <section className="m-section" id="hooks" aria-labelledby="hooks-title">
-      <div className="m-wrap">
-        <SectionHead eyebrow="THE HOOK LIBRARY" title={`${facts.hookTotal} hooks. Six stages. One agent.`}>
-          <p>Every tick runs the same path: Gate, Strike, Size, Pulse, Expiry. A Breaker guards the whole path and can stop new entries at any point. Open a stage to read every hook in it, including the ones that are still locked.</p>
-        </SectionHead>
-        <HookExplorer stages={explorer} />
-        <p className="stage-legend"><i className="cell-key is-live" /> Implemented evaluator <i className="cell-key" /> Catalog only, locked ({facts.hookCatalogOnly} hooks)</p>
-        <div className="m-actions">
           <Link className={buttonVariants({ variant: "outline" })} href="/hooks">Browse all {facts.hookTotal} hooks</Link>
         </div>
       </div>
@@ -134,8 +159,8 @@ export function HowItWorks() {
   return (
     <section className="m-section m-section-raised" id="how" aria-labelledby="how-title">
       <div className="m-wrap">
-        <SectionHead eyebrow="HOW IT WORKS" title="From idea to paper position, in four steps.">
-          <p>Each step unlocks the next. Nothing reaches a paper run without a complete backtest, and there is no real-money path.</p>
+        <SectionHead titleId="how-title" eyebrow="HOW IT WORKS" title="From idea to paper position, in four steps.">
+          <p>Each step unlocks the next. The Lab replays 1,441 verified hourly candles, 721 to warm up and 720 to decide, and nothing reaches a paper run without a complete backtest. There is no real-money path.</p>
         </SectionHead>
         <HowWalkthrough />
         <p className="how-note">Each step shows the screen it leads to. The pictures are illustrative: they carry no returns, balances or trades. Live trading is disabled and every run is paper.</p>
@@ -150,7 +175,7 @@ export function TapeSection({ graph }: { graph: GraphData }) {
   return (
     <section className="m-section" id="tape" aria-labelledby="tape-title">
       <div className="m-wrap tape-grid">
-        <SectionHead eyebrow="OPTRA TAPE" title="Every decision has a reason, even when the agent does nothing." className="tape-head">
+        <SectionHead titleId="tape-title" eyebrow="OPTRA TAPE" title="Every decision has a reason, even when the agent does nothing." className="tape-head">
           <p>Each tick the agent records what it did and why, in plain words first and rule by rule on demand. Pick a tick to see why entry was allowed or blocked.</p>
           <ul className="forge-points">
             <li><strong>Append-only.</strong> Decisions and paper orders persist per agent.</li>
@@ -166,29 +191,35 @@ export function TapeSection({ graph }: { graph: GraphData }) {
   );
 }
 
-/* ─────────────────────────── Optra Lab ─────────────────────────── */
+/* ─────────────────────────── Sessions and risk ─────────────────────────── */
 
-export function LabSection() {
+/** Paper and Live are execution modes. They are not Agent mode and Manual mode, which are about who decides. Live is shown as planned and has no control. */
+function ExecutionModes() {
+  const paper = ["Virtual capital", "Supported rule configuration", "Backtesting", "Paper agent launch", "Automated paper evaluation", "Explainable decisions in Optra Tape"];
   return (
-    <section className="m-section m-section-raised" id="lab" aria-labelledby="lab-title">
-      <div className="m-wrap">
-        <SectionHead eyebrow="OPTRA LAB" title="Test the strategy before you run it.">
-          <p>The Lab replays verified hourly candles through the same engine that runs paper ticks, prices synthetic options with a disclosed model, and compares the result with simply holding. If history is short or no entry happens, it shows no metrics instead of a guess.</p>
-        </SectionHead>
-        <LabShowcase />
-      </div>
-    </section>
+    <div className="xm reveal-stagger" role="group" aria-label="Execution modes">
+      <article className="xm-card" data-mode="paper" style={at(0)}>
+        <header><h3>Paper Trading</h3><Chip tone="azure">Working today</Chip></header>
+        <p>Run an agent against virtual capital with modeled premiums. The full path works end to end.</p>
+        <ul>{paper.map((item) => <li key={item}>{item}</li>)}</ul>
+        <Link className={cn(buttonVariants())} href="/agents">Launch a paper agent</Link>
+      </article>
+      <article className="xm-card" data-mode="live" style={at(1)}>
+        <header><h3>Live Trading</h3><Chip>Planned</Chip></header>
+        <p>The same agents with real wallet capital. It is a separate mode and it is not built. Nothing in Optra can place a real-money order today.</p>
+        <ul>{LIVE_REQUIREMENTS.map((item) => <li key={item.title}>{item.title}</li>)}</ul>
+        <Link className="xm-link" href="/verify">What Live still needs, on Verify</Link>
+      </article>
+    </div>
   );
 }
-
-/* ─────────────────────────── Sessions and risk ─────────────────────────── */
 
 export function Sessions({ rails, health }: { rails: RiskRail[]; health: HealthGuard }) {
   return (
     <section className="m-section" id="sessions" aria-labelledby="sessions-title">
       <div className="m-wrap">
-        <SectionHead eyebrow="SESSIONS" title="Entries follow the market session.">
-          <p>The Sessia hook lets an agent open new positions only during regular US equity hours on open market days. Exits are not gated by it. Choosing other sessions is Planned.</p>
+        <SectionHead titleId="sessions-title" eyebrow="SESSIONS" title="Sessions, risk and modes.">
+          <p>The Sessia hook lets an agent open new positions only during regular US equity hours on open market days. Exits are not gated by it. Five Breakers watch every tick.</p>
         </SectionHead>
         <SessionsTimeline />
 
@@ -200,37 +231,12 @@ export function Sessions({ rails, health }: { rails: RiskRail[]; health: HealthG
           </div>
           <BreakerPanel rails={rails} health={health} />
         </div>
-      </div>
-    </section>
-  );
-}
 
-/* ─────────────────────────── Dual Mode ─────────────────────────── */
+        <ExecutionModes />
 
-export function DualMode() {
-  const agentPoints = ["Rules decide: a strategy of hooks, validated by the server", "Backtest first, then launch on paper", "Every decision is written to the Tape", "Pause, resume, stop or fork"];
-  const manualPoints = ["Place calls and puts yourself", "Hand exits to hooks", "Agents never touch positions you opened"];
-  return (
-    <section className="m-section m-section-raised" id="dual" aria-labelledby="dual-title">
-      <div className="m-wrap">
-        <SectionHead eyebrow="DUAL MODE" title="Agent mode works today. Manual mode is next.">
-          <p>One book, two ways to run it. Only Agent mode exists: there is no Floor route yet, so nothing on this page lets you place a manual order.</p>
-        </SectionHead>
-        <div className="dm reveal-stagger">
-          <article className="dm-card dm-on" style={at(0)}>
-            <div className="dm-top"><span className="dm-icon"><Bot aria-hidden /></span><Chip tone="azure">Working on paper</Chip></div>
-            <h3>Agent mode</h3>
-            <p className="dm-lead">A rule-driven agent does the work and explains every decision.</p>
-            <ul>{agentPoints.map((point) => <li key={point}><Check aria-hidden />{point}</li>)}</ul>
-            <Link className={buttonVariants({ size: "sm" })} href="/agents">Launch a paper agent</Link>
-          </article>
-          <article className="dm-card dm-off" style={at(1)} aria-label="Manual mode, planned">
-            <div className="dm-top"><span className="dm-icon"><Hand aria-hidden /></span><Chip>Planned</Chip></div>
-            <h3>Manual mode</h3>
-            <p className="dm-lead">You place the order. Hooks could manage the exit.</p>
-            <ul>{manualPoints.map((point) => <li key={point}><Circle aria-hidden />{point}</li>)}</ul>
-            <p className="dm-none"><Lock aria-hidden />Not available. No route or service exists yet.</p>
-          </article>
+        <div className="modes reveal" role="group" aria-label="Agent mode and Manual mode">
+          <p><Chip tone="azure">Working on paper</Chip><b>Agent mode.</b> Rules decide, you backtest first, and every decision is written to the Tape.</p>
+          <p><Chip>Planned</Chip><b>Manual mode.</b> No route or service exists yet, so nothing here lets you place an order.</p>
         </div>
       </div>
     </section>
@@ -243,8 +249,8 @@ export function Developers({ docs }: { docs: ApiDoc[] }) {
   return (
     <section className="m-section" id="developers" aria-labelledby="developers-title">
       <div className="m-wrap">
-        <SectionHead eyebrow="DEVELOPERS" title="A public, read-only API you can call today.">
-          <p>Five endpoints, no key, real responses below. Trading routes are private to the wallet that owns the agent. An MCP server and pay-per-call endpoints are Planned and not available.</p>
+        <SectionHead titleId="developers-title" eyebrow="DEVELOPERS" title="A public, read-only API you can call today.">
+          <p>Five endpoints, no key, real responses below. Trading routes are private to the wallet that owns the agent. An MCP server and pay-per-call endpoints are planned and not built yet.</p>
         </SectionHead>
         <DevDocs docs={docs} />
       </div>
@@ -258,7 +264,7 @@ export function Status({ verification }: { verification: PublicVerification }) {
   return (
     <section className="m-section m-section-raised" id="verify" aria-labelledby="verify-title">
       <div className="m-wrap">
-        <SectionHead eyebrow="VERIFY" title="Built, not promised.">
+        <SectionHead titleId="verify-title" eyebrow="VERIFY" title="Built, not promised.">
           <p>Every claim below comes from the server&apos;s own verification response, with the path that proves it. Rows without evidence are labeled as roadmap.</p>
           <Link className={buttonVariants({ variant: "outline" })} href="/verify">Open the Verify page</Link>
         </SectionHead>
@@ -275,7 +281,7 @@ const faqStatic = [
   ["What are synthetic options?", "Calls and puts priced from Robinhood Chain stock-token prices. They are not shares, and they are not tokenized stock ownership."],
   ["What is a modeled premium?", "A theoretical Black–Scholes price, using 30-day realized volatility × 1.1. It is not a recorded option quote, a listed contract or a real fill, and venue fees are not included."],
   ["Why does a backtest need 1,441 candles?", "721 hourly candles warm up the volatility estimate and 720 candles are decisions. Gaps or a missing corporate-action check block the run instead of filling in data."],
-  ["What does the AI do?", "Nothing yet. Rules decide, and AI composition is Coming soon. Today you pick rules by clicking in Forge."],
+  ["What does the AI do?", "Nothing yet. Rules decide, and AI composition is the next step. Today you pick rules by clicking in Forge."],
 ] as const;
 
 export function Faq({ facts }: { facts: Facts }) {
@@ -286,7 +292,7 @@ export function Faq({ facts }: { facts: Facts }) {
   return (
     <section className="m-section" id="faq" aria-labelledby="faq-title">
       <div className="m-wrap faq-split">
-        <SectionHead eyebrow="BEFORE YOU LAUNCH" title="Questions worth asking first." />
+        <SectionHead titleId="faq-title" eyebrow="BEFORE YOU LAUNCH" title="Questions worth asking first." />
         <div className="faq-list reveal">
           {faq.map(([question, answer]) => (
             <details key={question}>

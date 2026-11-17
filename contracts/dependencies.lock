@@ -1,0 +1,4 @@
+solc 0.8.26 (commit 8a97fa7a)
+Uniswap/v4-core v4.0.0 (commit e50237c43811bd9b526eff40f26772152a42daba)
+foundry-rs/forge-std v1.17.0 (commit f3dae6e6ee381f25eb6a246f7da9b85c91a68219)
+solmate, openzeppelin-contracts, and their transitive dependencies are pinned as nested Git submodules by the v4-core v4.0.0 commit.

@@ -10,10 +10,12 @@ The repository contains no Solidity source, Foundry workspace, contract ABI, dep
 |---|---:|---|
 | OPTRA Solidity contracts present | 0 | Repository inventory: no `.sol` files or `contracts/` workspace. |
 | Compiled / unit-tested / simulated | 0 / 0 / 0 | No Foundry or other contract build configuration exists. |
-| Deployed / explorer verified | 0 / 0 | No OPTRA deployment addresses or receipts exist. |
+| OPTRA deployed / explorer verified | 0 / 0 | No OPTRA deployment addresses or receipts exist; this count excludes external Robinhood and Uniswap protocol dependencies. |
 | Conditional PM roadmap modules | 2 | `OptraGuardHook` and `GuardRegistry`, subject to feasibility review and owner approval. |
 
 The PM brief identifies a v4 spot pool using the hook as a future deployment target. A pool instance and the external Uniswap v4 PoolManager are not separate OPTRA-authored contract modules and do not justify a six-contract count.
+
+Foundry CLI is installed in the environment (`forge`/`cast` 1.8.3), but there is no repository Foundry configuration, Solidity source, ABI, deployment script, or OPTRA contract test to build or run.
 
 ## Candidate review
 
@@ -22,7 +24,7 @@ The original PM brief calls for `OptraGuardHook` and `GuardRegistry` in the futu
 | Candidate | Decision | Reason |
 |---|---|---|
 | `OptraGuardHook` | **Keep as a conditional future module** | The PM roadmap requires an EVM hook for entry checks on OPTRA-owned Robinhood Chain spot pools. It must be technically feasible, audited, and approved before implementation. A v4 spot hook does not govern third-party options transactions. |
-| `GuardRegistry` | **Keep as a conditional future module** | The PM describes shared halt, venue, corporate-action, and session state with a revocable keeper role. This supplies inputs to `OptraGuardHook`; it is distinct from the hook's pool callbacks. |
+| `GuardRegistry` | **Conditional; do not assume it is a separate deployment** | A shared registry is justified if multiple guarded pools/hooks need common public state and a separately revocable keeper role. For a single hook and one initial pool, storing the minimal guard state in `OptraGuardHook` is simpler and reduces the external call/role surface. Owner approval must select one design. |
 | `AgentRegistry` | **Defer** | The current owner-scoped PostgreSQL agent records already provide the required private MVP identity and lifecycle. Onchain publication is not specified for the paper release. |
 | `RecipeRegistry` | **Defer** | Canonical recipe hashes and immutable launched recipes are already stored with the paper records. Publishing strategies by default would conflict with private, owner-scoped recipes. Revisit only with an explicit public-sharing requirement. |
 | `HookRegistry` | **Reject for this scope** | Hook definitions and evaluator status are static catalog/API data. A second onchain catalog duplicates the current source and adds no enforcement beyond `GuardRegistry` and `OptraGuardHook`. |
@@ -41,24 +43,101 @@ The supplied chain IDs and public endpoints match the current [Robinhood Chain c
 | Robinhood Chain Testnet | 46630 | `https://rpc.testnet.chain.robinhood.com` | `https://explorer.testnet.chain.robinhood.com` |
 | Robinhood Chain Mainnet | 4663 | `https://rpc.mainnet.chain.robinhood.com` | `https://robinhoodchain.blockscout.com` |
 
-On 2026-11-15, a read-only `eth_chainId` request was attempted against both supplied public RPCs. The TLS handshake returned a certificate for the unrelated host `internetpositif.id`, expiring 2026-06-04; `curl` rejected it, and no JSON-RPC response or chain ID was obtained. This appears to be network interception or blocking. TLS verification was not bypassed, and the certificate response is not treated as RPC evidence. Before any deployment, resolve network access and use an owner-approved, trusted RPC provider; verify its `eth_chainId` with normal TLS immediately before signing. The official docs recommend a provider endpoint for production use.
+### Read-only infrastructure verification — 2026-11-15
 
-Before any deployment, the deployment command must query `eth_chainId` from the exact active RPC immediately before signing and stop unless it matches the selected target. Never infer the chain from a wallet label or an explorer URL.
+Normal TLS-verified `curl` JSON-RPC requests to both supplied public RPCs succeeded during this investigation:
+
+| Network | `eth_chainId` | `eth_blockNumber` observed | `eth_getCode` at v4 PoolManager |
+|---|---|---|---|
+| Testnet | `0xb626` = 46630 | `0x9291abc` | Nonempty bytecode at `0x8366a39cc670b4001a1121b8f6a443a643e40951`. The official testnet Blockscout smart-contract API returned `src/PoolManager.sol` and `creation_status: success` for that address. |
+| Mainnet | `0x1237` = 4663 | `0x6dbbd2f` | Nonempty bytecode at `0x8366a39cc670b4001a1121b8f6a443a643e40951`. |
+
+The [official Uniswap v4 deployment list](https://developers.uniswap.org/docs/protocols/v4/deployments) identifies that PoolManager on Robinhood Chain mainnet and lists the mainnet v4 periphery, including Universal Router 2.1.2 at `0x204FAca1764B154221e35c0d20aBb3c525710498`. Its testnet section does not list Robinhood Chain Testnet. The testnet RPC bytecode and testnet explorer source record therefore establish a PoolManager-shaped deployment at the same address, but do not establish Uniswap's supported testnet router path or a usable test pool. No router or pool interaction was performed.
+
+Robinhood's [stock-token documentation](https://docs.robinhood.com/chain/stock-tokens/) describes the tokens as standard ERC-20s that can be transferred and composed into applications. This resolves the generic interface concern, not the exact asset decision: the selected token's trading capability, token contract, quote asset, pool/liquidity, and jurisdictional restrictions still need review. Stock Tokens are described as tokenised debt securities, and direct primary-market minting is limited to authorised participants.
+
+Subsequent repeat requests intermittently ended with `curl: (35) Recv failure: Connection reset by peer`; the testnet explorer API worked once and then also reset. No TLS verification was disabled. Treat the successful responses above as point-in-time evidence, not a production RPC reliability guarantee. Robinhood marks its public RPCs rate-limited and recommends a provider endpoint for production. The mainnet Blockscout contract API returned HTTP 403 in this environment; that response is not evidence about deployed bytecode. The mainnet code check came from the RPC and the official address mapping from Uniswap's deployment list.
+
+Before any signing or deployment, use an owner-approved, trusted RPC provider, query `eth_chainId` from the exact active RPC immediately before signing, and stop unless it matches the selected target. Never infer the chain from a wallet label or an explorer URL.
 
 ## Conditional architecture boundary
 
-If the owner approves the PM roadmap after feasibility review, the initial scope should remain:
+These contracts are not necessary for the current paper MVP. An offchain policy service remains the smaller sufficient solution unless OPTRA later operates its own spot pools and needs onchain entry vetoes that cannot be supplied by the server. If the owner approves the PM roadmap after feasibility review, the initial scope should remain:
 
 - `GuardRegistry`: keeper-writable halt, venue state, corporate-action pauses, and session schedule root; a separate admin role can revoke the keeper. Define role handoff and stale-state behavior before coding.
-- `OptraGuardHook`: enforce the approved entry gates in `beforeSwap` for OPTRA-owned spot pools. Reduce/exit behavior stays available. `beforeAddLiquidity` remains disabled unless separately reviewed. Hook permissions, `hookData` meaning, token transfer restrictions, pool availability, and Robinhood Chain v4 support are unresolved feasibility questions.
+- `OptraGuardHook`: enforce approved entry gates in `beforeSwap` for OPTRA-owned spot pools. Reduce/exit behavior stays available. `beforeAddLiquidity` remains disabled unless separately reviewed. Robinhood Chain v4 PoolManager code exists on both chains by the point-in-time reads above, and the official mainnet v4 periphery is listed. Hook permissions/address mining, the exact router path, `hookData` semantics, asset/pool selection, liquidity, and operational stale-state behavior remain unresolved.
 - No personal data, private Tape records, strategy text, session cookies, or wallet-authentication challenges onchain.
-- No token transfers, swaps, custody, borrowing, payment, or live trading as part of this deployment plan.
+- No contract-initiated token transfers/swaps, custody, borrowing, payment, or automated live trading. If separately approved, the hook only gates user-initiated swaps through an OPTRA-owned pool; it does not submit orders or move funds itself.
 
 The existing paper application must work when neither module exists. Do not claim the current offchain hook stages are enforced by this proposed architecture.
 
+## Conditional implementation specification (approval-gated)
+
+This is the engineering proposal for the PM-backed candidates, not approval to implement or deploy. It deliberately keeps the deterministic paper engine, option model, wallet sessions, PostgreSQL, and private Tape offchain. Current paper trading needs neither contract. For a later single-pool launch, the smallest onchain design may be one `OptraGuardHook` with its own minimal admin/keeper state; deploy a separate `GuardRegistry` only when multiple hook/pool instances need a shared state owner or role separation.
+
+```text
+Market providers + deterministic rules + private agent/Tape state (offchain)
+                 |
+          authorized keeper
+                 v
+ GuardRegistry (only if shared state is required)
+                 ^ read-only state; otherwise state lives in Hook
+                 |
+Wallet -> v4 router -> PoolManager -> OptraGuardHook -> OPTRA-owned spot pool
+                                         |
+                       gates eligible entry swaps
+
+Options venues and third-party pools: outside this hook's control
+Paper engine and Tape: not called by these contracts
+```
+
+### Modules and responsibilities
+
+1. **`GuardRegistry` (optional)** — sole owner of shared public guard state only if the separate-module criterion above is met. Candidate state: per-token `haltUntil`; per-token corporate-action pause interval; and a versioned session policy. Candidate roles: an owner-controlled admin (preferably a multisig) manages roles and policy, while a revocable keeper publishes time-sensitive state. Venue state belongs here only if hook execution can authenticate which venue/purpose a swap represents. Every state write emits the corresponding PM event. Reads are public; no user, wallet-session, strategy, or position data is stored.
+2. **`OptraGuardHook`** — binds to the Robinhood v4 `PoolManager`; initial permission is `beforeSwap` only. It checks an explicit token/pool allowlist and reads the registry. Do not enable `beforeAddLiquidity` in the first version; LP withdrawal must remain possible. Uniswap documents that hooks are bound to a pool at initialization and that low address bits encode callback permissions; deployment therefore requires deterministic address mining with the matching `HookMiner` process ([hook concepts](https://developers.uniswap.org/docs/protocols/v4/concepts/hooks), [hook deployment](https://developers.uniswap.org/docs/protocols/v4/guides/hooks/hook-deployment)).
+3. **Pool** — an OPTRA-owned v4 pool initialized with this hook, for one owner-approved stock-token/quote-token pair. The hook does not attach to existing third-party pools. No stock token, quote token, pool, liquidity, or address is assumed by this spec.
+
+### Proposed decision and failure rules
+
+- Apply halt, corporate-action, venue, and session checks only to swaps that increase exposure to the approved underlying. Derive token-in/token-out from the pool key and swap direction. Treat caller-provided `hookData` as untrusted; never accept an `isExit` flag as proof of a reducing swap.
+- Allow swaps that demonstrably sell the approved underlying token to reduce exposure through the guarded pool, including while entry gates are active. The initial hook does not assert that selling a token closes an options position or reduces a user's total portfolio risk.
+- `Venux` remains offchain unless a dedicated pool mapping or trusted router provides authenticated venue/purpose context. A user-controlled `hookData` value cannot prove that a swap is a hedge for a particular options venue. If the approved integration has no such trusted context, omit venue state from the onchain registry rather than publish state the hook cannot safely consume. Unrecognized pool/token combinations fail closed.
+- Missing, expired, or malformed entry state blocks entry. Reducing swaps remain permitted. Store update timestamps/epochs and define a maximum age before coding; without freshness semantics, a keeper outage can leave stale state looking current.
+- A bare session root cannot evaluate a timestamp. Before implementation, choose either explicit onchain schedule fields or a versioned schedule proof supplied with each swap, and specify its timezone, daylight-saving, holiday, and early-close semantics. The server's US equity-session logic must not be silently treated as an onchain policy.
+- Corporate-action enforcement should use explicit registry pause intervals in v1. Reading an external token multiplier inside a swap hook is deferred until gas, failure, and interface behavior are measured.
+- Hook restrictions cover only the OPTRA pool initialized with the hook. They do not enforce option orders at CallPut/Zeno, other spot pools, wallet approvals, custody, or agent behavior outside that path.
+
+### Candidate state transitions, events, errors, and invariants
+
+- Registry writes: admin sets/revokes keeper and updates policy; keeper sets/clears halt, venue status, corporate-action window, and versioned session policy. Reject invalid intervals, unknown statuses, zero policy versions, and role changes that would leave no admin.
+- Preserve PM event intent: `HaltSet`, `VenueStatusSet`, `CorporateActionPause`, `SessionScheduleUpdated`. Add events for keeper/admin changes and clears so indexers can reconstruct current state. Event fields must include the affected key, new value, effective interval/version, and writer.
+- Use custom errors for unauthorized writes, invalid intervals/status, unsupported pool/token, stale or missing entry state, and blocked entry. Error names and parameter encoding are part of the reviewed interface, not yet fixed ABI.
+- Invariants: only authorized roles mutate registry state; keeper revocation takes effect immediately; entry is blocked under each active configured gate; a gate cannot prevent an approved underlying-out swap; caller-supplied data cannot bypass direction checks; unrelated pool keys cannot use the hook; exits and LP withdrawals remain possible; registry or oracle failure never silently authorizes an entry.
+
+### Required implementation and verification gate
+
+After scope approval, add an isolated `contracts/` Foundry workspace in this repository, pin Solidity (the verified testnet PoolManager source declares `0.8.26`), pin exact v4-core dependencies and optimizer/metadata settings, then publish reproducible compiler inputs. Tests must cover role authorization/revocation, intervals/status transitions, hook permission bits and deterministic address mining, token ordering/direction, hostile or empty `hookData`, every active gate, stale/missing state, allowed exits while halted/degraded/out of session, unsupported pools, and failure injection. Add fuzz/property tests for both token orderings, exact-input/exact-output directions, arbitrary hook data, timestamps around interval boundaries, and registry state changes. Run static analysis and independent review before mainnet consideration.
+
+### Deployment, simulation, explorer, and ABI integration
+
+- Add a Foundry deployment script only after reviewed implementation. Its default path is simulation; it must print and assert live `eth_chainId`, target PoolManager code, constructor inputs, mined hook address/permission bits, role recipients, and gas estimate. Broadcasting requires an explicit command flag and a separately authorized operator; no key or deployer mnemonic is committed. No deployment script may silently switch networks.
+- Reproduce a testnet simulation against a pinned block and explicit chain ID. Record source/dependency commit hashes, compiler and optimizer settings, constructor inputs, simulated transaction data, gas estimate, and the expected state transitions. A simulation must be labeled as such and must not create an address or receipt claim.
+- After an authorized deployment, save addresses and transaction hashes from receipts in a chain-specific deployment manifest. Read back bytecode and registry state from the same chain, then verify the exact source/compiler/settings with the Robinhood Blockscout explorer/API. Store verification response and code hash; only successful chain and explorer checks advance status.
+- Generate and version only the minimal `GuardRegistry`/`OptraGuardHook` ABIs from the reviewed build. If a future UI needs chain status, expose a read-only server adapter on the existing public verification surface (chain ID, confirmed block, deployment manifest, and public registry state). Do not give the browser a signer or let it write guard state. No such chain-status API or ABI integration exists today; the paper app and private Tape remain independent.
+
+Testnet readiness is **protocol infrastructure only**: the chain is reachable and a verified PoolManager source record is present, but Robinhood testnet router support, an approved asset pair/pool, an OPTRA hook, reviewed implementation, passing contract tests, safe deployer account, funded testnet ETH, measured gas estimate, and explicit owner deployment authorization are all outstanding. Testnet deployment still needs its own authorization. Mainnet requires separate authorization after testnet verification, audit, asset/legal review, and gas assessment. No gas-cost estimate is defensible until the implementation exists and is measured against the chosen RPC. Mainnet deployment, key access, or live trading is not part of this work.
+
+### Items requiring owner authorization
+
+1. Whether future v1 needs any onchain enforcement at all; if yes, which exact stock-token/quote pair and which new OPTRA-owned pool.
+2. One self-contained hook versus a separate shared `GuardRegistry`; whether Venux stays offchain; and exact entry/reducing-swap semantics.
+3. Session schedule representation, DST/calendar policy, state freshness limits, failure behavior, admin/keeper operators, and revocation procedure.
+4. Approval of the written specification before Solidity implementation. Approval to implement is not permission to broadcast a testnet transaction.
+5. Separate authorization naming the testnet deployment, deployer, and bounded gas; then a later independent mainnet decision after testnet verification, security review/audit, permissions inspection, asset/legal review, and gas-cost assessment.
+
 ## Release sequence and evidence states
 
-1. **Planned:** record owner-approved behavior, assets/pools, role owners, entry/exit semantics, privacy boundary, and failure behavior. Resolve the PM's Robinhood stock-token/custom-hook and v4 pool feasibility questions.
+1. **Planned:** record owner-approved behavior, assets/pools, role owners, entry/exit semantics, privacy boundary, and failure behavior. Verify the exact stock-token and quote-token contracts, per-asset availability, target pool route, and any issuer allowlist or jurisdictional requirements.
 2. **Compiled:** only after approval, add an isolated `contracts/` directory and minimal Foundry setup in this repository. Pin the compiler/toolchain without changing the web stack. Compile with reproducible settings.
 3. **Tested:** add unit, access-control, fuzz/invariant, and adversarial tests for halts, venue degradation, corporate-action pauses, sessions, role revocation, fail-closed entries, and allowed exits. Run static analysis and independent security review before any public deployment.
 4. **Simulated:** fork or otherwise simulate against a verified target-chain state; report constructor inputs, permissions, gas estimates, and the exact RPC chain ID. Simulation output must state clearly that no deployment occurred.
@@ -70,8 +149,8 @@ Any future status display must show each contract separately as `Planned`, `Comp
 ## Deployment blockers
 
 - Owner approval is not established by the PM brief; its owner status is marked pending approval.
-- Robinhood Chain v4/stock-token custom-hook compatibility and required permissions have not been verified.
-- The supplied public RPCs could not provide an authenticated chain ID in this environment; use a reachable trusted provider and verify its chain ID immediately before deployment.
+- V4 PoolManager code is present on both chains and the mainnet v4 router is listed, but testnet router support, a usable pool path, hook permission address, and selected token pair are not verified.
+- Public RPCs returned valid chain IDs and bytecode in this read-only session, but repeat calls reset intermittently; use a trusted provider and verify its chain ID immediately before deployment.
 - No contract source, test suite, build tool, deployment credentials, or chain receipt exists.
 - Contract behavior requires technical review and audit before mainnet consideration.
 

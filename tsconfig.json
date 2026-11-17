@@ -38,6 +38,7 @@
     ".local/optra-next-e2e/dev/types/**/*.ts"
   ],
   "exclude": [
+    "contracts",
     "node_modules",
     "test-results",
     "playwright-report"

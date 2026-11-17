@@ -1,5 +1,6 @@
 "use client";
 
+import { AgentCharacter } from "../../marketing/characters";
 import Link from "next/link";
 import { Check } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
@@ -232,6 +233,7 @@ export function ForgeScreen() {
                 return (
                   <div className="forge-stage" key={stage.id}>
                     <div className="forge-stage-head">
+                      <AgentCharacter id={stage.id} size={30} />
                       <h3>{stage.label}</h3>
                       <span>{stage.purpose}</span>
                     </div>
@@ -285,7 +287,7 @@ export function ForgeScreen() {
                   const chosen = selectedByStage(stage.id);
                   return (
                     <li key={stage.id} className={chosen.length ? "outline-filled" : ""}>
-                      <span className="outline-stage">{stage.label}</span>
+                      <span className="outline-stage"><AgentCharacter id={stage.id} size={22} />{stage.label}</span>
                       <span className="outline-hooks">{chosen.length ? chosen.map((hook) => titleCase(hook.id)).join(", ") : "No rule yet"}</span>
                     </li>
                   );

@@ -1,0 +1,5 @@
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
+# Install only after staging HTTPS, the protected environment file, and readiness are verified.
+5,20,35,50 * * * * root /usr/bin/flock -n /run/lock/optra-staging-paper-scheduler.lock /usr/local/sbin/optra-paper-scheduler.sh

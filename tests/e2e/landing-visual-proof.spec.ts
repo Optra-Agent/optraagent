@@ -9,11 +9,16 @@ const shown = (page: Page, kind: string) => svg(page).locator(`.pn-n[data-kind="
 
 test("captures the real six-state autoplay as frames and a browser video", async ({ page }, testInfo) => {
   await page.goto("/");
-  await page.evaluate(() => document.querySelector("#agents .pn")?.scrollIntoView({ block: "start", behavior: "instant" }));
+  await net(page).scrollIntoViewIfNeeded();
+  await expect(net(page)).toBeInViewport({ ratio: 0.12 });
   await expect(net(page)).toHaveAttribute("data-live", "1");
+  // The network may already have advanced while the page hydrates and scrolls into view.
+  // Reset deliberately, capture the initial composition, then verify the actual autoplay sequence.
+  await net(page).getByRole("button", { name: "Back to start" }).click();
   await expect(net(page)).toHaveAttribute("data-phase", "0", { timeout: 3000 });
   await page.screenshot({ path: testInfo.outputPath("agent-state-0-awakens.png") });
 
+  await net(page).getByRole("toolbar", { name: "Network playback" }).getByRole("button", { name: "Explore agent" }).click();
   await expect(net(page)).toHaveAttribute("data-phase", "1", { timeout: 5000 });
   await expect(shown(page, "stage")).toHaveCount(5);
   await page.screenshot({ path: testInfo.outputPath("agent-state-1-strategy.png") });

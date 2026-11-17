@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { LiveModeButton } from "./LiveMode";
 
 export const pageTitles: Record<string, string> = {
   "/agents": "Agents", "/forge": "Forge", "/lab": "Lab", "/tape": "Tape", "/hooks": "Hooks", "/market": "Market", "/verify": "Verify",
@@ -26,6 +27,7 @@ export function TopbarView({ title, session, menu }: { title: string; session: R
       <div className="topbar-context">
         <span className="topbar-chip topbar-net" title="Network"><i aria-hidden="true" />Robinhood Chain</span>
         <span className="topbar-chip topbar-paper" role="note" title="Virtual USDG. Option premiums are modeled. Real-money execution is disabled."><strong>PAPER</strong><span className="topbar-paper-text">Real-money execution is disabled</span></span>
+        <LiveModeButton />
       </div>
       <div className="topbar-session">{session}</div>
     </>

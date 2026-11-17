@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { BrandMark } from "../brand";
 import { Activity, FlaskConical, Hammer, Layers, ScrollText, ShieldCheck, Webhook } from "lucide-react";
 import type { ComponentType } from "react";
 
@@ -16,17 +17,6 @@ export const navGroups = [
   ] },
 ] as const satisfies readonly { label: string; items: readonly { href: string; label: string; icon: ComponentType<{ className?: string; "aria-hidden"?: boolean }> }[] }[];
 
-/** The Optra mark: a rule-hexagon crossed by a payoff line that ends on an Ember strike point. Original vector. */
-export function BrandMark({ className }: { className?: string }) {
-  return (
-    <svg className={className} viewBox="0 0 28 28" aria-hidden="true">
-      <path className="brand-mark-shell" d="M14 2.5 24.5 8.5v11L14 25.5 3.5 19.5v-11Z" />
-      <path className="brand-mark-line" d="M7.5 16.5h5L20 9.5" />
-      <circle className="brand-mark-dot" cx="20" cy="9.5" r="2" />
-    </svg>
-  );
-}
-
 /**
  * The sidebar markup. The real app shell and the landing-page product preview both render this, so they cannot drift apart.
  * `interactive={false}` renders inert text instead of links.
@@ -34,7 +24,7 @@ export function BrandMark({ className }: { className?: string }) {
 export function SidebarView({ active, interactive = true, onNavigate, preview }: { active?: string; interactive?: boolean; onNavigate?: () => void; preview?: { screens: readonly string[]; onSelect: (href: string) => void } }) {
   const brand = (
     <>
-      <BrandMark className="brand-mark" />
+      <BrandMark />
       <span className="brand-word">OPTRA</span>
       <span className="brand-sub">AGENT</span>
     </>

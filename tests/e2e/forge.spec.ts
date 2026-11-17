@@ -120,7 +120,7 @@ test("Forge autoplay advances the walkthrough and direct selection pauses it", a
   await expect(walkthrough).toHaveAttribute("data-active-stage", "2");
 });
 
-test("Forge completes its five-stage demonstration within 15 seconds and supports pause, resume and replay", async ({ page }) => {
+test("Forge completes its five-stage walkthrough within 15 seconds and supports pause, resume and replay", async ({ page }) => {
   test.setTimeout(25_000);
   await page.emulateMedia({ reducedMotion: "no-preference" });
   await page.goto("/");
@@ -143,7 +143,7 @@ test("Forge completes its five-stage demonstration within 15 seconds and support
   await expect(walkthrough).toHaveAttribute("data-auto-playing", "1");
 });
 
-test("the pinned Forge story follows scroll forward and backward without a drawn node network", async ({ page }) => {
+test("the Forge workflow steps forward and backward without a drawn node network", async ({ page }) => {
   const pageErrors: string[] = [];
   page.on("pageerror", (error) => pageErrors.push(error.message));
   page.on("console", (message) => {
@@ -154,25 +154,12 @@ test("the pinned Forge story follows scroll forward and backward without a drawn
   await page.goto("/");
   const walkthrough = page.locator("#forge .fww");
   await walkthrough.scrollIntoViewIfNeeded();
-  const geometry = await page.evaluate(() => {
-    const track = document.querySelector<HTMLElement>("#forge .fs-story");
-    const pin = track?.querySelector<HTMLElement>(".ps-pin");
-    if (!track || !pin) throw new Error("Forge workflow track was not rendered.");
-    return {
-      trackTop: track.getBoundingClientRect().top + window.scrollY,
-      pinTop: Number.parseFloat(getComputedStyle(pin).top) || 0,
-      range: Math.max(1, track.offsetHeight - pin.offsetHeight),
-      pinHeight: pin.offsetHeight,
-    };
-  });
-  expect(geometry.pinHeight).toBeLessThan(900 - geometry.pinTop);
-  const seek = (progress: number) => page.evaluate(({ progress, trackTop, pinTop, range }) => {
-    window.scrollTo({ top: trackTop - pinTop + progress * range, behavior: "auto" });
-  }, { progress, ...geometry });
-  await seek(0.72);
+  const workflow = page.locator("#forge").getByRole("tablist", { name: "Protective Put workflow" });
+  await workflow.getByRole("tab", { name: /Backtest readiness/ }).click();
   await expect(walkthrough).toHaveAttribute("data-active-stage", "3");
-  await seek(0.18);
+  await workflow.getByRole("tab", { name: /Agent selection/ }).click();
   await expect(walkthrough).toHaveAttribute("data-active-stage", "0");
+  expect(await page.evaluate(() => getComputedStyle(document.querySelector("#forge .ps-pin")!).position)).toBe("static");
   await expect(page.locator("#forge canvas, #forge svg.fs-core-fallback, #forge .fs-anatomy")).toHaveCount(0);
   expect(pageErrors).toEqual([]);
 });
