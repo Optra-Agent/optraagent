@@ -18,12 +18,8 @@ const STOPS: { id: string; label: string }[] = [
   { id: "app", label: "App" },
   { id: "agents", label: "Agents" },
   { id: "studio", label: "Agent" },
-  { id: "forge", label: "Forge" },
-  { id: "how", label: "How" },
-  { id: "tape", label: "Tape" },
-  { id: "sessions", label: "Risk" },
-  { id: "developers", label: "API" },
-  { id: "verify", label: "Verify" },
+  { id: "story", label: "How" },
+  { id: "proof", label: "Proof" },
   { id: "faq", label: "FAQ" },
 ];
 const TICKS = Array.from({ length: 101 }, (_, index) => index);

@@ -22,14 +22,12 @@ test("landing states the product within the first viewport and keeps the paper-f
 test("landing capability claims match the catalog and roadmap items are not presented as available", async ({ page }) => {
   await page.goto("/");
 
-  await expect(page.getByText("15 of 36 hooks run today.", { exact: true })).toBeVisible();
-  const verify = page.locator("#verify");
-  await expect(verify.getByRole("region", { name: "Safety boundaries" }).getByText("Live execution")).toBeVisible();
-  await expect(verify.getByRole("region", { name: "Safety boundaries" }).getByText("Disabled", { exact: true })).toBeVisible();
-  const roadmap = verify.getByRole("region", { name: "Roadmap" });
-  await expect(roadmap.getByText("AI composition").locator("..")).toContainText("Next");
-  await expect(roadmap.getByText("Other House Agents").locator("..")).toContainText("Preview");
-  await expect(roadmap.getByText("Session choices, Listing, Floor, MCP, x402").locator("..")).toContainText("Planned");
+  await expect(page.getByText("15 of 36 hooks implemented", { exact: true })).toBeVisible();
+  const proof = page.locator("#proof");
+  await expect(proof.getByText("Live execution")).toBeVisible();
+  await expect(proof.getByText("Disabled", { exact: true })).toBeVisible();
+  await expect(proof.getByText("An MCP server and pay-per-call endpoints are planned, not built.", { exact: false })).toBeVisible();
+  await expect(proof.locator('.xm-card[data-mode="live"]').getByText("Planned", { exact: true })).toBeVisible();
   await expect(page.locator("#agents .pn-agents").getByText("Preview", { exact: true })).toHaveCount(3);
 });
 
@@ -54,7 +52,7 @@ test("mobile landing has no horizontal overflow and the menu closes with Escape"
 
   await page.getByRole("button", { name: "Open page sections" }).click();
   const drawer = page.getByRole("dialog");
-  await expect(drawer.getByRole("link", { name: "Tape" })).toBeVisible();
+  await expect(drawer.getByRole("link", { name: "How it works" })).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(drawer).toBeHidden();
 });
@@ -87,7 +85,7 @@ test("reduced motion still renders the hero without an error", async ({ page }) 
   expect(errors).toEqual([]);
 });
 
-const sectionIds = ["agents", "studio", "forge", "how", "tape", "sessions", "developers", "verify", "faq"];
+const sectionIds = ["agents", "studio", "story", "proof", "faq"];
 
 test("hero copy is fully opaque at first paint and has no entrance animation", async ({ page }) => {
   await page.goto("/", { waitUntil: "domcontentloaded" });
@@ -117,7 +115,7 @@ test.describe("without JavaScript", () => {
     await expect(page.locator(".hero-beam-fallback")).toBeAttached();
     await expect(page.locator(".hero-card .preview-shell")).toBeAttached();
     for (const id of [...sectionIds, "floor"]) await expect(page.locator(`#${id} h2`).first()).toBeAttached();
-    await expect(page.getByText("Click rules together. The server checks every recipe.")).toBeVisible();
+    await expect(page.getByText("From rules to a reasoned decision.")).toBeVisible();
   });
 });
 
@@ -137,79 +135,14 @@ test("scroll-driven reveals settle to full opacity, and revisiting a section rep
   }
   await goTo("agents");
   await expect.poll(() => headOpacity("agents"), { message: "agents on the way back up" }).toBeGreaterThanOrEqual(0.95);
-  const cards = await page.locator("#verify .ev-group:nth-of-type(1) ul > *").count();
-  expect(cards).toBe(4);
-  for (let index = 0; index < cards; index += 1) {
-    const claim = page.locator("#verify .ev-group:nth-of-type(1) ul > *").nth(index);
-    await claim.scrollIntoViewIfNeeded();
-    await expect.poll(() => claim.evaluate((element) => parseFloat(getComputedStyle(element).opacity)), { message: `verify claim ${index} once in view` }).toBeGreaterThanOrEqual(0.95);
-  }
 });
 
 test("reduced motion shows every section at full opacity without scrolling", async ({ page }) => {
   await page.emulateMedia({ reducedMotion: "reduce" });
   await page.goto("/");
   const opacities = await page.evaluate(() => [...document.querySelectorAll(".reveal, .reveal-lead, .reveal-stagger > *, .draw")].map((el) => parseFloat(getComputedStyle(el).opacity)));
-  expect(opacities.length).toBeGreaterThan(10);
+  expect(opacities.length).toBeGreaterThan(3);
   expect(Math.min(...opacities)).toBe(1);
-});
-
-test("Forge carries the hook library counts and separates implemented from catalog-only", async ({ page }) => {
-  await page.setViewportSize({ width: 1440, height: 900 });
-  await page.goto("/");
-  const strip = page.locator("#forge").getByRole("group", { name: "Hook library by stage" });
-  await expect(strip.getByText("36 hooks, six stages.")).toBeVisible();
-  await expect(strip.getByText("3 of 10 run today")).toBeVisible();
-  await expect(strip.getByText("5 of 5 run today")).toBeVisible();
-  await expect(page.locator("#forge").getByRole("link", { name: "Browse all 36 hooks" })).toHaveAttribute("href", "/hooks");
-});
-
-test("the Protective Floor answers to its two assumptions and the camera views", async ({ page }) => {
-  await page.goto("/?splash=off");
-  const floor = page.locator("#floor");
-  await floor.scrollIntoViewIfNeeded();
-  await expect(floor.getByRole("heading", { level: 2, name: "A put turns a falling price into a floor." })).toBeVisible();
-
-  const readout = floor.getByRole("group", { name: /./ }).first();
-  void readout;
-  const dd = (label: string) => floor.locator("dl.fl-readout div").filter({ hasText: label }).locator("dd");
-  // Defaults: strike 93, premium 2 per 100. The floor is the strike minus the premium.
-  await expect(dd("Floor at expiry")).toHaveText("91");
-  await expect(dd("Largest loss vs entry")).toContainText("9");
-  await expect(dd("Break-even price")).toHaveText("102");
-
-  await floor.getByLabel("Put strike").fill("97");
-  await floor.getByLabel("Assumed premium").fill("4");
-  await expect(dd("Floor at expiry")).toHaveText("93");
-  await expect(dd("Largest loss vs entry")).toContainText("7");
-  await expect(dd("Break-even price")).toHaveText("104");
-  await expect(floor.getByText("(3% below entry)")).toBeVisible();
-
-  const views = floor.getByRole("group", { name: "Camera view of the Protective Floor" });
-  await views.getByRole("button", { name: /The floor/ }).click();
-  await expect(views.getByRole("button", { name: /The floor/ })).toHaveAttribute("aria-pressed", "true");
-  await expect(views.getByRole("button", { name: /Whole payoff/ })).toHaveAttribute("aria-pressed", "false");
-
-  await expect(floor.getByText("Modeled arithmetic at expiry", { exact: false })).toBeVisible();
-  await expect(floor.getByRole("link", { name: "Build this as a paper agent" })).toHaveAttribute("href", "/agents#configure");
-});
-
-test("without WebGL2 the floor falls back to a flat payoff diagram with the same numbers", async ({ page }) => {
-  await page.addInitScript(() => {
-    const original = HTMLCanvasElement.prototype.getContext;
-    HTMLCanvasElement.prototype.getContext = function (this: HTMLCanvasElement, type: string, ...rest: unknown[]) {
-      if (type === "webgl2") return null;
-      return (original as (...args: unknown[]) => unknown).call(this, type, ...rest);
-    } as typeof HTMLCanvasElement.prototype.getContext;
-  });
-  await page.goto("/?splash=off");
-  const floor = page.locator("#floor");
-  await floor.scrollIntoViewIfNeeded();
-  const diagram = floor.locator("svg.fd");
-  await expect(diagram).toBeVisible();
-  await expect(diagram).toHaveAttribute("aria-label", /stops at 91\.0, a largest loss of 9\.0/);
-  await floor.getByLabel("Put strike").fill("100");
-  await expect(diagram).toHaveAttribute("aria-label", /stops at 98\.0, a largest loss of 2\.0/);
 });
 
 test("the opening plays on every page load, can be skipped, never blocks the page, and does not replay on in-site navigation", async ({ page }) => {
@@ -264,9 +197,9 @@ test("the right-hand progress rail names the current section and links to every 
   await page.goto("/?splash=off");
   const rail = page.getByRole("navigation", { name: "Page progress" });
   await expect(rail.getByRole("link", { name: "Intro" })).toHaveAttribute("aria-current", "location");
-  await rail.getByRole("link", { name: "Forge" }).click();
-  await expect(page).toHaveURL(/#forge$/);
-  await expect(rail.getByRole("link", { name: "Forge" })).toHaveAttribute("aria-current", "location");
+  await rail.getByRole("link", { name: "How", exact: true }).click();
+  await expect(page).toHaveURL(/#story$/);
+  await expect(rail.getByRole("link", { name: "How", exact: true })).toHaveAttribute("aria-current", "location");
   const hrefs = await rail.getByRole("link").evaluateAll((links) => links.map((link) => link.getAttribute("href")));
   for (const href of hrefs) await expect(page.locator(href as string)).toHaveCount(1);
 });

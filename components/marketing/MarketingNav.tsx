@@ -10,12 +10,10 @@ import { BrandMark } from "../brand";
 const sections = [
   { href: "#floor", label: "Floor" },
   { href: "#agents", label: "Agents" },
-  { href: "#forge", label: "Forge" },
+  { href: "#story", label: "How it works" },
   { href: "/hooks", label: "Hooks" },
-  { href: "#how", label: "How it works" },
-  { href: "#tape", label: "Tape" },
   { href: "/lab", label: "Lab" },
-  { href: "#verify", label: "Verify" },
+  { href: "#proof", label: "Verify" },
 ];
 
 export function MarketingNav() {

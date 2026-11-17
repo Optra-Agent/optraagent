@@ -3,12 +3,12 @@ import { PublicTapeResponseSchema, PublicVerificationSchema } from "../../lib/do
 import { createPublicHandlers } from "../../lib/public/handlers";
 import { getLandingFacts } from "../../components/marketing/data";
 import { getGraphData } from "../../components/marketing/graph-data";
-import { getApiDocs, getForgeDemo, getHealthGuard, getRiskRails } from "../../components/marketing/section-data";
+import { getApiDocs, getRiskRails } from "../../components/marketing/section-data";
 import { scenarioFromDecision } from "../../components/marketing/graph-flow";
 import { ProtectiveFloor } from "../../components/marketing/ProtectiveFloor";
 import { SignatureStage } from "../../components/marketing/SignatureStage";
 import { StageRail } from "../../components/marketing/StageRail";
-import { AgentShowcase, Developers, Faq, FinalCta, Forge, Hero, HeroPreview, HouseAgents, HowItWorks, Sessions, Status, TapeSection } from "../../components/marketing/sections";
+import { AgentShowcase, Faq, FinalCta, Hero, HeroPreview, HouseAgents, Proof, Story } from "../../components/marketing/sections";
 
 export const metadata: Metadata = {
   title: { absolute: "Optra Agent | No-Code Options Trading Agents" },
@@ -37,12 +37,8 @@ export default async function LandingPage() {
       <HeroPreview facts={facts} />
       <HouseAgents facts={facts} graph={graph} recorded={recorded} />
       <AgentShowcase facts={facts} graph={graph} />
-      <Forge facts={facts} forge={getForgeDemo()} />
-      <HowItWorks />
-      <TapeSection graph={graph} />
-      <Sessions rails={getRiskRails()} health={getHealthGuard()} />
-      <Developers docs={docs} />
-      <Status verification={verification} />
+      <Story rails={getRiskRails()} />
+      <Proof verification={verification} docs={docs} />
       <Faq facts={facts} />
       <FinalCta />
     </>

@@ -269,7 +269,7 @@ test("network autoplay pauses offscreen and resumes when the story returns", asy
   await expect.poll(async () => Number(await net(page).getAttribute("data-phase"))).toBeGreaterThan(Number(frozen));
 });
 
-test("Save-Data leaves the network and Forge demo still, while keeping controls available", async ({ page }) => {
+test("Save-Data leaves the network still, while keeping controls available", async ({ page }) => {
   await page.addInitScript(() => {
     Object.defineProperty(navigator, "connection", {
       configurable: true,
@@ -283,12 +283,6 @@ test("Save-Data leaves the network and Forge demo still, while keeping controls 
   await expect(network).toHaveAttribute("data-save-data", "1");
   await expect(network).toHaveAttribute("data-playing", "0");
   await expect(network.getByRole("button", { name: "Explore agent" }).first()).toBeEnabled();
-
-  const forge = page.locator("#forge .fs");
-  await page.evaluate(() => document.querySelector("#forge .fs")!.scrollIntoView({ block: "start", behavior: "instant" }));
-  await expect(forge).toHaveAttribute("data-save-data", "1");
-  await expect(forge.getByText("Walkthrough running")).toHaveCount(0);
-  await expect(forge.getByRole("button", { name: "Replay" })).toBeEnabled();
 });
 
 
@@ -306,212 +300,57 @@ test("without JavaScript the full network is in the page", async ({ browser }) =
 test.describe("section visuals", () => {
   test.use({ viewport: { width: 1440, height: 900 } });
 
-  test("Forge studio shows the real validator's message when a required rule is removed", async ({ page }) => {
+  test("the story walks four steps, in both directions, and links to the real screens", async ({ page }) => {
     await page.goto("/");
-    const forge = page.locator("#forge");
-    await expect(forge.getByText("Valid", { exact: true })).toBeVisible();
-    await expect(forge.getByText(/Realized volatility ratio at most 1\.2/)).toBeVisible();
-    // The technical hash is one disclosure away, not the headline.
-    await forge.getByText("Technical details").click();
-    await expect(forge.getByLabel("Recipe hash")).toContainText("sha256:");
-    await forge.getByRole("button", { name: "Calmo" }).click();
-    await expect(forge.getByText("Blocked", { exact: true })).toBeVisible();
-    await expect(forge.getByText("Protective Put requires calmo.")).toBeVisible();
-    await expect(forge.getByText(/Realized volatility ratio at most 1\.2/)).toBeHidden();
-    await forge.getByRole("button", { name: "Haltr" }).click();
-    await expect(forge.getByText("Recipe exceeds a PM stage limit or omits a mandatory Breaker.")).toBeVisible();
-    await forge.getByRole("button", { name: "Restore recipe" }).click();
-    // Restoring hands the studio back to scroll; the last step is the validated recipe.
-    await expect.poll(async () => (await story(page, "#forge", 0.95)).step).toBe(4);
-    const workflow = forge.getByRole("tablist", { name: "Protective Put workflow" });
-    await expect(workflow.getByRole("tab")).toHaveCount(5);
-    await expect(workflow.getByRole("tab", { name: /Decision & Tape/ })).toHaveAttribute("aria-selected", "true");
-    await expect(forge.getByText("Valid", { exact: true })).toBeVisible();
-    // Only the 15 rules that run are shown by default; the 21 locked ones sit behind one disclosure.
-    await expect(forge.getByRole("button", { name: /Volra/ })).toBeHidden();
-    await forge.getByText("Show the 21 locked rules").click();
-    await forge.getByRole("button", { name: /Volra/ }).click();
-    await expect(forge.getByText("Volra is in the catalog.")).toBeVisible();
-    await forge.locator(".fs-agents").scrollIntoViewIfNeeded();
-    await forge.locator(".fs-agent").filter({ hasText: "Covered Call" }).click();
-    await expect(forge.locator(".fs-note")).toContainText("Covered Call is a strategy overview.");
+    const section = page.locator("#story");
+    await section.scrollIntoViewIfNeeded();
+    const steps = section.locator(".ps-nav li button");
+    await expect(steps).toHaveCount(4);
+    await expect(steps.nth(0)).toHaveAttribute("aria-current", "step");
+    await expect(section.getByRole("link", { name: "Open Forge" })).toHaveAttribute("href", "/forge");
+    await steps.nth(1).click();
+    await expect(steps.nth(1)).toHaveAttribute("aria-current", "step");
+    await expect(section.getByText("721 warm-up candles")).toBeVisible();
+    await expect(section.getByText("720 decisions")).toBeVisible();
+    await expect(section.getByText("no numbers are shown here", { exact: false })).toBeVisible();
+    await expect(section.getByRole("link", { name: "Open the Lab" })).toHaveAttribute("href", "/lab");
+    await steps.nth(2).click();
+    await expect(section.getByText("Regular hours", { exact: true }).first()).toBeVisible();
+    await expect(section.getByText("New entries allowed")).toHaveCount(1);
+    await expect(section.getByText("Five breakers watch every tick.")).toBeVisible();
+    await expect(section.getByRole("link", { name: "Open Agents" })).toHaveAttribute("href", "/agents");
+    await steps.nth(3).click();
+    await expect(section.getByText("Not a recorded trade", { exact: false })).toBeVisible();
+    await section.getByRole("button", { name: /Opened a modeled put/ }).click();
+    await expect(section.getByText("Every rule agreed, so the agent bought a modeled put on paper.")).toBeVisible();
+    await expect(section.getByRole("link", { name: "Open the Tape" })).toHaveAttribute("href", "/tape");
+    await steps.nth(0).click();
+    await expect(steps.nth(0)).toHaveAttribute("aria-current", "step");
+    await expect(section.getByText("May the agent enter now?")).toBeVisible();
   });
 
-  test("the Tape replay switches steps, names the blocking hook, and never changes the picked tick by itself", async ({ page }) => {
-    await page.emulateMedia({ reducedMotion: "reduce" });
-    await page.goto("/");
-    const tape = page.locator("#tape");
-    await expect(tape.getByText("Illustrative example", { exact: true })).toBeVisible();
-    await expect(tape.getByRole("button", { name: /Tick 1/ })).toHaveAttribute("aria-pressed", "true");
-    // Forward: input, hooks, guard, decision, record.
-    await expect.poll(async () => (await story(page, "#tape", 0.05)).step).toBe(0);
-    await expect(tape.getByText("Latest closed hourly candle and the current quote")).toBeVisible();
-    await expect.poll(async () => (await story(page, "#tape", 0.3)).step).toBe(1);
-    await expect(tape.getByText("Sessia blocked").first()).toBeVisible();
-    await expect.poll(async () => (await story(page, "#tape", 0.5)).step).toBe(2);
-    await expect(tape.getByText("All five Breakers passed on this tick.")).toBeVisible();
-    await expect.poll(async () => (await story(page, "#tape", 0.7)).step).toBe(3);
-    await expect(tape.locator('.ps-view[data-state="active"]').getByText("The market was closed. Entries are only allowed in regular US trading hours.")).toBeVisible();
-    await expect.poll(async () => (await story(page, "#tape", 0.95)).step).toBe(4);
-    await expect(tape.getByRole("link", { name: /Open the Tape/ })).toHaveAttribute("href", "/tape");
-    await expect(tape.getByRole("button", { name: /Tick 1/ })).toHaveAttribute("aria-pressed", "true");
-    // Reverse
-    await expect.poll(async () => (await story(page, "#tape", 0.05)).step).toBe(0);
-    // Picking another tick changes the evidence and nothing else moves it.
-    await tape.getByRole("button", { name: /Tick 2/ }).click();
-    await tape.getByRole("button", { name: /Hook evaluations/ }).click();
-    await expect(tape.getByText("Calmo blocked").first()).toBeVisible();
-    await tape.getByRole("button", { name: /Tick 3/ }).click();
-    await tape.getByRole("button", { name: /Paper decision/ }).click();
-    await expect(tape.locator('.ps-view[data-state="active"]').getByText("Every rule agreed, so the agent opened a modeled put on paper.")).toBeVisible();
-    await tape.getByRole("button", { name: /Tape record/ }).click();
-    await tape.getByText("Show every rule and the engine's wording").click();
-    await expect(tape.getByText("Opened modeled one-share Protective Put units for paper execution.")).toBeVisible();
-    await expect(tape.getByText("Venux pass")).toBeVisible();
-    await page.waitForTimeout(1500);
-    await expect(tape.getByRole("button", { name: /Tick 3/ })).toHaveAttribute("aria-pressed", "true");
-  });
-
-  test("the how-it-works story switches steps in both directions and links to the real routes", async ({ page }) => {
-    await page.goto("/");
-    const how = page.locator("#how");
-    await expect(how.getByRole("button", { name: /Configure a strategy/ })).toHaveAttribute("aria-current", "step");
-    await expect(how.getByRole("link", { name: /Configure in Agents/ })).toHaveAttribute("href", "/agents#configure");
-    await expect.poll(async () => (await story(page, "#how", 0.3)).step).toBe(1);
-    await expect(how.getByRole("link", { name: /Open the Lab/ })).toHaveAttribute("href", "/lab");
-    await expect(how.getByText("Results appear only after a complete run in the app. No numbers are shown here.")).toBeVisible();
-    await expect.poll(async () => (await story(page, "#how", 0.55)).step).toBe(2);
-    await expect(how.getByRole("link", { name: /Open Agents/ })).toHaveAttribute("href", "/agents");
-    await expect.poll(async () => (await story(page, "#how", 0.95)).step).toBe(3);
-    await expect(how.getByText("Illustrative example. Not a recorded trade.")).toBeVisible();
-    await expect(how.getByRole("link", { name: /Open the Tape/ })).toHaveAttribute("href", "/tape");
-    // Reverse
-    await expect.poll(async () => (await story(page, "#how", 0.3)).step).toBe(1);
-    // Click and keyboard: a step button moves the story and the scroll position together, and the story does not bounce back.
-    await how.getByRole("button", { name: /Run on paper/ }).focus();
-    await page.keyboard.press("Enter");
-    await page.waitForTimeout(1300);
-    await expect.poll(async () => (await story(page, "#how", 0.55)).step, { timeout: 5000 }).toBe(2);
-    await expect(how.getByRole("button", { name: /Run on paper/ })).toHaveAttribute("aria-current", "step");
-  });
-
-  test("the how-it-works story becomes tabs of illustrated screens on a phone", async ({ page }) => {
+  test("the story becomes tabs on a phone", async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto("/");
-    const how = page.locator("#how");
-    expect(await page.evaluate(() => getComputedStyle(document.querySelector("#how .ps-pin")!).position)).toBe("static");
-    await how.getByRole("button", { name: /Inspect every decision/ }).click();
-    await expect(how.getByText("Illustrative example. Not a recorded trade.")).toBeVisible();
-    expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBe(0);
+    const section = page.locator("#story");
+    await section.scrollIntoViewIfNeeded();
+    const steps = section.locator(".ps-nav li button");
+    await steps.nth(2).click();
+    await expect(steps.nth(2)).toHaveAttribute("aria-current", "step");
+    await expect(section.getByText("Five breakers watch every tick.")).toBeVisible();
+    const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+    expect(overflow).toBeLessThanOrEqual(0);
   });
 
-  test("the Forge walkthrough stops when users interact with the studio", async ({ page }) => {
+  test("Proof lists the server's claims with evidence and keeps MCP and x402 planned", async ({ page }) => {
     await page.goto("/");
-    const forge = page.locator("#forge");
-    await forge.scrollIntoViewIfNeeded();
-    await expect(forge.getByText("Walkthrough running")).toBeVisible({ timeout: 4000 });
-    await expect(forge.getByText(/runs no backtest and no paper tick/)).toBeVisible();
-    await forge.getByRole("button", { name: "Pause" }).click();
-    await expect(forge.getByText("Walkthrough", { exact: true })).toBeVisible();
-    await forge.getByRole("button", { name: "Replay" }).click();
-    await expect(forge.getByText("Walkthrough running")).toBeVisible();
-    await forge.getByRole("button", { name: "Calmo" }).click();
-    await expect(forge.getByText("Walkthrough", { exact: true })).toBeVisible();
-    await expect(forge.getByText("Blocked", { exact: true })).toBeVisible();
-    await forge.getByRole("button", { name: "Restore recipe" }).click();
-    await expect(forge.getByText("Valid", { exact: true })).toBeVisible({ timeout: 15_000 });
-    await expect(forge.getByRole("link", { name: /Backtest in Lab/ })).toHaveAttribute("href", "/lab");
-  });
-
-  test("the Forge studio steps through: select, configure, validate, continue to Lab", async ({ page }) => {
-    await page.goto("/");
-    const forge = page.locator("#forge");
-    const at = async (f: number) => story(page, "#forge", f);
-    await expect.poll(async () => (await at(0.3)).step).toBe(1);
-    await expect(forge.getByText("Building")).toBeVisible();
-    await expect.poll(async () => (await at(0.55)).step).toBe(2);
-    await expect(forge.getByText("Validating…")).toBeVisible();
-    await expect.poll(async () => (await at(0.95)).step).toBe(4);
-    const workflow = forge.getByRole("tablist", { name: "Protective Put workflow" });
-    await expect(workflow.getByRole("tab")).toHaveCount(5);
-    await expect(workflow.getByRole("tab", { name: /Decision & Tape/ })).toHaveAttribute("aria-selected", "true");
-    await expect(forge.getByText("Valid", { exact: true })).toBeVisible();
-    await expect(forge.getByText("Walkthrough running")).toHaveCount(0);
-    // Reverse
-    await expect.poll(async () => (await at(0.3)).step).toBe(1);
-    await expect(forge.getByText("Building")).toBeVisible();
-    // The rail is clickable and the real validator still answers when a rule is removed.
-    await workflow.getByRole("tab", { name: /Recipe validation/ }).click();
-    await expect(forge.locator(".fww")).toHaveAttribute("data-active-stage", "2");
-    await page.waitForTimeout(1200);
-    await forge.getByRole("button", { name: "Calmo" }).click();
-    await expect(forge.getByText("Protective Put requires calmo.").first()).toBeVisible();
-  });
-
-  test("Sessions marks only regular hours as allowed and never claims the market is open now", async ({ page }) => {
-    await page.goto("/");
-    const sessions = page.locator("#sessions");
-    const bar = sessions.getByRole("group", { name: /24 hour US trading day/ });
-    await expect(bar.getByText("Entries allowed")).toHaveCount(1);
-    await expect(bar.getByText("Entries blocked")).toHaveCount(4);
-    await bar.getByRole("button", { name: /Pre-market/ }).click();
-    await expect(sessions.getByText("New entries blocked")).toBeVisible();
-    await expect(sessions.getByText(/does not show whether the market is open right now/)).toBeVisible();
-    await expect(sessions.getByText("Opening Bell and Closing Bell choices are Planned.")).toBeVisible();
-  });
-
-  test("the Breaker panel shows real limits and its demo slider changes nothing real", async ({ page }) => {
-    await page.goto("/");
-    const risk = page.locator("#sessions .bp");
-    await expect(risk.getByText("Stops new entries at 7%")).toBeVisible();
-    await risk.getByRole("button", { name: "Daylo" }).click();
-    await expect(risk.getByText("Stops new entries at 3%")).toBeVisible();
-    await expect(risk.getByText("ILLUSTRATION ONLY", { exact: false })).toBeVisible();
-    await risk.getByRole("slider").fill("8");
-    await expect(risk.getByRole("status")).toContainText("blocked");
-    await risk.getByRole("slider").fill("1");
-    await expect(risk.getByRole("status")).toContainText("allowed");
-    await risk.getByRole("button", { name: "Drawra" }).click();
-    await expect(risk.getByText("Stops new entries at 20%")).toBeVisible();
-    await risk.getByRole("button", { name: "Exposa" }).click();
-    await expect(risk.getByText("Stops new entries at 25%")).toBeVisible();
-    await risk.getByRole("button", { name: "Venux" }).click();
-    await expect(risk.getByText("Venue spread and error-rate checks are unavailable")).toBeVisible();
-  });
-
-  test("Sessions closes with Agent mode as working and Manual mode as planned, without a control", async ({ page }) => {
-    await page.goto("/");
-    const modes = page.locator("#sessions").getByRole("group", { name: "Agent mode and Manual mode" });
-    await expect(modes.getByText("Working on paper")).toBeVisible();
-    await expect(modes.getByText(/No route or service exists yet/)).toBeVisible();
-    await expect(modes.getByRole("button")).toHaveCount(0);
-  });
-
-  test("Developers shows real responses, copies them, and keeps MCP and x402 planned", async ({ page, context }) => {
-    await context.grantPermissions(["clipboard-read", "clipboard-write"]);
-    await page.goto("/");
-    const dev = page.locator("#developers");
-    await expect(dev.getByText("/api/public/v1/hooks").first()).toBeVisible();
-    await expect(dev.getByText('"expectedCount"')).toBeVisible();
-    await dev.getByRole("button", { name: /Public Tape/ }).click();
-    await expect(dev.getByText('"executionMode"')).toBeVisible();
-    await expect(dev.getByText("Always empty today")).toBeVisible();
-    await dev.getByRole("button", { name: "Copy request" }).click();
-    await expect(dev.getByText("Copied").first()).toBeVisible();
-    expect(await page.evaluate(() => navigator.clipboard.readText())).toBe('curl -s "$OPTRA_URL/api/public/v1/tape"');
-    await expect(dev.locator(".dd-nav").getByText("MCP server")).toBeVisible();
-    await expect(dev.locator('[aria-disabled="true"]')).toHaveCount(2);
-  });
-
-  test("Verify groups the server's claims and opens evidence on demand", async ({ page }) => {
-    await page.goto("/");
-    const verify = page.locator("#verify");
-    await expect(verify.getByText("claims from the server")).toBeVisible();
-    await expect(verify.getByRole("region", { name: "Safety boundaries" })).toBeVisible();
-    const row = verify.locator(".ev-row", { hasText: "Hook catalog" });
-    await expect(row.getByRole("link")).toBeHidden();
-    await row.locator("summary").click();
-    await expect(row.getByRole("link", { name: /\/api\/public\/v1\/hooks/ })).toBeVisible();
+    const proof = page.locator("#proof");
+    await proof.scrollIntoViewIfNeeded();
+    await expect(proof.getByRole("list", { name: "Claims from the server" }).getByRole("listitem")).toHaveCount(6);
+    await expect(proof.getByRole("link", { name: /Evidence: \/api\/public\/v1\/hooks/ })).toBeVisible();
+    await expect(proof.getByText('curl -s "$OPTRA_URL/api/public/v1/hooks"')).toBeVisible();
+    await expect(proof.getByText("An MCP server and pay-per-call endpoints are planned, not built.", { exact: false })).toBeVisible();
+    await expect(proof.getByRole("link", { name: "Open the Verify page" })).toHaveAttribute("href", "/verify");
   });
 
   test("the closing section keeps its call to action and the footer readable", async ({ page }) => {

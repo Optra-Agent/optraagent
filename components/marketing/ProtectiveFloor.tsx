@@ -4,6 +4,7 @@ import Link from "next/link";
 import type { CSSProperties } from "react";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { AgentCharacter } from "./characters";
 import { FloorDiagram } from "./FloorDiagram";
 import type { FloorView } from "./floor-scene";
 import { floorStore, useFloor } from "./floor-store";
@@ -11,7 +12,7 @@ import { PREMIUM_RANGE, STRIKE_RANGE, floorReadout } from "./payoff";
 
 const VIEWS: { id: FloorView; label: string; hint: string; caption: string }[] = [
   { id: "overview", label: "Whole payoff", hint: "Both rows, side by side", caption: "Hold 100 and add one long put: at expiry the value cannot fall below the strike minus the premium. Back row, the holding alone. Front row, the same holding with the put." },
-  { id: "floor", label: "The floor", hint: "Where the put holds the value", caption: "The vermilion part is what the put supplies. Wherever the price ends below the floor, the put fills the column up to it." },
+  { id: "floor", label: "The floor", hint: "Where the put holds the value", caption: "The orange part is what the put supplies. Wherever the price ends below the floor, the put fills the column up to it." },
   { id: "cost", label: "The cost", hint: "The premium on every column", caption: "The clear caps are the premium. You pay it on every column, even when the price rises, and it is what the floor costs." },
 ];
 
@@ -47,6 +48,10 @@ export function ProtectiveFloor() {
       <div className="m-wrap fl-grid">
         <div className="fl-stage" data-sig-slot="floor" data-gl={gl}>
           {gl === "off" ? <FloorDiagram params={params} className="fl-fallback" /> : null}
+          <div className="fl-agent" aria-hidden="true">
+            <span key={`${params.strike}-${params.premium}`} className="fl-agent-nod"><AgentCharacter id="protective_put" size={74} /></span>
+            <p className="fl-agent-say"><b>I hold the floor at {fmt(readout.floor)}.</b><span>{readout.otm === 0 ? "My put starts paying at the entry price." : `My put starts paying ${readout.otm}% below entry.`} Above the floor, you keep the upside minus {fmt(params.premium)}.</span></p>
+          </div>
           <p className="fl-drag" aria-hidden="true">Drag to turn</p>
         </div>
 
@@ -59,7 +64,7 @@ export function ProtectiveFloor() {
 
           <div className="fl-controls">
             <div className="fl-control">
-              <label htmlFor="fl-strike"><span>Put strike</span><output htmlFor="fl-strike">{params.strike}<small> ({readout.otm === 0 ? "at the money" : `${readout.otm}% below entry`})</small></output></label>
+              <label htmlFor="fl-strike"><span className="fl-stagetag"><AgentCharacter id="strike" size={20} live={false} />Put strike<em>Strike stage</em></span><output htmlFor="fl-strike">{params.strike}<small> ({readout.otm === 0 ? "at the money" : `${readout.otm}% below entry`})</small></output></label>
               <input id="fl-strike" type="range" min={STRIKE_RANGE.min} max={STRIKE_RANGE.max} step={STRIKE_RANGE.step} value={params.strike} style={fill(params.strike, STRIKE_RANGE)} onChange={(event) => floorStore.set({ params: { ...params, strike: Number(event.target.value) } })} aria-valuetext={`Strike ${params.strike}, ${readout.otm} percent below entry`} />
             </div>
             <div className="fl-control">

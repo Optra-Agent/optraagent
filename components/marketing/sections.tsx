@@ -5,11 +5,8 @@ import { cn } from "@/lib/utils";
 import { Chip } from "../app/ui";
 import type { PublicVerification } from "../../lib/domain/contracts";
 import { AgentGraph } from "./AgentGraph";
-import { ForgeDemo } from "./ForgeDemo";
-import { BreakerPanel, DevDocs, EvidenceCenter, SessionsTimeline } from "./story";
-import { HowWalkthrough } from "./HowWalkthrough";
-import { TapeTimeline } from "./TapeTimeline";
-import type { ApiDoc, ForgeDemoData, HealthGuard, RiskRail } from "./section-data";
+import { StoryScene } from "./StoryScene";
+import type { ApiDoc, RiskRail } from "./section-data";
 import { ProductPreview } from "./ProductPreview";
 import type { GraphData } from "./graph-data";
 import type { FlowScenario } from "./graph-flow";
@@ -121,78 +118,22 @@ export function AgentShowcase({ facts, graph }: { facts: Facts; graph: GraphData
 
 /* ─────────────────────────── Forge ─────────────────────────── */
 
-export function Forge({ facts, forge }: { facts: Facts; forge: ForgeDemoData }) {
+/* ─────────────────────────── The story: rules to a reasoned decision ─────────────────────────── */
+
+export function Story({ rails }: { rails: RiskRail[] }) {
   return (
-    <section className="m-section m-section-raised" id="forge" aria-labelledby="forge-title">
+    <section className="m-section" id="story" aria-labelledby="story-title">
       <div className="m-wrap">
-        <SectionHead titleId="forge-title" eyebrow="OPTRA FORGE" title="Click rules together. The server checks every recipe.">
-          <p>An agent is a recipe of rules. Forge validates it, gives it a canonical hash, and blocks anything it cannot run, before it can reach a backtest. Try removing a hook below to see what the validator says.</p>
+        <SectionHead titleId="story-title" eyebrow="HOW IT WORKS" title="From rules to a reasoned decision.">
+          <p>One agent, four steps. Build Protective Put from rules, backtest it, run it on paper, then read why it acted. Everything here is paper: virtual money, modeled premiums, no real-money path.</p>
         </SectionHead>
-        <ForgeDemo data={forge} />
-        <div className="hk-strip" role="group" aria-label="Hook library by stage">
-          <p className="hk-strip-head"><b>{facts.hookTotal} hooks, six stages.</b> A Breaker guards every tick and can stop new entries.</p>
-          <ul>
-            {facts.byStage.map((stage) => (
-              <li key={stage.stage} data-risk={stage.stage === "breaker" ? "1" : "0"}>
-                <span className="hk-stage mono">{stage.stage}</span>
-                <span className="hk-count"><b>{stage.live}</b> of {stage.total} run today</span>
-              </li>
-            ))}
-          </ul>
-        </div>
-        <ul className="forge-points reveal-stagger">
-          <li style={at(0)}><strong>{facts.hookLive} of {facts.hookTotal} hooks run today.</strong> The other {facts.hookCatalogOnly} are documented in the library and locked in Forge.</li>
-          <li style={at(1)}><strong>AI composition: next.</strong> Rules decide. No AI provider is configured, so recipes are built by clicking.</li>
-          <li style={at(2)}><strong>Inspired by Uniswap v4 hooks.</strong> Every hook runs in the offchain paper engine. None is deployed onchain.</li>
-        </ul>
-        <div className="m-actions">
-          <Link className={buttonVariants()} href="/forge">Open Forge</Link>
-          <Link className={buttonVariants({ variant: "outline" })} href="/hooks">Browse all {facts.hookTotal} hooks</Link>
-        </div>
+        <StoryScene stages={STAGE_ORDER.map((stage) => ({ id: stage, label: stageLabel(stage), line: STAGE_QUESTION[stage] }))} rails={rails} />
       </div>
     </section>
   );
 }
 
-/* ─────────────────────────── How it works ─────────────────────────── */
-
-export function HowItWorks() {
-  return (
-    <section className="m-section m-section-raised" id="how" aria-labelledby="how-title">
-      <div className="m-wrap">
-        <SectionHead titleId="how-title" eyebrow="HOW IT WORKS" title="From idea to paper position, in four steps.">
-          <p>Each step unlocks the next. The Lab replays 1,441 verified hourly candles, 721 to warm up and 720 to decide, and nothing reaches a paper run without a complete backtest. There is no real-money path.</p>
-        </SectionHead>
-        <HowWalkthrough />
-        <p className="how-note">Each step shows the screen it leads to. The pictures are illustrative: they carry no returns, balances or trades. Live trading is disabled and every run is paper.</p>
-      </div>
-    </section>
-  );
-}
-
-/* ─────────────────────────── Optra Tape ─────────────────────────── */
-
-export function TapeSection({ graph }: { graph: GraphData }) {
-  return (
-    <section className="m-section" id="tape" aria-labelledby="tape-title">
-      <div className="m-wrap tape-grid">
-        <SectionHead titleId="tape-title" eyebrow="OPTRA TAPE" title="Every decision has a reason, even when the agent does nothing." className="tape-head">
-          <p>Each tick the agent records what it did and why, in plain words first and rule by rule on demand. Pick a tick to see why entry was allowed or blocked.</p>
-          <ul className="forge-points">
-            <li><strong>Append-only.</strong> Decisions and paper orders persist per agent.</li>
-            <li><strong>Private to your wallet.</strong> There is no public Tape yet, so none is shown here.</li>
-          </ul>
-          <div className="m-actions">
-            <Link className={buttonVariants()} href="/agents">Launch a paper agent</Link>
-          </div>
-        </SectionHead>
-        <TapeTimeline ticks={graph.ticks} stages={[...graph.stages, graph.breaker]} />
-      </div>
-    </section>
-  );
-}
-
-/* ─────────────────────────── Sessions and risk ─────────────────────────── */
+/* ─────────────────────────── Proof ─────────────────────────── */
 
 /** Paper and Live are execution modes. They are not Agent mode and Manual mode, which are about who decides. Live is shown as planned and has no control. */
 function ExecutionModes() {
@@ -215,61 +156,38 @@ function ExecutionModes() {
   );
 }
 
-export function Sessions({ rails, health }: { rails: RiskRail[]; health: HealthGuard }) {
+const CLAIM_TITLE: Record<string, string> = { market_data: "Market data", hook_catalog: "Hook catalog", house_agents: "House Agents", historical_backtest: "Historical backtest", live_execution: "Live execution", v4_claim_level: "Uniswap v4 claim level" };
+const CLAIM_LABEL: Record<string, string> = { verified: "Verified", limited: "Limited", preview: "Preview", unavailable: "Unavailable", disabled: "Disabled" };
+
+/** What is built and what is not, read from the server's own verification response. One real public call sits beside it. */
+export function Proof({ verification, docs }: { verification: PublicVerification; docs: ApiDoc[] }) {
+  const sample = docs.find((doc) => doc.id === "hooks") ?? docs[0];
   return (
-    <section className="m-section" id="sessions" aria-labelledby="sessions-title">
+    <section className="m-section" id="proof" aria-labelledby="proof-title">
       <div className="m-wrap">
-        <SectionHead titleId="sessions-title" eyebrow="SESSIONS" title="Sessions, risk and modes.">
-          <p>The Sessia hook lets an agent open new positions only during regular US equity hours on open market days. Exits are not gated by it. Five Breakers watch every tick.</p>
+        <SectionHead titleId="proof-title" eyebrow="PROOF" title="Built, not promised.">
+          <p>Each claim below is read from the server&apos;s own verification response, with the path that proves it. Anything without evidence is labeled as roadmap.</p>
         </SectionHead>
-        <SessionsTimeline />
-
-        <div className="risk">
-          <div className="risk-head reveal-lead">
-            <p className="m-eyebrow">RISK</p>
-            <h3>Breakers stop new entries. Exits keep running.</h3>
-            <p>Five guards watch every tick: four numeric limits and one data-health check. Pick one to see its limit and try a value.</p>
-          </div>
-          <BreakerPanel rails={rails} health={health} />
+        <div className="pf">
+          <ul className="pf-claims" aria-label="Claims from the server">
+            {verification.claims.map((claim) => (
+              <li key={claim.id} data-status={claim.status}>
+                <div className="pf-head"><b>{CLAIM_TITLE[claim.id] ?? claim.id.replaceAll("_", " ")}</b><Chip tone={claim.status === "verified" ? "azure" : claim.status === "limited" || claim.status === "preview" ? "neutral" : "ember"}>{CLAIM_LABEL[claim.status] ?? claim.status}</Chip></div>
+                <p>{claim.statement}</p>
+                <a className="mono" href={claim.evidencePath} target="_blank" rel="noreferrer">Evidence: {claim.evidencePath}</a>
+              </li>
+            ))}
+          </ul>
+          <aside className="pf-api" aria-label="Public API">
+            <p className="pf-kicker mono">PUBLIC API · READ ONLY</p>
+            <h3>Call it yourself. No key.</h3>
+            <p>Five public endpoints return the same data this page shows. Trading routes stay private to the wallet that owns the agent. An MCP server and pay-per-call endpoints are planned, not built.</p>
+            {sample ? <pre className="pf-code mono" aria-label={`Example request for ${sample.title}`}>{`curl -s "$OPTRA_URL${sample.path}"`}</pre> : null}
+            <ul className="pf-endpoints mono">{docs.map((doc) => <li key={doc.id}><a href={doc.path} target="_blank" rel="noreferrer">GET {doc.path}</a></li>)}</ul>
+            <Link className={buttonVariants({ variant: "outline" })} href="/verify">Open the Verify page</Link>
+          </aside>
         </div>
-
         <ExecutionModes />
-
-        <div className="modes reveal" role="group" aria-label="Agent mode and Manual mode">
-          <p><Chip tone="azure">Working on paper</Chip><b>Agent mode.</b> Rules decide, you backtest first, and every decision is written to the Tape.</p>
-          <p><Chip>Planned</Chip><b>Manual mode.</b> No route or service exists yet, so nothing here lets you place an order.</p>
-        </div>
-      </div>
-    </section>
-  );
-}
-
-/* ─────────────────────────── Developers ─────────────────────────── */
-
-export function Developers({ docs }: { docs: ApiDoc[] }) {
-  return (
-    <section className="m-section" id="developers" aria-labelledby="developers-title">
-      <div className="m-wrap">
-        <SectionHead titleId="developers-title" eyebrow="DEVELOPERS" title="A public, read-only API you can call today.">
-          <p>Five endpoints, no key, real responses below. Trading routes are private to the wallet that owns the agent. An MCP server and pay-per-call endpoints are planned and not built yet.</p>
-        </SectionHead>
-        <DevDocs docs={docs} />
-      </div>
-    </section>
-  );
-}
-
-/* ─────────────────────────── Verify ─────────────────────────── */
-
-export function Status({ verification }: { verification: PublicVerification }) {
-  return (
-    <section className="m-section m-section-raised" id="verify" aria-labelledby="verify-title">
-      <div className="m-wrap">
-        <SectionHead titleId="verify-title" eyebrow="VERIFY" title="Built, not promised.">
-          <p>Every claim below comes from the server&apos;s own verification response, with the path that proves it. Rows without evidence are labeled as roadmap.</p>
-          <Link className={buttonVariants({ variant: "outline" })} href="/verify">Open the Verify page</Link>
-        </SectionHead>
-        <EvidenceCenter verification={verification} />
       </div>
     </section>
   );

@@ -26,7 +26,7 @@ import { COLUMNS, ENTRY, floorColumns, type FloorParams } from "./payoff";
 /**
  * The Protective Floor, as a physical object. Two rows of columns stand on one slab, one per possible price at expiry.
  * Back row: the holding on its own, so its value falls with the price. Front row: the same holding with a long put.
- * Azure is what the holding keeps, vermilion is what the put supplies (the floor filling in), and the clear caps are the premium paid.
+ * Pale is what the holding keeps, orange (the agent's colour) is what the put supplies (the floor filling in), and the clear caps are the premium paid.
  * The heights come from payoff.ts and nothing else. No price, return or trade is invented here.
  */
 
@@ -95,11 +95,11 @@ export function createFloorScene(canvas: HTMLCanvasElement, options: Options): F
   const world = new Group(); // a pivot for slow drift and drag
   scene.add(world);
 
-  scene.add(new HemisphereLight(0x9db4d6, 0x0b0c0e, 0.9));
+  scene.add(new HemisphereLight(0xc9c2bb, 0x0b0c0e, 0.95));
   const key = new DirectionalLight(0xffffff, 2.6);
   key.position.set(-7, 15, 11);
   scene.add(key);
-  const rim = new DirectionalLight(0x4aa8ff, 1.5);
+  const rim = new DirectionalLight(0xffa06b, 1.4);
   rim.position.set(12, 7, -9);
   scene.add(rim);
   const glow = new PointLight(0xff5a1f, 26, 16, 2);
@@ -120,15 +120,15 @@ export function createFloorScene(canvas: HTMLCanvasElement, options: Options): F
   }
   unit.setAttribute("color", new BufferAttribute(shade, 3));
   const materials: Record<Part, MeshStandardMaterial> = {
-    holding: new MeshStandardMaterial({ color: 0x3a414c, roughness: 0.6, metalness: 0.1, vertexColors: true }),
-    kept: new MeshStandardMaterial({ color: 0x2f86f0, roughness: 0.42, metalness: 0.05, emissive: 0x0a2c5c, emissiveIntensity: 0.5, vertexColors: true }),
-    put: new MeshStandardMaterial({ color: 0xea5a38, roughness: 0.45, metalness: 0.05, emissive: 0x7a2210, emissiveIntensity: 0.6, vertexColors: true }),
+    holding: new MeshStandardMaterial({ color: 0x2c3038, roughness: 0.6, metalness: 0.1, vertexColors: true }),
+    kept: new MeshStandardMaterial({ color: 0xd9d6d0, roughness: 0.5, metalness: 0.04, emissive: 0x2a2724, emissiveIntensity: 0.35, vertexColors: true }),
+    put: new MeshStandardMaterial({ color: 0xff5a1f, roughness: 0.4, metalness: 0.05, emissive: 0x9a3010, emissiveIntensity: 0.75, vertexColors: true }),
     cost: new MeshStandardMaterial({ color: 0xff7a55, roughness: 0.3, transparent: true, opacity: 0.16, depthWrite: false }),
   };
   const defs: { part: Part; z: number; edge: [number, number, number]; delay: number }[] = [
-    { part: "holding", z: BACK_Z, edge: [0.34, 0.38, 0.46], delay: 0.18 },
-    { part: "kept", z: FRONT_Z, edge: [0.5, 0.78, 1], delay: 0 },
-    { part: "put", z: FRONT_Z, edge: [1, 0.5, 0.36], delay: 0.1 },
+    { part: "holding", z: BACK_Z, edge: [0.36, 0.38, 0.42], delay: 0.18 },
+    { part: "kept", z: FRONT_Z, edge: [0.92, 0.9, 0.86], delay: 0 },
+    { part: "put", z: FRONT_Z, edge: [1, 0.62, 0.42], delay: 0.1 },
     { part: "cost", z: FRONT_Z, edge: [0.95, 0.42, 0.28], delay: 0.22 },
   ];
   const groups: ColumnGroup[] = defs.map((def, groupIndex) => {
@@ -229,7 +229,7 @@ export function createFloorScene(canvas: HTMLCanvasElement, options: Options): F
 
   function placeLabels(w: number, h: number, visible: number) {
     const points: Record<LabelKey, [number, number, number]> = {
-      floor: [-HALF - 0.9, floorY, FRONT_Z + DEPTH / 2],
+      floor: [-HALF - 4.2, floorY + 0.3, FRONT_Z],
       entry: [-HALF - 0.9, entryY, BACK_Z],
       with: [-HALF - 0.2, 0, FRONT_Z + DEPTH / 2 + 0.7],
       without: [HALF - 2.2, current.holding[COLUMNS - 1] * K + 1.1, BACK_Z],
@@ -242,8 +242,9 @@ export function createFloorScene(canvas: HTMLCanvasElement, options: Options): F
       labelPoint.set(...points[key]);
       world.localToWorld(labelPoint);
       labelPoint.project(camera);
-      const x = (labelPoint.x * 0.5 + 0.5) * w;
-      const y = (-labelPoint.y * 0.5 + 0.5) * h;
+      // A name stays inside the stage: when the camera pushes in, it slides to the edge instead of leaving the frame.
+      const x = Math.min(Math.max((labelPoint.x * 0.5 + 0.5) * w, 4), Math.max(4, w - el.offsetWidth - 16));
+      const y = Math.min(Math.max((-labelPoint.y * 0.5 + 0.5) * h, 14), h - 14);
       el.style.transform = `translate3d(${x.toFixed(1)}px, ${y.toFixed(1)}px, 0)`;
       el.style.opacity = String(visible);
     }
