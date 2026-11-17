@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import { cn } from "@/lib/utils";
-import { LOCAL_LOGOS } from "./logo-symbols";
 
 /** The server already verified the logo. The browser re-checks scheme and host so a bad value can never load. */
 const TRUSTED_HOSTS = new Set(["cdn.robinhood.com"]);
@@ -16,12 +15,12 @@ export function trustedLogo(url: string | undefined): string | undefined {
   }
 }
 
-/** Asset logo (verified server logo, else the ticker's local logo), or the ticker's initials when there is none or it fails to load. Decorative: the row names the asset. */
+/** Asset logo (verified server logo), or the ticker's initials when there is none or it fails to load. Decorative: the row names the asset. */
 export function AssetLogo({ symbol, logoUrl, size = 36, className }: { symbol: string; logoUrl?: string; size?: number; className?: string }) {
   const [failed, setFailed] = useState<readonly string[]>([]);
-  // A verified server logo wins. Then the ticker's own logo, served from this app. Then initials.
-  const local = LOCAL_LOGOS.has(symbol) ? `/img/stocks/${encodeURIComponent(symbol)}.png` : undefined;
-  const src = [trustedLogo(logoUrl), local].find((candidate): candidate is string => Boolean(candidate) && !failed.includes(candidate as string));
+  // A verified server logo wins; otherwise show ticker initials.
+  const remote = trustedLogo(logoUrl);
+  const src = remote && !failed.includes(remote) ? remote : undefined;
   return (
     <span className={cn("asset-logo", className)} data-fallback={src ? "0" : "1"} style={{ width: size, height: size }} aria-hidden="true">
       {src ? (
