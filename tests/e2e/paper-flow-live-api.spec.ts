@@ -78,3 +78,78 @@ test("test-signed session completes the paper journey through browser routes and
   expect(pageErrors).toEqual([]);
   expect(consoleErrors).toEqual([]);
 });
+
+test("a custom Protective Put can be forged, backtested, launched, evaluated, and read from Tape", async ({ page, baseURL }) => {
+  if (!baseURL) throw new Error("Playwright baseURL is required.");
+  const origin = new URL(baseURL).origin;
+  const challengeResponse = await page.request.post(new URL("/api/auth/challenge", origin).toString(), {
+    headers: { origin },
+    data: { address: account.address },
+  });
+  expect(challengeResponse.status()).toBe(200);
+  const challenge = await challengeResponse.json() as { nonce: string; message: string };
+  const signature = await account.signMessage({ message: challenge.message });
+  const verifyResponse = await page.request.post(new URL("/api/auth/verify", origin).toString(), {
+    headers: { origin },
+    data: { address: account.address, nonce: challenge.nonce, signature },
+  });
+  expect(verifyResponse.status()).toBe(200);
+
+  await page.goto("/forge");
+  await expect(page.getByLabel("Virtual reference shares")).toHaveValue("10");
+  await expect(page.getByLabel("Paper capital (USD)")).toHaveValue("100000");
+  await expect(page.getByLabel("Put strike distance (% OTM)")).toHaveValue("7");
+  await expect(page.getByLabel("Model expiry (calendar days)")).toHaveValue("30");
+  await expect(page.getByLabel("Max premium (% of reference holding)")).toHaveValue("2");
+  await expect(page.locator(".forge-hook input:not(:disabled):checked")).toHaveCount(15);
+  await page.getByLabel("Agent name").fill("Custom AAPL Protection");
+  await page.getByLabel("Put strike distance (% OTM)").fill("6.5");
+  await page.getByLabel("Model expiry (calendar days)").fill("28");
+  await page.getByLabel("Max premium (% of reference holding)").fill("1.5");
+  await page.getByRole("button", { name: "Validate recipe", exact: true }).click();
+  await expect(page.locator(".forge-validation")).toContainText("Recipe valid");
+  await page.getByRole("button", { name: "Save draft", exact: true }).click();
+  await expect(page).toHaveURL(/\/agents\/[0-9a-f-]+$/i);
+  const agentId = decodeURIComponent(new URL(page.url()).pathname.split("/").at(-1)!);
+  const savedAgentResponse = await page.request.get(new URL(`/api/agents/${encodeURIComponent(agentId)}`, origin).toString());
+  expect(savedAgentResponse.status()).toBe(200);
+  const savedAgent = await savedAgentResponse.json();
+  expect(savedAgent).toMatchObject({
+    templateId: "custom",
+    recipe: {
+      templateId: "custom",
+      underlyingSymbol: "AAPL",
+      parameters: {
+        initialCapitalUsd: "100000",
+        protectedShares: "10",
+        percy: { otmPct: 6.5 },
+        tenora: { targetDTE: 28 },
+        capra: { maxPremiumPctHolding: 1.5 },
+      },
+    },
+  });
+  expect(savedAgent.recipe.hookIds).toHaveLength(15);
+
+  await page.goto(`/lab?agent=${encodeURIComponent(agentId)}`);
+  const lab = page.getByRole("region", { name: "Backtest and launch" });
+  const backtestButton = lab.getByRole("button", { name: "Run paper backtest" });
+  await expect(backtestButton).toBeEnabled({ timeout: 20_000 });
+  await backtestButton.click();
+  await expect(lab.getByRole("region", { name: "Backtest result" })).toContainText("Backtest complete", { timeout: 60_000 });
+  await lab.getByRole("button", { name: "Launch paper agent" }).click();
+  await expect(lab.getByRole("status")).toContainText("Paper agent running");
+  await lab.getByRole("link", { name: "Open agent and run a tick" }).click();
+  await page.getByRole("button", { name: "Run paper tick" }).click();
+  await expect(page.getByRole("status", { name: "Paper tick result" })).toContainText("skip");
+  await page.reload();
+  await page.getByRole("tab", { name: /Tape/ }).click();
+  await expect(page.getByRole("heading", { name: "Decision Tape" })).toBeVisible();
+  await expect(page.getByText("skip", { exact: true })).toBeVisible();
+
+  const tapeResponse = await page.request.get(new URL(`/api/agents/${encodeURIComponent(agentId)}/tape`, origin).toString());
+  expect(tapeResponse.status()).toBe(200);
+  await expect(tapeResponse.json()).resolves.toMatchObject({
+    decisions: [expect.objectContaining({ action: "skip" })],
+    orders: [],
+  });
+});

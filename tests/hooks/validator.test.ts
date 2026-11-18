@@ -3,6 +3,20 @@ import { buildProtectivePutRecipe } from "../../lib/hooks/catalog";
 import { canonicalRecipeHash, validateRecipe } from "../../lib/hooks/recipe-validator";
 
 const recipe = buildProtectivePutRecipe({ underlyingSymbol: "AAPL", protectedShares: "1", initialCapitalUsd: "5000" });
+const relaxedControls = [
+  { hookId: "capra", key: "maxPremiumPctHolding", value: 2.01 },
+  { hookId: "haltr", key: "maxMove1hPct", value: 7.01 },
+  { hookId: "daylo", key: "maxDailyLossPct", value: 3.01 },
+  { hookId: "drawra", key: "maxDrawdownPct", value: 20.01 },
+  { hookId: "exposa", key: "maxUnderlyingPct", value: 25.01 },
+  { hookId: "corpax", key: "pauseHoursBefore", value: 23 },
+  { hookId: "corpax", key: "pauseHoursAfter", value: 23 },
+  { hookId: "corpax", key: "flagOpenPositions", value: false },
+  { hookId: "coverix", key: "lockTokens", value: true },
+  { hookId: "trailo", key: "activateAtGainPct", value: 101 },
+  { hookId: "trailo", key: "trailPct", value: 31 },
+  { hookId: "lastra", key: "hoursBefore", value: 23 },
+] as const;
 
 describe("recipe validation", () => {
   it("hashes_equivalent_recipes_deterministically", () => {
@@ -15,6 +29,31 @@ describe("recipe validation", () => {
 
     expect(first).toBe(second);
     expect(first).toMatch(/^sha256:[a-f0-9]{64}$/);
+  });
+
+  it("accepts_custom_agents_that_use_the_supported_protective_put_composition", () => {
+    const customRecipe = { ...recipe, name: "Custom AAPL protection", templateId: "custom" as const };
+    const result = validateRecipe(customRecipe);
+
+    expect(result.valid).toBe(true);
+    expect(result.recipeHash).toBe(canonicalRecipeHash(customRecipe));
+    expect(result.issues).toEqual([]);
+  });
+
+  it.each(relaxedControls)("rejects recipes that relax $hookId.$key", ({ hookId, key, value }) => {
+    const customRecipe = {
+      ...recipe,
+      templateId: "custom" as const,
+      parameters: {
+        ...recipe.parameters,
+        [hookId]: { ...(recipe.parameters[hookId] as Record<string, unknown>), [key]: value },
+      },
+    };
+
+    const result = validateRecipe(customRecipe);
+
+    expect(result.valid).toBe(false);
+    expect(result.issues).toContainEqual(expect.objectContaining({ code: "INVALID_PARAMETER", hookId }));
   });
 
   it("prevents_unverified_hooks_from_being_saved_or_launched", () => {

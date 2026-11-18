@@ -14,11 +14,26 @@ describe("production readiness contract", () => {
     expect(getProductionReadinessIssues(readyEnvironment)).toEqual([]);
   });
 
+  it("does not require a scheduler secret while scheduled paper evaluation is disabled", () => {
+    const environment = { ...readyEnvironment, CRON_SECRET: undefined };
+    expect(getProductionReadinessIssues(environment)).toEqual([]);
+    expect(getProductionReadinessIssues({ ...environment, PAPER_CRON_ENABLED: "false" })).toEqual([]);
+  });
+
+  it("requires a strong scheduler secret when scheduled paper evaluation is enabled", () => {
+    expect(getProductionReadinessIssues({
+      ...readyEnvironment,
+      CRON_SECRET: "short",
+      PAPER_CRON_ENABLED: "true",
+    })).toContain("cron_secret_missing_or_weak");
+  });
+
   it("reports missing or unsafe release configuration without exposing values", () => {
     expect(getProductionReadinessIssues({
       DATABASE_URL: "file:local.db",
       APP_BASE_URL: "http://paper.optra.example/path",
       CRON_SECRET: "short",
+      PAPER_CRON_ENABLED: "true",
       LIVE_TRADING_ENABLED: "true",
       V4_CLAIM_LEVEL: "L1",
     })).toEqual(expect.arrayContaining([

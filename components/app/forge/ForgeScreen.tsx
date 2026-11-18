@@ -14,6 +14,7 @@ import {
   RecipeV1Schema,
 } from "../../../lib/domain/contracts";
 import type { HookCatalogResponse, HookDefinition, HookStage, MarketAsset, RecipeValidationResult } from "../../../lib/domain/contracts";
+import { buildProtectivePutRecipe, PAPER_PROTECTIVE_PUT_HOOK_IDS } from "../../../lib/hooks/catalog";
 import { shortHash, titleCase, errorText } from "../format";
 import { Chip, PageHeader, StateBlock, Panel } from "../ui";
 import { Button } from "@/components/ui/button";
@@ -57,7 +58,12 @@ export function ForgeScreen() {
   const [name, setName] = useState("My paper strategy");
   const [templateId, setTemplateId] = useState<(typeof templateOptions)[number][0]>("custom");
   const [symbol, setSymbol] = useState("AAPL");
-  const [hookIds, setHookIds] = useState<string[]>([]);
+  const [protectedShares, setProtectedShares] = useState("10");
+  const [initialCapitalUsd, setInitialCapitalUsd] = useState("100000");
+  const [putOtmPct, setPutOtmPct] = useState("7");
+  const [targetDte, setTargetDte] = useState("30");
+  const [maxPremiumPctHolding, setMaxPremiumPctHolding] = useState("2");
+  const [hookIds, setHookIds] = useState<string[]>([...PAPER_PROTECTIVE_PUT_HOOK_IDS]);
   const [validation, setValidation] = useState<RecipeValidationResult | null>(null);
   const [validationError, setValidationError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -98,7 +104,25 @@ export function ForgeScreen() {
   }, [catalog]);
 
   function currentRecipe() {
-    return RecipeV1Schema.safeParse({ version: 1, name, templateId, underlyingSymbol: symbol, hookIds, parameters: {} });
+    const defaults = buildProtectivePutRecipe({
+      underlyingSymbol: symbol || "AAPL",
+      protectedShares,
+      initialCapitalUsd,
+      name: name.trim() || "Custom Protective Put",
+    });
+    return RecipeV1Schema.safeParse({
+      ...defaults,
+      name,
+      templateId,
+      underlyingSymbol: symbol,
+      hookIds,
+      parameters: {
+        ...defaults.parameters,
+        percy: { ...(defaults.parameters.percy as Record<string, unknown>), otmPct: Number(putOtmPct) },
+        tenora: { ...(defaults.parameters.tenora as Record<string, unknown>), targetDTE: Number(targetDte) },
+        capra: { ...(defaults.parameters.capra as Record<string, unknown>), maxPremiumPctHolding: Number(maxPremiumPctHolding) },
+      },
+    });
   }
 
   function invalidateValidation() {
@@ -221,11 +245,31 @@ export function ForgeScreen() {
                   </SelectContent>
                 </Select>
               </div>
+              <div className="field">
+                <Label htmlFor="forge-shares">Virtual reference shares</Label>
+                <Input id="forge-shares" type="number" min="1" step="1" inputMode="numeric" value={protectedShares} onChange={(event) => { setProtectedShares(event.target.value); invalidateValidation(); }} required />
+              </div>
+              <div className="field">
+                <Label htmlFor="forge-capital">Paper capital (USD)</Label>
+                <Input id="forge-capital" type="number" min="100" step="100" inputMode="decimal" value={initialCapitalUsd} onChange={(event) => { setInitialCapitalUsd(event.target.value); invalidateValidation(); }} required />
+              </div>
+              <div className="field">
+                <Label htmlFor="forge-otm-pct">Put strike distance (% OTM)</Label>
+                <Input id="forge-otm-pct" type="number" min="1" max="20" step="0.5" inputMode="decimal" value={putOtmPct} onChange={(event) => { setPutOtmPct(event.target.value); invalidateValidation(); }} required />
+              </div>
+              <div className="field">
+                <Label htmlFor="forge-target-dte">Model expiry (calendar days)</Label>
+                <Input id="forge-target-dte" type="number" min="10" max="45" step="1" inputMode="numeric" value={targetDte} onChange={(event) => { setTargetDte(event.target.value); invalidateValidation(); }} required />
+              </div>
+              <div className="field">
+                <Label htmlFor="forge-premium-cap">Max premium (% of reference holding)</Label>
+                <Input id="forge-premium-cap" type="number" min="0.1" max="2" step="0.1" inputMode="decimal" value={maxPremiumPctHolding} onChange={(event) => { setMaxPremiumPctHolding(event.target.value); invalidateValidation(); }} required />
+              </div>
             </div>
 
             <fieldset className="forge-hooks">
               <legend>Hook rules</legend>
-              <p className="forge-hooks-note">{implementedCount} rules have deterministic evaluators and can be selected. {catalogOnlyCount} are catalog only and stay locked.</p>
+              <p className="forge-hooks-note">{implementedCount} rules have deterministic evaluators. The supported Protective Put requires all of its 15 rules; {catalogOnlyCount} catalog-only hooks stay locked.</p>
               {catalog.definitions.length === 0 ? <p>No verified hooks are available for a recipe.</p> : null}
               {STAGES.map((stage) => {
                 const group = byStage.get(stage.id);

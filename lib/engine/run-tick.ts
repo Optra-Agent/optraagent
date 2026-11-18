@@ -218,6 +218,21 @@ function computeMark(position: PaperOptionPositionState, spot: number, volatilit
 }
 
 function finalize(input: RunTickInput, action: AgentDecision["action"], reason: string, hookResults: HookResult[], source: string, orders: PaperOrderIntent[], portfolio: PaperPortfolioUpdate): RunTickResult {
+  const stageOrder: Record<NonNullable<HookResult["stage"]>, number> = {
+    gate: 0,
+    strike: 1,
+    size: 2,
+    pulse: 3,
+    expiry: 4,
+    breaker: 5,
+  };
+  const orderedHookResults = hookResults
+    .map((result, index) => ({ result, index }))
+    .sort((left, right) => {
+      const rank = (result: HookResult) => result.stage ? stageOrder[result.stage] : result.hookId.startsWith("system.") ? -1 : 6;
+      return rank(left.result) - rank(right.result) || left.index - right.index;
+    })
+    .map(({ result }) => result);
   const history = input.history?.slice(-721) ?? [];
   const stableHistory = history.map((value) => {
     const candle = { ...MarketCandleSchema.parse(value) };
@@ -239,7 +254,7 @@ function finalize(input: RunTickInput, action: AgentDecision["action"], reason: 
       tickId: input.tickId,
       action,
       reason,
-      hookResults,
+      hookResults: orderedHookResults,
       ...(marketContext ? { marketContext } : {}),
       snapshotSource: source,
       recipeHash: input.recipeHash,
