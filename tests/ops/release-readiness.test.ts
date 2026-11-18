@@ -23,6 +23,10 @@ describe("production readiness contract", () => {
   it("requires a strong scheduler secret when scheduled paper evaluation is enabled", () => {
     expect(getProductionReadinessIssues({
       ...readyEnvironment,
+      PAPER_CRON_ENABLED: "true",
+    })).toEqual([]);
+    expect(getProductionReadinessIssues({
+      ...readyEnvironment,
       CRON_SECRET: "short",
       PAPER_CRON_ENABLED: "true",
     })).toContain("cron_secret_missing_or_weak");
