@@ -167,4 +167,23 @@ describe("persisted agent lifecycle", () => {
       await connection.close();
     }
   });
+
+  it("does_not_seed_paper_capital_for_an_unsupported_custom_preview", async () => {
+    const { connection, owner, repository } = await createHarness();
+    try {
+      const preview = await repository.createAgent({
+        ownerId: owner.id,
+        name: recipe.name,
+        templateId: recipe.templateId,
+        status: "draft",
+        recipe,
+        recipeHash: canonicalRecipeHash(recipe),
+        createdAt: now,
+      });
+
+      await expect(repository.getPaperState(owner.id, preview.id)).resolves.toEqual({ account: null, position: null });
+    } finally {
+      await connection.close();
+    }
+  });
 });

@@ -11,6 +11,7 @@ import {
 } from "../domain/contracts";
 import type { Agent, AgentDecision, MarketSnapshot, PaperOrder, PaperPosition, RecipeV1 } from "../domain/contracts";
 import type { PaperAccountState, PaperOptionPositionState, PaperPortfolioUpdate, RunTickResult } from "../engine/run-tick";
+import { validateRecipe } from "../hooks/recipe-validator";
 import { agents, marketSnapshots, paperAccounts, paperDecisions, paperOrders, paperPositions } from "../../db/schema";
 
 export type StoredPaperAgent = Agent & { recipe: RecipeV1 };
@@ -182,7 +183,12 @@ export class DrizzlePaperRepository {
         updatedAt: input.createdAt,
       }).returning();
       if (!row) throw new Error("Unable to create paper agent.");
-      if (input.recipe.templateId === "protective_put" || input.recipe.templateId === "custom") {
+      const customValidation = input.recipe.templateId === "custom" ? validateRecipe(input.recipe) : null;
+      const supportsPaperAccount = input.templateId === input.recipe.templateId && (
+        input.recipe.templateId === "protective_put" ||
+        (customValidation?.valid === true && customValidation.recipeHash === input.recipeHash)
+      );
+      if (supportsPaperAccount) {
         const initialCapital = Number(input.recipe.parameters.initialCapitalUsd);
         if (!Number.isFinite(initialCapital) || initialCapital <= 0) throw new Error("Protective Put paper capital is invalid.");
         const capital = initialCapital.toFixed(2);
