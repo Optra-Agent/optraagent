@@ -170,6 +170,7 @@ export function Splash({ recipeHash }: { recipeHash: string }) {
     };
 
     const draw = (now: number) => {
+      if (leaving) return;
       const elapsed = now - started;
       const p = clamp01(elapsed / TOTAL);
       // Trails: fade what is already drawn instead of clearing it, so each particle leaves a streak behind it.

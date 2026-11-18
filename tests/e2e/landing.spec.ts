@@ -160,9 +160,11 @@ test("the opening plays on every page load, can be skipped, never blocks the pag
 
   // A reload is a new page load: the opening plays again.
   await page.reload();
-  await expect(page.locator(".splash")).toHaveAttribute("data-state", /boot|form|cast|lift/, { timeout: 15000 });
+  const reloadedSplash = page.locator(".splash");
+  await expect(reloadedSplash).toHaveAttribute("data-state", "cast", { timeout: 15000 });
   await page.keyboard.press("Space");
-  await expect(page.locator(".splash")).toHaveAttribute("data-state", "gone", { timeout: 4000 });
+  await expect(reloadedSplash).toHaveAttribute("data-state", "lift", { timeout: 1000 });
+  await expect(reloadedSplash).toHaveAttribute("data-state", "gone", { timeout: 4000 });
 
   // Moving inside the site is not a page load: going to the app and back does not replay it.
   await page.locator(".m-header").getByRole("link", { name: "Launch app" }).click();

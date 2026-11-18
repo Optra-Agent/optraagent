@@ -291,6 +291,7 @@ test.describe("section visuals", () => {
   test.use({ viewport: { width: 1440, height: 900 } });
 
   test("the story walks four steps, in both directions, and links to the real screens", async ({ page }) => {
+    await page.emulateMedia({ reducedMotion: "reduce" });
     await page.goto("/");
     const section = page.locator("#story");
     await section.scrollIntoViewIfNeeded();
