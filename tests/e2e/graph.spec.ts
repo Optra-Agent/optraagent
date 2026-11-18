@@ -1,16 +1,6 @@
 import { expect, test } from "@playwright/test";
 import type { Page } from "@playwright/test";
 
-/** Pick the story step that sits at a fraction of the story, by clicking its step control. Stories are tabs, not pinned scroll. */
-async function story(page: Page, section: string, fraction: number) {
-  const track = page.locator(`${section} .ps`);
-  const count = Number(await track.evaluate((element) => getComputedStyle(element).getPropertyValue("--n")));
-  const index = Math.min(count - 1, Math.floor(fraction * count));
-  await track.locator('.ps-nav li button, [role="tab"]').nth(index).click();
-  await page.waitForTimeout(450);
-  return { step: Number(await track.getAttribute("data-step")) };
-}
-
 const net = (page: Page) => page.locator("#agents .pn");
 const svg = (page: Page) => net(page).locator(".pn-svg");
 const shown = (page: Page, kind: string) => svg(page).locator(`.pn-n[data-kind="${kind}"][data-show="1"]`);
