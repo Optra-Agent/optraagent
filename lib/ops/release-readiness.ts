@@ -23,7 +23,9 @@ export function getProductionReadinessIssues(environment: Record<string, string 
     issues.push("app_base_url_invalid");
   }
 
-  if ((environment.CRON_SECRET?.trim().length ?? 0) < 32) issues.push("cron_secret_missing_or_weak");
+  if (environment.PAPER_CRON_ENABLED === "true" && (environment.CRON_SECRET?.trim().length ?? 0) < 32) {
+    issues.push("cron_secret_missing_or_weak");
+  }
   if (environment.LIVE_TRADING_ENABLED !== "false") issues.push("live_trading_must_remain_disabled");
   if (environment.V4_CLAIM_LEVEL !== "L0") issues.push("v4_claim_level_must_remain_l0");
   return issues;

@@ -93,13 +93,20 @@ describe("wallet-to-paper API integration with captured provider data and databa
       const paperRepository = new DrizzlePaperRepository(connection.db);
       const backtestRepository = new DrizzleBacktestRepository(connection.db);
       const agentHandlers = createAgentHandlers({ repository: paperRepository, backtests: backtestRepository, readSession, now: () => NOW });
-      const recipe = buildProtectivePutRecipe({ underlyingSymbol: "AAPL", protectedShares: "10", initialCapitalUsd: "100000", name: "AAPL Protective Put" });
+      const recipe = {
+        ...buildProtectivePutRecipe({ underlyingSymbol: "AAPL", protectedShares: "10", initialCapitalUsd: "100000", name: "Custom AAPL Protection" }),
+        templateId: "custom" as const,
+      };
       const createResponse = await agentHandlers.create(new Request(`${APP_ORIGIN}/api/agents`, {
         method: "POST", headers: { cookie: cookie!, "content-type": "application/json" }, body: JSON.stringify({ recipe }),
       }));
       expect(createResponse.status).toBe(201);
       const draft = await createResponse.json() as { id: string; recipeHash: string; status: string };
       expect(draft.status).toBe("draft");
+      await expect(paperRepository.getPaperState(session.user.id, draft.id)).resolves.toMatchObject({
+        account: { initialCapitalUsd: "100000.00", cashUsd: "100000.00" },
+        position: null,
+      });
 
       const backtestHandlers = createBacktestHandlers({
         repository: backtestRepository,
@@ -254,7 +261,12 @@ describe("wallet-to-paper API integration with captured provider data and databa
       expect(tapePayload.decisions.map((decision) => decision.action)).toContain("skip");
       expect(tapePayload.decisions.map((decision) => decision.action)).toContain("open");
       expect(tapePayload.decisions.map((decision) => decision.action)).toContain("hold");
-      expect(tapePayload.decisions.find((decision) => decision.action === "open")?.hookResults).toHaveLength(16);
+      const openDecision = tapePayload.decisions.find((decision) => decision.action === "open");
+      expect(openDecision?.hookResults).toHaveLength(16);
+      expect(openDecision?.hookResults.map((hook) => (hook as { hookId: string }).hookId)).toEqual([
+        "calmo", "corpax", "sessia", "percy", "tenora", "coverix", "capra", "trailo", "lastra", "nextra",
+        "haltr", "daylo", "drawra", "exposa", "venux", "paper.execution",
+      ]);
       expect(tapePayload.decisions.find((decision) => decision.action === "open")?.marketContext?.historyDataHash).toMatch(/^sha256:/);
       expect(tapePayload.orders).toHaveLength(1);
       expect(tapePayload.orders[0]).toMatchObject({ executionMode: "PAPER", status: "filled", instrumentType: "modeled_option", premiumSource: "modeled", modelName: "black_scholes_european_put" });

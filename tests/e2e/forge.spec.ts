@@ -12,10 +12,12 @@ test("Forge reads the PM catalog and blocks unsupported generic recipes without 
   await expect(page.getByText("AI composition is planned", { exact: true })).toBeVisible();
   await expect(page.getByText("Registered hooks: 36 / 36", { exact: true })).toBeVisible();
   await expect(page.getByText("Calmo", { exact: true })).toBeVisible();
+  await page.getByRole("combobox", { name: "Strategy template" }).click();
+  await page.getByRole("option", { name: "Covered Call" }).click();
   const validate = page.getByRole("button", { name: "Validate recipe", exact: true });
   await validate.click();
   await expect(page.locator(".forge-validation")).toContainText("Recipe blocked");
-  await expect(page.locator(".forge-validation")).toContainText("Only the PM Protective Put has a supported paper evaluator in this release.");
+  await expect(page.locator(".forge-validation")).toContainText("Only Protective Put and custom Protective Put recipes have a supported paper evaluator");
   await expect(page.getByRole("button", { name: "Save draft", exact: true })).toBeDisabled();
   await expect(page.getByRole("button", { name: /compose|generate with ai/i })).toHaveCount(0);
 });

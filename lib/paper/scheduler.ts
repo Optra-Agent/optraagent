@@ -152,7 +152,7 @@ export function createPaperScheduler(options: PaperSchedulerOptions) {
 
         for (const agent of agents) {
           const symbol = agent.recipe.underlyingSymbol;
-          if (agent.status !== "running" || agent.templateId !== "protective_put" || !validateRecipe(agent.recipe).valid || canonicalRecipeHash(agent.recipe) !== agent.recipeHash) {
+          if (agent.status !== "running" || agent.templateId !== agent.recipe.templateId || !validateRecipe(agent.recipe).valid || canonicalRecipeHash(agent.recipe) !== agent.recipeHash) {
             summary.deferred += 1;
             emit(log, { event: "paper_scheduler.agent_deferred", agentId: agent.id, symbol, reason: "agent_not_supported_or_recipe_invalid" });
             continue;

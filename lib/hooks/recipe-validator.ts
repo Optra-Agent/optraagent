@@ -72,12 +72,15 @@ export function validateRecipe(input: unknown) {
     issues.push({ code: "INVALID_COMPOSITION", message: "Recipe exceeds a PM stage limit or omits a mandatory Breaker." });
   }
 
-  if (recipe.templateId !== "protective_put") {
-    issues.push({ code: "INVALID_COMPOSITION", message: "Only the PM Protective Put has a supported paper evaluator in this release." });
+  if (recipe.templateId !== "protective_put" && recipe.templateId !== "custom") {
+    issues.push({ code: "INVALID_COMPOSITION", message: "Only Protective Put and custom Protective Put recipes have a supported paper evaluator in this release." });
   } else {
     const required = ["calmo", "corpax", "sessia", "percy", "tenora", "coverix", "capra", "trailo", "lastra", "nextra", "haltr", "daylo", "drawra", "exposa", "venux"];
     for (const hookId of required) {
       if (!seen.has(hookId)) issues.push({ code: "MISSING_REQUIRED_HOOK", hookId, message: `Protective Put requires ${hookId}.` });
+    }
+    for (const hookId of recipe.hookIds.filter((id) => !required.includes(id))) {
+      issues.push({ code: "INVALID_COMPOSITION", hookId, message: `${hookId} is not part of the supported Protective Put evaluator.` });
     }
     const selectors = recipe.hookIds.filter((hookId) => ["percy", "deltra"].includes(hookId));
     const structures = recipe.hookIds.filter((hookId) => ["spreadix", "strangl", "collara"].includes(hookId));
@@ -85,7 +88,9 @@ export function validateRecipe(input: unknown) {
       issues.push({ code: "INVALID_COMPOSITION", message: "Protective Put requires one single-leg strike selector and no multi-leg structure." });
     }
     const parameters = recipe.parameters;
+    const corpax = objectRecord(parameters.corpax);
     const percy = objectRecord(parameters.percy);
+    const tenora = objectRecord(parameters.tenora);
     const sessia = objectRecord(parameters.sessia);
     const capra = objectRecord(parameters.capra);
     const coverix = objectRecord(parameters.coverix);
@@ -98,10 +103,45 @@ export function validateRecipe(input: unknown) {
     if (!Array.isArray(sessia?.sessions) || sessia.sessions.length !== 1 || sessia.sessions[0] !== "regular" || sessia.appliesTo !== "entries") {
       issues.push({ code: "INVALID_PARAMETER", hookId: "sessia", message: "Protective Put entries are restricted to the regular US equity session." });
     }
-    if (!protectedShares || !initialCapital || coverix?.coveragePct !== 100 || capra?.maxOpenPositions !== 1) {
-      issues.push({ code: "INVALID_PARAMETER", message: "Protective Put needs positive paper capital and reference shares, 100% coverage, and one open position." });
+    if (!protectedShares || !initialCapital) {
+      issues.push({ code: "INVALID_PARAMETER", message: "Protective Put needs positive paper capital and reference shares." });
     }
-    if (model?.model !== "black_scholes_european_put" || model.premiumSource !== "modeled" || model.ivMultiplier !== 1.1 || model.venueFeesIncluded !== false) {
+    if (coverix?.coveragePct !== 100 || coverix.lockTokens !== false) {
+      issues.push({ code: "INVALID_PARAMETER", hookId: "coverix", message: "Protective Put requires 100% virtual reference-share coverage and does not lock wallet tokens." });
+    }
+    if (capra?.maxOpenPositions !== 1) {
+      issues.push({ code: "INVALID_PARAMETER", hookId: "capra", message: "Protective Put is limited to one open paper position." });
+    }
+    const riskCeilings = [
+      { hookId: "capra", key: "maxPremiumPctHolding", max: 2 },
+      { hookId: "haltr", key: "maxMove1hPct", max: 7 },
+      { hookId: "daylo", key: "maxDailyLossPct", max: 3 },
+      { hookId: "drawra", key: "maxDrawdownPct", max: 20 },
+      { hookId: "exposa", key: "maxUnderlyingPct", max: 25 },
+      { hookId: "trailo", key: "activateAtGainPct", max: 100 },
+      { hookId: "trailo", key: "trailPct", max: 30 },
+    ] as const;
+    for (const control of riskCeilings) {
+      const value = positiveNumber(objectRecord(parameters[control.hookId])?.[control.key]);
+      if (!value || value > control.max) {
+        issues.push({ code: "INVALID_PARAMETER", hookId: control.hookId, message: `${control.hookId}.${control.key} must not exceed the Protective Put safety limit of ${control.max}.` });
+      }
+    }
+    const pauseHoursBefore = positiveNumber(corpax?.pauseHoursBefore);
+    const pauseHoursAfter = positiveNumber(corpax?.pauseHoursAfter);
+    if (!pauseHoursBefore || pauseHoursBefore < 24 || !pauseHoursAfter || pauseHoursAfter < 24 || corpax?.flagOpenPositions !== true) {
+      issues.push({ code: "INVALID_PARAMETER", hookId: "corpax", message: "Corpax must retain at least a 24-hour corporate-action window and remain enabled for open positions." });
+    }
+    const hoursBeforeExpiry = positiveNumber(objectRecord(parameters.lastra)?.hoursBefore);
+    if (!hoursBeforeExpiry || hoursBeforeExpiry < 24) {
+      issues.push({ code: "INVALID_PARAMETER", hookId: "lastra", message: "Lastra must close modeled positions at least 24 hours before expiry." });
+    }
+    const otmPct = positiveNumber(percy?.otmPct);
+    const targetDte = positiveNumber(tenora?.targetDTE);
+    if (!otmPct || otmPct > 20 || !targetDte || targetDte < 10 || targetDte > 45) {
+      issues.push({ code: "INVALID_PARAMETER", message: "Protective Put strike distance must be 1–20% OTM and model expiry must be 10–45 calendar days." });
+    }
+    if (model?.model !== "black_scholes_european_put" || model.premiumSource !== "modeled" || model.ivMultiplier !== 1.1 || model.riskFreeRate !== 0 || model.dividendYield !== 0 || model.modelUnitShares !== 1 || model.strikeIncrementUsd !== 0.01 || model.slippageBps !== 50 || model.venueFeeBps !== null || model.venueFeesIncluded !== false) {
       issues.push({ code: "INVALID_PARAMETER", message: "Protective Put must use the documented RV30 × 1.1 model and disclose excluded venue fees." });
     }
   }

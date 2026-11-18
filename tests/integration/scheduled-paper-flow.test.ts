@@ -84,12 +84,15 @@ describe("wallet-to-scheduled-paper integration", () => {
         readSession,
         now: () => PRELAUNCH,
       });
-      const recipe = buildProtectivePutRecipe({
-        underlyingSymbol: "AAPL",
-        protectedShares: "10",
-        initialCapitalUsd: "100000",
-        name: "Scheduled AAPL Protective Put",
-      });
+      const recipe = {
+        ...buildProtectivePutRecipe({
+          underlyingSymbol: "AAPL",
+          protectedShares: "10",
+          initialCapitalUsd: "100000",
+          name: "Custom Scheduled AAPL Protection",
+        }),
+        templateId: "custom" as const,
+      };
       const draftResponse = await agents.create(new Request(`${APP_ORIGIN}/api/agents`, {
         method: "POST",
         headers: { cookie: cookie!, "content-type": "application/json" },

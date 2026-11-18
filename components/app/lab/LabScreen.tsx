@@ -110,7 +110,7 @@ export function LabScreen({ initialAgentId = "" }: { initialAgentId?: string }) 
         return AgentListResponseSchema.parse(body);
       })
       .then(({ agents: result }) => {
-        const drafts = result.filter((agent) => agent.status === "draft" && agent.templateId === "protective_put");
+        const drafts = result.filter((agent) => agent.status === "draft" && (agent.templateId === "protective_put" || agent.templateId === "custom"));
         setAgents(drafts);
         setSelectedAgentId((current) => current && drafts.some((agent) => agent.id === current)
           ? current
