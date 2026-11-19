@@ -5,7 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { ArrowRight, Search } from "lucide-react";
 import { HouseAgentTemplateCatalogResponseSchema } from "../../../lib/domain/contracts";
 import type { Agent, HouseAgentTemplate } from "../../../lib/domain/contracts";
-import { buttonVariants } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
@@ -84,10 +84,13 @@ export function AgentGallery({ owned, ownedStatus, ownedError, signedIn, onRetry
         <div className="ag-tabs" role="group" aria-label="Filter agents">
           {tabs.map(([value, label]) => <button type="button" key={value} aria-pressed={filter === value} onClick={() => setFilter(value)}>{label}</button>)}
         </div>
-        <div className="ag-search">
-          <Label htmlFor="agent-search" className="sr-only">Search agents</Label>
-          <Search aria-hidden />
-          <Input id="agent-search" type="search" placeholder="Name or strategy" value={query} onChange={(event) => setQuery(event.target.value)} />
+        <div className="ag-search-row">
+          <div className="ag-search">
+            <Label htmlFor="agent-search" className="sr-only">Search agents</Label>
+            <Search aria-hidden />
+            <Input id="agent-search" type="search" placeholder="Name or strategy" value={query} onChange={(event) => setQuery(event.target.value)} />
+          </div>
+          {signedIn ? <Button variant="outline" className="h-11 md:h-11" type="button" disabled={ownedStatus === "loading"} onClick={onRetry}>Refresh</Button> : null}
         </div>
       </div>
 

@@ -56,7 +56,7 @@ export function AgentListScreen() {
         eyebrow="PAPER ONLY"
         title="Agents"
         description="Rule-driven strategies with recorded inputs and explainable decisions. Start from a House Agent, backtest it, then run it on paper."
-        actions={status === "signed_in" ? <Button variant="outline" type="button" disabled={loadStatus === "loading"} onClick={() => setReload((value) => value + 1)}>Refresh</Button> : <a className="ag-build" href="#configure">Build your agent</a>}
+        actions={status === "signed_in" ? null : <a className="ag-build" href="#configure">Build your agent</a>}
       />
       {status === "loading" ? <StateBlock kind="loading" title="Checking wallet session…" /> : null}
       {status === "error" ? <StateBlock kind="error" title="Wallet session could not be checked">Retry from the wallet control in the header.</StateBlock> : null}
