@@ -689,6 +689,8 @@ a.template-cta:hover svg { transform: translateX(3px); }
 .ag-search { width: 100%; }
 .ag-search svg { position: absolute; top: 50%; left: 14px; width: 16px; height: 16px; transform: translateY(-50%); color: var(--dim); pointer-events: none; }
 .ag-search input, .mk-search input { height: 44px; padding-left: 38px; border-radius: 999px; background: var(--surface); }
+.ag-search-row { display: flex; flex: 0 1 480px; align-items: center; gap: 12px; min-width: 0; }
+.ag-search-row .ag-search { flex: 1 1 0%; min-width: 0; max-width: 380px; }
 
 .ag-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 340px), 1fr)); gap: 16px; }
 .ag-grid[data-n="4"], .ag-grid[data-n="2"] { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -741,7 +743,9 @@ a.ag-pill:hover svg { transform: translateX(3px); }
 
 @media (max-width: 720px) {
   .ag-page, .market-page { width: calc(100% - 32px); }
-  .ag-search, .mk-search { flex-basis: 100%; max-width: none; }
+  .ag-search-row { flex: 1 1 100%; width: 100%; }
+  .ag-search-row .ag-search { flex: 1 1 0%; max-width: none; }
+  .mk-search { flex-basis: 100%; max-width: none; }
   .ag-tabs, .mk-filters { width: 100%; overflow-x: auto; flex-wrap: nowrap; scrollbar-width: none; }
   .ag-tabs button, .mk-filters button { flex: none; }
   .ag-card { min-height: 0; padding: 20px; }
