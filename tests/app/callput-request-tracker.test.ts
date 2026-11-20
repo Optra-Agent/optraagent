@@ -12,6 +12,8 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("wagmi", () => ({
   usePublicClient: () => mocks.publicClient,
+  useAccount: () => ({ address: undefined, chainId: undefined, isConnected: false }),
+  useWalletClient: () => ({ data: undefined }),
 }));
 vi.mock("../../components/app/AuthSessionProvider", () => ({
   useAuthSession: () => ({ status: "signed_out", setWalletMenuOpen: mocks.setWalletMenuOpen }),
