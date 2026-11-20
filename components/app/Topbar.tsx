@@ -14,7 +14,7 @@ export function titleFor(pathname: string | null | undefined): string {
  * The topbar content: where you are, which network, that this is paper, and the wallet. The same view is used by the
  * real app and by the landing preview. The long disclosure lives in the PAPER chip's title and the sidebar, not on every screen.
  */
-export function TopbarView({ title, session, menu }: { title: string; session: ReactNode; menu?: ReactNode }) {
+export function TopbarView({ title, session, menu, socialLink }: { title: string; session: ReactNode; menu?: ReactNode; socialLink?: ReactNode }) {
   return (
     <>
       {menu}
@@ -27,7 +27,10 @@ export function TopbarView({ title, session, menu }: { title: string; session: R
         <span className="topbar-chip topbar-net" title="Network"><i aria-hidden="true" />Robinhood Chain</span>
         <span className="topbar-chip topbar-paper" role="note" title="Virtual USDG. Option premiums are modeled. Real-money execution is disabled."><strong>PAPER</strong><span className="topbar-paper-text">Real-money execution is disabled</span></span>
       </div>
-      <div className="topbar-session">{session}</div>
+      <div className="topbar-actions">
+        {socialLink}
+        <div className="topbar-session">{session}</div>
+      </div>
     </>
   );
 }

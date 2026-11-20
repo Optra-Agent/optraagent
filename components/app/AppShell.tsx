@@ -7,6 +7,7 @@ import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTr
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Menu } from "lucide-react";
 import Link from "next/link";
+import { XSocialLink } from "../brand";
 import { SidebarView, navGroups } from "./Sidebar";
 import { TopbarView, titleFor } from "./Topbar";
 import { WalletSession } from "./WalletSession";
@@ -27,6 +28,7 @@ export function AppShell({ children, footer }: { children: React.ReactNode; foot
             <TopbarView
               title={titleFor(pathname)}
               session={<WalletSession />}
+              socialLink={<XSocialLink className="topbar-social-link" />}
               menu={(
                 <Sheet open={drawer} onOpenChange={setDrawer}>
                   <SheetTrigger asChild>

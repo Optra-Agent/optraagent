@@ -5,7 +5,7 @@ import { useState } from "react";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
-import { BrandMark } from "../brand";
+import { BrandMark, XSocialLink } from "../brand";
 
 const sections = [
   { href: "#floor", label: "Floor" },
@@ -26,7 +26,10 @@ export function MarketingNav() {
         <nav className="m-nav" aria-label="Page sections">
           {sections.map((item) => <a key={item.href} href={item.href}>{item.label}</a>)}
         </nav>
-        <Link className={cn(buttonVariants({ size: "sm" }), "m-launch")} href="/agents">Launch app</Link>
+        <div className="m-nav-actions">
+          <Link className={cn(buttonVariants({ size: "sm" }), "m-launch")} href="/agents">Launch app</Link>
+          <XSocialLink className="m-social-link" />
+        </div>
         <Sheet open={open} onOpenChange={setOpen}>
           <SheetTrigger asChild>
             <Button variant="outline" size="sm" className="m-menu" aria-label="Open page sections">Menu</Button>
