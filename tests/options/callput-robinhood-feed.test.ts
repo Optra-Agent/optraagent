@@ -112,6 +112,14 @@ describe("CallPut Robinhood read-only market integration", () => {
       expect(abi.length).toBeGreaterThan(0);
       expect(abi.every((item) => item.type !== "function" || item.stateMutability === "view" || item.stateMutability === "pure")).toBe(true);
     }
+
+    expect(CALLPUT_ROBINHOOD_READ_ABIS.optionsMarket).toContainEqual(expect.objectContaining({
+      type: "function",
+      name: "getUnderlyingAssetByIndex",
+      inputs: [expect.objectContaining({ type: "uint16" })],
+      outputs: [expect.objectContaining({ type: "address" })],
+      stateMutability: "view",
+    }));
   });
 
   it("maps the documented asynchronous request states and rejects unknown enum values", () => {

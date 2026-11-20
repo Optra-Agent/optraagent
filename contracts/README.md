@@ -151,6 +151,8 @@ forge fmt --check
 forge build
 forge lint
 forge test --fuzz-runs 1000 -vv
+RUN_ROBINHOOD_MAINNET_FORK=true forge test \
+  --match-path test/CallPutRobinhoodMainnetFork.t.sol -vv
 forge test --match-path test/OptraTestnetPhases.t.sol \
   --fork-url "$ROBINHOOD_TESTNET_RPC_URL" -vv
 bash -n script/optra-testnet-preflight.sh script/optra-testnet-postflight.sh
@@ -161,6 +163,12 @@ The current-head fork keeps all hook, token, liquidity, policy, and swap writes 
 ## Mainnet
 
 Mainnet checks are read-only. Chain ID is `4663`. No Mainnet transaction is authorized. Mainnet requires successful Testnet acceptance, independent security review, verified assets and route, gas assessment, and separate explicit owner authorization. The hook remains a spot swap-direction gate and cannot execute or settle Protective Put options.
+
+`test/CallPutRobinhoodMainnetFork.t.sol` is a separate read-only fork smoke test for CallPut proxy bindings, USDG, AAPL/MSFT underlying indices, token metadata, and the live TradingAccount beacon implementation. It does not test order submission, fills, custody, or settlement.
+
+## P4 engineering status
+
+The current Mainnet gate is **NO-GO**: the hook remains experimental, PM approval is pending, and no exact Mainnet transaction packet or signer exists. See [`docs/MAINNET_CHECKLIST.md`](../docs/MAINNET_CHECKLIST.md), [`docs/INTERNAL_AUDIT.md`](../docs/INTERNAL_AUDIT.md), [`docs/THREAT_MODEL.md`](../docs/THREAT_MODEL.md), [`docs/INCIDENT_RESPONSE.md`](../docs/INCIDENT_RESPONSE.md), and [`docs/KNOWN_LIMITATIONS.md`](../docs/KNOWN_LIMITATIONS.md). The P4 Mainnet fork test uses mock assets only in transient local fork state; it does not deploy them or the hook to Robinhood Chain.
 
 ## Sources
 

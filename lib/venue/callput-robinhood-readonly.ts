@@ -38,6 +38,7 @@ export const CALLPUT_ROBINHOOD_READ_ABIS = {
   ]),
   optionsMarket: parseAbi([
     "function mainStableAsset() view returns (address)",
+    "function getUnderlyingAssetByIndex(uint16 index) view returns (address)",
   ]),
   tradingAccountBeacon: parseAbi([
     "function implementation() view returns (address)",

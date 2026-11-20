@@ -202,3 +202,18 @@ The exact Phase A Testnet packet recorded in `docs/onchain-hardening-testnet-pre
 3. After independent review/audit and Testnet acceptance, simulate the exact Mainnet batch on a trusted provider/fork with the selected signer address; record exact calldata, predicted address, gas estimate and explicit ceiling. Do not sign or broadcast during this step.
 4. Generate the verification inputs for the exact compiled source, constructor bytes, compiler/optimizer/via-IR/EVM settings. Verify through the supported Blockscout/Sourcify path and independently read back code, roles, pool ID, permissions, and paused/no-policy state after a separately approved broadcast.
 5. Request final Project Owner transaction approval only after the complete exact batch and all independent gates are recorded. No Live Trading, CallPut execution, liquidity provision, or fund movement is included in this hook deployment scope.
+
+## 2026-11-20 Mainnet tooling completion update
+
+This section supersedes earlier statements in this document that no Mainnet deployment/preflight/postflight/source-preparation scripts exist. The following owner-operated scripts are now present:
+
+- `contracts/script/optra-mainnet-preflight.sh`: read-only chain-ID, pinned PoolManager/CREATE2 runtime fingerprints, parameter, Safe, token, explicit Mainnet acknowledgement, approval-reference, and gas-ceiling guards.
+- `contracts/script/optra-mainnet-deploy.sh`: read-only estimate and exact CREATE2 approval-packet preparation; its separate broadcast path requires the exact owner-approved packet hash/reference, a local signer keystore, live chain/nonce/balance checks, current source/build/calldata checks, and is for the owner/operator only.
+- `contracts/script/optra-mainnet-postflight.sh`: approved-packet receipt/calldata/runtime/getter checks; requires the new hook remain unbound, entry-paused, and without published/fresh policy.
+- `contracts/script/optra-mainnet-verify-source.sh`: prepares local standard-JSON input, constructor arguments and a verification manifest; it submits no source.
+
+Read-only verification on 2026-11-20 through `https://robinhood.drpc.org` returned chain ID `4663`. The PoolManager at `0x8366a39CC670B4001A1121B8F6A443A643e40951` matched runtime size `24009` and SHA-256 `6eb21c69298b064e37fcf8089a941ae096fe08c0f179b2d399567aef1b10585b`; the CREATE2 factory at `0x4e59b44847b379578588920cA78FbF26c0B4956C` matched size `69` and SHA-256 `e0af82ad2e5188285db8ba0b2ae054d13f0fd4fe325c48c7f2dace48454404b9`. These are point-in-time runtime observations, not production-provider approval or source verification.
+
+Focused preflight execution verified chain ID and both runtime fingerprints, then stopped with exit code 2 because the owner has not selected deployer, Safe, keeper, pool creator, underlying/quote, fee, tick spacing, initial price, or policy age. No exact candidate was available for `eth_estimateGas`; no packet, real-asset fork measurement, or Mainnet broadcast was produced. The existing accepted Mainnet fork test uses synthetic assets and cannot satisfy the required owner-selected real-asset simulation.
+
+The exact unresolved decisions and current NO-GO posture are consolidated in `docs/MAINNET_OWNER_DECISIONS.md`; operator steps and environment names are in `docs/MAINNET_DEPLOYMENT_RUNBOOK.md`. All deployment approval gates remain outstanding, including PM approval, asset/jurisdiction/pool route, Safe/admin, keeper, signer, trusted provider, explicit gas ceilings, real-asset fork/gas evidence, independent audit, and final approval of a specific packet hash.
