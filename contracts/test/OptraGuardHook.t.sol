@@ -7,6 +7,7 @@ import {Hooks} from "v4-core/libraries/Hooks.sol";
 import {TickMath} from "v4-core/libraries/TickMath.sol";
 import {IHooks} from "v4-core/interfaces/IHooks.sol";
 import {IPoolManager} from "v4-core/interfaces/IPoolManager.sol";
+import {BalanceDelta} from "v4-core/types/BalanceDelta.sol";
 import {PoolManager} from "v4-core/PoolManager.sol";
 import {PoolModifyLiquidityTest} from "v4-core/test/PoolModifyLiquidityTest.sol";
 import {PoolSwapTest} from "v4-core/test/PoolSwapTest.sol";
@@ -20,12 +21,13 @@ abstract contract OptraGuardHookFixture is Test {
     using Hooks for IHooks;
 
     uint256 internal constant Q96 = 1 << 96;
-    uint64 internal constant POLICY_AGE = 1 days;
+    uint64 internal constant POLICY_AGE = 300;
     uint24 internal constant POOL_FEE = 3000;
     int24 internal constant TICK_SPACING = 60;
     address internal constant KEEPER = address(0xBEEF);
     uint160 internal constant HOOK_MASK = (1 << 14) - 1;
     uint160 internal constant EXPECTED_HOOK_BITS = (1 << 13) | (1 << 7);
+    address internal constant ROBINHOOD_MAINNET_POOL_MANAGER = 0x8366a39CC670B4001A1121B8F6A443A643e40951;
 
     PoolManager internal manager;
     MockERC20 internal underlying;
@@ -57,13 +59,35 @@ abstract contract OptraGuardHookFixture is Test {
         internal
         returns (OptraGuardHook deployedHook)
     {
+        return _deployHookWithPolicyAge(underlying_, quote_, creator, keeper_, POLICY_AGE);
+    }
+
+    function _deployHookWithPolicyAge(
+        address underlying_,
+        address quote_,
+        address creator,
+        address keeper_,
+        uint64 policyAge
+    ) internal returns (OptraGuardHook deployedHook) {
+        (bytes memory initCode, bytes32 salt, address expected) =
+            _hookInitCodeAndSalt(underlying_, quote_, creator, keeper_, policyAge);
+        address deployed = this.deployInitCode(initCode, salt);
+        require(deployed == expected, "CREATE2 deployment returned unexpected address");
+        deployedHook = OptraGuardHook(deployed);
+    }
+
+    function _hookInitCodeAndSalt(
+        address underlying_,
+        address quote_,
+        address creator,
+        address keeper_,
+        uint64 policyAge
+    ) internal view returns (bytes memory initCode, bytes32 salt, address expected) {
         bytes memory creationCode = vm.getCode("src/OptraGuardHook.sol:OptraGuardHook");
-        bytes memory initCode = abi.encodePacked(
-            creationCode, abi.encode(address(manager), underlying_, quote_, creator, address(this), keeper_, POLICY_AGE)
+        initCode = abi.encodePacked(
+            creationCode, abi.encode(address(manager), underlying_, quote_, creator, address(this), keeper_, policyAge)
         );
 
-        bytes32 salt;
-        address expected;
         for (uint256 i; i < 200_000; i++) {
             salt = bytes32(i);
             expected = address(
@@ -72,13 +96,21 @@ abstract contract OptraGuardHookFixture is Test {
             if (uint160(expected) & HOOK_MASK == EXPECTED_HOOK_BITS) break;
         }
         require(uint160(expected) & HOOK_MASK == EXPECTED_HOOK_BITS, "CREATE2 salt not found");
+    }
 
-        address deployed;
+    function deployInitCode(bytes memory initCode, bytes32 salt) public returns (address deployed) {
+        require(msg.sender == address(this), "self-call only");
         assembly ("memory-safe") {
             deployed := create2(0, add(initCode, 0x20), mload(initCode), salt)
         }
-        require(deployed == expected, "CREATE2 deployment failed");
-        deployedHook = OptraGuardHook(deployed);
+        if (deployed == address(0)) {
+            assembly ("memory-safe") {
+                let revertData := mload(0x40)
+                let revertSize := returndatasize()
+                returndatacopy(revertData, 0, revertSize)
+                revert(revertData, revertSize)
+            }
+        }
     }
 
     function _poolKey(address tokenA, address tokenB, IHooks hooks, uint24 fee, int24 tickSpacing)
@@ -177,6 +209,49 @@ contract OptraGuardHookPermissionTest is OptraGuardHookFixture {
         assertEq(hook.configuredPoolId(), PoolId.unwrap(key.toId()));
     }
 
+    function test_unpermittedCallbacksRevertWhenCalledByPoolManager() public {
+        IPoolManager.ModifyLiquidityParams memory liquidityParams = IPoolManager.ModifyLiquidityParams({
+            tickLower: -120, tickUpper: 120, liquidityDelta: 1e18, salt: bytes32(0)
+        });
+        IPoolManager.SwapParams memory swapParams = _buyUnderlyingParams();
+
+        vm.expectRevert(OptraGuardHook.UnsupportedCallback.selector);
+        vm.prank(address(manager));
+        hook.afterInitialize(address(this), key, uint160(Q96), 0);
+
+        vm.expectRevert(OptraGuardHook.UnsupportedCallback.selector);
+        vm.prank(address(manager));
+        hook.beforeAddLiquidity(address(this), key, liquidityParams, bytes(""));
+
+        vm.expectRevert(OptraGuardHook.UnsupportedCallback.selector);
+        vm.prank(address(manager));
+        hook.afterAddLiquidity(
+            address(this), key, liquidityParams, BalanceDelta.wrap(0), BalanceDelta.wrap(0), bytes("")
+        );
+
+        vm.expectRevert(OptraGuardHook.UnsupportedCallback.selector);
+        vm.prank(address(manager));
+        hook.beforeRemoveLiquidity(address(this), key, liquidityParams, bytes(""));
+
+        vm.expectRevert(OptraGuardHook.UnsupportedCallback.selector);
+        vm.prank(address(manager));
+        hook.afterRemoveLiquidity(
+            address(this), key, liquidityParams, BalanceDelta.wrap(0), BalanceDelta.wrap(0), bytes("")
+        );
+
+        vm.expectRevert(OptraGuardHook.UnsupportedCallback.selector);
+        vm.prank(address(manager));
+        hook.afterSwap(address(this), key, swapParams, BalanceDelta.wrap(0), bytes(""));
+
+        vm.expectRevert(OptraGuardHook.UnsupportedCallback.selector);
+        vm.prank(address(manager));
+        hook.beforeDonate(address(this), key, 0, 0, bytes(""));
+
+        vm.expectRevert(OptraGuardHook.UnsupportedCallback.selector);
+        vm.prank(address(manager));
+        hook.afterDonate(address(this), key, 0, 0, bytes(""));
+    }
+
     function test_unauthorizedPoolCreatorCannotInitialize() public {
         OptraGuardHook restrictedHook = _deployHook(address(underlying), address(quote), address(0xCAFE), KEEPER);
         PoolKey memory restrictedKey =
@@ -206,6 +281,83 @@ contract OptraGuardHookPermissionTest is OptraGuardHookFixture {
         new OptraGuardHook(
             manager, address(underlying), address(underlying), address(this), address(this), KEEPER, POLICY_AGE
         );
+    }
+
+    function test_constructorRejectsPolicyAgeAboveProductionMaximum() public {
+        vm.expectRevert(OptraGuardHook.InvalidConfiguration.selector);
+        new OptraGuardHook(
+            manager, address(underlying), address(quote), address(this), address(this), KEEPER, uint64(901)
+        );
+    }
+
+    function test_constructorRejectsAddressesWithoutContractCode() public {
+        vm.expectRevert(OptraGuardHook.InvalidConfiguration.selector);
+        new OptraGuardHook(
+            IPoolManager(address(0xCAFE)),
+            address(underlying),
+            address(quote),
+            address(this),
+            address(this),
+            KEEPER,
+            POLICY_AGE
+        );
+
+        vm.expectRevert(OptraGuardHook.InvalidConfiguration.selector);
+        new OptraGuardHook(manager, address(0xCAFE), address(quote), address(this), address(this), KEEPER, POLICY_AGE);
+
+        vm.expectRevert(OptraGuardHook.InvalidConfiguration.selector);
+        new OptraGuardHook(
+            manager, address(underlying), address(0xCAFE), address(this), address(this), KEEPER, POLICY_AGE
+        );
+    }
+
+    function test_constructorAcceptsProductionMaximumPolicyAge() public {
+        OptraGuardHook maximumAgeHook =
+            _deployHookWithPolicyAge(address(underlying), address(quote), address(this), KEEPER, uint64(900));
+
+        assertEq(maximumAgeHook.maxPolicyAge(), uint64(900));
+    }
+
+    function test_mainnetRequiresContractAdminAndPoolCreatorAndDistinctKeeper() public {
+        vm.chainId(4663);
+        vm.etch(ROBINHOOD_MAINNET_POOL_MANAGER, address(manager).code);
+        manager = PoolManager(ROBINHOOD_MAINNET_POOL_MANAGER);
+
+        vm.expectRevert(OptraGuardHook.InvalidConfiguration.selector);
+        new OptraGuardHook(
+            manager, address(underlying), address(quote), address(0xCAFE), address(this), KEEPER, uint64(300)
+        );
+
+        vm.expectRevert(OptraGuardHook.InvalidConfiguration.selector);
+        new OptraGuardHook(
+            manager, address(underlying), address(quote), address(this), address(0xCAFE), KEEPER, uint64(300)
+        );
+
+        vm.expectRevert(OptraGuardHook.InvalidConfiguration.selector);
+        new OptraGuardHook(
+            manager, address(underlying), address(quote), address(this), address(this), address(this), uint64(300)
+        );
+
+        OptraGuardHook productionRoleHook =
+            _deployHookWithPolicyAge(address(underlying), address(quote), address(this), KEEPER, uint64(300));
+        assertEq(productionRoleHook.admin(), address(this));
+        assertEq(productionRoleHook.keeper(), KEEPER);
+    }
+
+    function test_mainnetRejectsUnapprovedPoolManagerWithCode() public {
+        vm.chainId(4663);
+
+        (bytes memory initCode, bytes32 salt,) =
+            _hookInitCodeAndSalt(address(underlying), address(quote), address(this), KEEPER, uint64(301));
+        vm.expectRevert(OptraGuardHook.InvalidConfiguration.selector);
+        this.deployInitCode(initCode, salt);
+    }
+
+    function test_mainnetAdminCannotBecomeKeeperAfterDeployment() public {
+        vm.chainId(4663);
+
+        vm.expectRevert(OptraGuardHook.InvalidConfiguration.selector);
+        hook.setKeeper(address(this));
     }
 
     function test_oneHookInstanceCannotBindASecondPool() public {
@@ -239,6 +391,10 @@ contract OptraGuardHookPolicyTest is OptraGuardHookFixture {
         vm.prank(address(0xBAD));
         vm.expectRevert(OptraGuardHook.UnauthorizedAdmin.selector);
         hook.setKeeper(address(0xF00D));
+
+        vm.prank(address(0xBAD));
+        vm.expectRevert(OptraGuardHook.UnauthorizedAdmin.selector);
+        hook.revokeKeeper();
     }
 
     function test_adminCannotSetKeeperToZero() public {

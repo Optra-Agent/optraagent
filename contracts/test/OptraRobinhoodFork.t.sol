@@ -23,7 +23,7 @@ contract OptraRobinhoodForkTest is Test {
     address private constant POOL_MANAGER = 0x8366a39CC670B4001A1121B8F6A443A643e40951;
     bytes32 private constant POOL_MANAGER_RUNTIME_SHA256 =
         0x6eb21c69298b064e37fcf8089a941ae096fe08c0f179b2d399567aef1b10585b;
-    uint64 private constant POLICY_MAX_AGE = 1 days;
+    uint64 private constant POLICY_MAX_AGE = 300;
     uint24 private constant POOL_FEE = 3000;
     int24 private constant TICK_SPACING = 60;
     uint160 private constant Q96 = uint160(1 << 96);

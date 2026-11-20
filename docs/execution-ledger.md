@@ -279,3 +279,42 @@ The updated `docs/contract-deployment-plan.md` contains the approval-gated inter
 - **Next milestone:** owner approves or rejects future spot-pool enforcement, selects one self-contained hook versus a shared registry, and resolves the target asset/quote pair, session schedule representation, state freshness, entry/exit semantics, and admin/keeper controls. After spec approval, implement and test in the existing repository. Request separate explicit authorization before any testnet signing; mainnet requires a later independent gate after testnet evidence, audit, asset/legal review, and gas assessment.
 
 No RPC signing, token approval, transaction, deployment, migration, commit, push, or live-money action occurred.
+
+## 2026-11-20 P4 Mainnet engineering authorization
+
+### Owner authorization and boundaries
+
+The Project Owner explicitly authorized the P4 Mainnet engineering scope expansion: production contract architecture, implementation, security testing, and deployment preparation. This is not PM approval and is not approval to broadcast any transaction. PM approval remains separate until formally recorded; final transaction approval must name the exact batch. Do not activate Live Trading, move funds, or change the accepted Railway Production or Paper Trading systems.
+
+The owner directed that only architecture-required OPTRA contracts be implemented; completed audits must not be repeated, and mock tokens, experimental spot hooks, or nominal contracts must not be added to reach a deployment count. CallPut execution remains separate. An OPTRA v4 hook can only govern swaps through its own initialized OPTRA pool; it cannot control options orders or third-party pools.
+
+### Engineering defaults selected for the first candidate
+
+- Keep the first candidate self-contained in `OptraGuardHook`; do not deploy `GuardRegistry` until more than one hook/pool needs shared state. This follows the existing conditional architecture in `docs/contract-deployment-plan.md` §3 and §4.
+- Keep policy state minimal and fail closed: no entry before a fresh keeper policy; allow underlying-out token flow while paused/stale, without representing it as proof of an options exit. Keep venue-health attribution offchain because a caller-supplied hook payload cannot authenticate a CallPut venue purpose.
+- Use 300 seconds as the initial deployment policy-age default; `OptraGuardHook.MAX_POLICY_AGE` enforces a hard 900-second ceiling. The mainnet gas/keeper operating cost still requires measurement; entries must remain paused on missing or stale policy.
+- Require a multisig contract as Mainnet admin, a separately identified keeper, and a separately identified permissionless pool initializer/pool-creator authority. Do not substitute an EOA or infer any of these addresses from local credentials.
+- Do not select a Mainnet stock-token pair from a guessed jurisdiction or asset. Exact token/quote contracts and the applicable eligibility/legal review remain prerequisites to an exact deployment packet. No mainnet pool, liquidity, token approvals, or funds are authorized.
+
+### Status
+
+This authorization allows the P4 engineering work in the existing checkout. It does not establish PM sign-off, an independent audit, an eligible Mainnet asset/pool, a Safe/admin address, a keeper address, or a Mainnet deployer address. Do not request approval for a hypothetical batch; prepare one only after those exact inputs and measured gas are available. No transaction has been signed or broadcast.
+
+### P4 verification addendum — 2026-11-20
+
+The candidate remains one experimental `OptraGuardHook`; no separate registry or unrelated contract was added. Source checks deployed code for PoolManager/tokens, pins the official PoolManager address on chain ID 4663, caps policy freshness at 900 seconds, and applies Mainnet-only contract-admin/pool-creator and distinct-keeper checks. The keeper-rotation path was additionally hardened after a regression test exposed that an admin could otherwise rotate itself into the keeper role on chain 4663. The tests were observed failing before their guards and passing afterward.
+
+| Verification | Result |
+|---|---|
+| `forge build --sizes` | Passed; hook runtime 7,085 bytes, initcode 8,369 bytes. |
+| `forge test --fuzz-runs 1000` | 33 passed, 0 failed, 4 optional fork suites skipped. Freshness fuzz 1,000 runs; invariant handler 128,000 calls. |
+| `forge lint` | Passed. |
+| `forge coverage --ir-minimum --report summary --no-match-coverage 'script|test'` | 100% lines; 98.36% statements; 90.48% branches; 100% functions. Foundry warns `--ir-minimum` can affect source mapping. |
+| Slither `src/OptraGuardHook.sol --compile-force-framework foundry --filter-paths 'lib' --exclude timestamp` | 101 detectors, 0 reported results; timestamp detector excluded because chain time is intentionally used. |
+| Robinhood Mainnet fork simulation | RPC chain ID 4663; fork block 118774800; 1/1 test passed. All mock assets and simulated writes remained in local fork state. |
+
+These checks are internal verification, not an independent security audit. No exact Mainnet batch, signer, full constructor values, gas ceiling, or final approval request is available: the PM brief is still marked pending approval, and asset/jurisdiction, route, Safe, keeper, pool creator, and production deployer are unresolved. No Mainnet deploy script exists. Robinhood's public RPC was used for read-only fork simulation only; production dry runs require a trusted provider.
+
+The 2026-11-16 Testnet Phase A packet in `docs/onchain-hardening-testnet-preparation-2026-11-16.md` is stale because the hook init code changed; do not reuse its predicted hook address, salt/init-code hash, calldata, or gas values.
+
+No OPTRA Mainnet transaction, Live Trading change, funds movement, Railway Production change, Paper Trading change, commit, or push occurred.

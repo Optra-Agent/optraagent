@@ -8,6 +8,8 @@ No OPTRA contract was deployed to Robinhood Testnet or Mainnet. No public transa
 
 This dated report supersedes the no-contract inventory in the 2026-11-15 [contract deployment plan](contract-deployment-plan.md). The shared plan, UI/fullstack tracker, and other active workstream files were left untouched.
 
+**Superseding note — 2026-11-20:** This report records the pre-P4 source and local Anvil evidence. Current constructor/role hardening, fresh test/coverage/static-analysis results, Mainnet fork evidence, and deployment blockers are recorded in [`INTERNAL_AUDIT.md`](INTERNAL_AUDIT.md), [`MAINNET_CHECKLIST.md`](MAINNET_CHECKLIST.md), and the updated [contract deployment plan](contract-deployment-plan.md). The local addresses, gas values, test counts, and packet predictions below are historical local-only evidence; do not reuse them for a public deployment.
+
 ## Scope and behavior
 
 `GuardRegistry` was not added. One hook owns one small pause policy and binds to one pool; a separate state contract would add a call and role surface without a second consumer.

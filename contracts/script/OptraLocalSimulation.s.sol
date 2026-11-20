@@ -44,7 +44,7 @@ contract OptraLocalSimulation is Script {
     using PoolIdLibrary for PoolKey;
 
     uint256 internal constant LOCAL_ANVIL_CHAIN_ID = 31337;
-    uint64 internal constant POLICY_MAX_AGE = 1 days;
+    uint64 internal constant POLICY_MAX_AGE = 300;
     uint24 internal constant POOL_FEE = 3000;
     int24 internal constant TICK_SPACING = 60;
     uint160 internal constant HOOK_MASK = (1 << 14) - 1;

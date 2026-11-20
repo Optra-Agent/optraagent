@@ -29,6 +29,9 @@ contract OptraGuardHook is IHooks {
     error StalePolicy(uint64 updatedAt, uint256 currentTime, uint64 maxAge);
     error TimestampOutOfRange();
 
+    uint64 public constant MAX_POLICY_AGE = 15 minutes;
+    address private constant ROBINHOOD_MAINNET_POOL_MANAGER = 0x8366a39CC670B4001A1121B8F6A443A643e40951;
+
     event KeeperChanged(address indexed previousKeeper, address indexed newKeeper);
     event PolicyPublished(bool entryPaused, uint64 publishedAt, address indexed keeper);
     event PoolBound(bytes32 indexed poolId, address indexed creator);
@@ -62,10 +65,21 @@ contract OptraGuardHook is IHooks {
         uint64 maxPolicyAge_
     ) {
         if (
-            address(poolManager_) == address(0) || underlyingToken_ == address(0) || quoteToken_ == address(0)
-                || underlyingToken_ == quoteToken_ || poolCreator_ == address(0) || admin_ == address(0)
-                || keeper_ == address(0) || maxPolicyAge_ == 0
+            address(poolManager_) == address(0) || address(poolManager_).code.length == 0
+                || underlyingToken_ == address(0) || underlyingToken_.code.length == 0 || quoteToken_ == address(0)
+                || quoteToken_.code.length == 0 || underlyingToken_ == quoteToken_ || poolCreator_ == address(0)
+                || admin_ == address(0) || keeper_ == address(0) || maxPolicyAge_ == 0 || maxPolicyAge_ > MAX_POLICY_AGE
         ) revert InvalidConfiguration();
+
+        if (
+            block.chainid == 4663
+                && (address(poolManager_) != ROBINHOOD_MAINNET_POOL_MANAGER
+                    || poolCreator_.code.length == 0
+                    || admin_.code.length == 0
+                    || keeper_ == admin_)
+        ) {
+            revert InvalidConfiguration();
+        }
 
         poolManager = poolManager_;
         underlyingToken = underlyingToken_;
@@ -121,6 +135,7 @@ contract OptraGuardHook is IHooks {
     function setKeeper(address newKeeper) external {
         if (msg.sender != admin) revert UnauthorizedAdmin();
         if (newKeeper == address(0)) revert InvalidConfiguration();
+        if (block.chainid == 4663 && newKeeper == admin) revert InvalidConfiguration();
 
         _setKeeper(newKeeper);
     }

@@ -1,17 +1,19 @@
 # OPTRA Contract Deployment Plan
 
-Updated: 2026-11-15 (Asia/Jakarta)
+Updated: 2026-11-20 (Asia/Jakarta)
 
 ## Current inventory
 
-The repository contains no Solidity source, Foundry workspace, contract ABI, deployment script, or verified OPTRA contract address. The existing 36 hook definitions and the Breaker/Sessions stages execute in the offchain paper engine; they are not deployed contracts. The paper MVP remains independent of contract deployment, and live execution remains disabled (`LIVE_TRADING_ENABLED=false`, `V4_CLAIM_LEVEL=L0`).
+The current worktree contains one OPTRA-authored Solidity contract, `OptraGuardHook`, and a Foundry workspace. The hook is still explicitly an experimental one-pool spot-direction gate, not a production-approved module. No Mainnet deployment script, production ABI integration, deployment manifest, OPTRA Testnet/Mainnet receipt, or explorer-verified OPTRA address exists. The paper MVP remains independent of contract deployment, and live execution remains disabled (`LIVE_TRADING_ENABLED=false`, `V4_CLAIM_LEVEL=L0`).
 
 | State | Count | Evidence |
 |---|---:|---|
-| OPTRA Solidity contracts present | 0 | Repository inventory: no `.sol` files or `contracts/` workspace. |
-| Compiled / unit-tested / simulated | 0 / 0 / 0 | No Foundry or other contract build configuration exists. |
-| OPTRA deployed / explorer verified | 0 / 0 | No OPTRA deployment addresses or receipts exist; this count excludes external Robinhood and Uniswap protocol dependencies. |
-| Conditional PM roadmap modules | 2 | `OptraGuardHook` and `GuardRegistry`, subject to feasibility review and owner approval. |
+| OPTRA-authored production-candidate sources | 1 | `contracts/src/OptraGuardHook.sol`; experimental and not deployment-approved. |
+| Shared `GuardRegistry` sources | 0 | Remains conditional; one hook currently owns its own pause state. |
+| Compiled / unit-tested | 1 / 1 | `forge build` passed; focused Foundry suite and coverage are recorded in the P4 addendum below. |
+| Robinhood Mainnet fork simulation | 1 | Transient fork-only test against PoolManager; synthetic assets and all writes remain in local fork state. |
+| OPTRA deployed / explorer verified | 0 / 0 | No OPTRA deployment receipts or verified addresses exist; external Robinhood/Uniswap dependencies are excluded. |
+| Conditional PM roadmap modules | 2 | `OptraGuardHook` and `GuardRegistry`; only the first has an experimental implementation. PM approval remains pending. |
 
 The PM brief identifies a v4 spot pool using the hook as a future deployment target. A pool instance and the external Uniswap v4 PoolManager are not separate OPTRA-authored contract modules and do not justify a six-contract count.
 
@@ -73,7 +75,7 @@ The existing paper application must work when neither module exists. Do not clai
 
 ## Conditional implementation specification (approval-gated)
 
-This is the engineering proposal for the PM-backed candidates, not approval to implement or deploy. It deliberately keeps the deterministic paper engine, option model, wallet sessions, PostgreSQL, and private Tape offchain. Current paper trading needs neither contract. For a later single-pool launch, the smallest onchain design may be one `OptraGuardHook` with its own minimal admin/keeper state; deploy a separate `GuardRegistry` only when multiple hook/pool instances need a shared state owner or role separation.
+This section records the earlier engineering proposal for the PM-backed candidates. The Project Owner subsequently authorized P4 engineering on 2026-11-20, but the PM brief still awaits formal PM approval and no deployment is authorized. The deterministic paper engine, option model, wallet sessions, PostgreSQL, and private Tape remain offchain. Current paper trading needs neither contract. The experimental implementation uses one `OptraGuardHook` with minimal admin/keeper state; a separate `GuardRegistry` remains unjustified until multiple hook/pool instances need shared state.
 
 ```text
 Market providers + deterministic rules + private agent/Tape state (offchain)
@@ -148,10 +150,55 @@ Any future status display must show each contract separately as `Planned`, `Comp
 
 ## Deployment blockers
 
-- Owner approval is not established by the PM brief; its owner status is marked pending approval.
+- The Project Owner authorized P4 engineering on 2026-11-20. The original PM brief still says its status is a working brief awaiting PM approval; no PM sign-off is recorded.
 - V4 PoolManager code is present on both chains and the mainnet v4 router is listed, but testnet router support, a usable pool path, hook permission address, and selected token pair are not verified.
 - Public RPCs returned valid chain IDs and bytecode in this read-only session, but repeat calls reset intermittently; use a trusted provider and verify its chain ID immediately before deployment.
-- No contract source, test suite, build tool, deployment credentials, or chain receipt exists.
-- Contract behavior requires technical review and audit before mainnet consideration.
+- No exact Mainnet stock-token/quote-token pair, approved initializer route, multisig admin, keeper, or Mainnet deployer is selected. A deployment script and signer-specific measured Mainnet gas plan do not exist.
+- The hook is not a full onchain implementation of Breaker/Sessions policy: it stores one keeper-published pause bit and does not consume authenticated per-asset session or venue state.
+- Internal checks do not replace an independent security audit. No independent audit or Mainnet receipt exists.
 
 This contract roadmap is separate from paper web release readiness. It does not block the paper-only MVP.
+
+## 2026-11-20 P4 engineering verification and Mainnet gate
+
+The Project Owner authorized P4 engineering and asked that PM approval and exact transaction approval remain separate. This addendum supersedes the earlier inventory/readiness statements in this plan. It does not constitute PM approval, an independent audit, or permission to broadcast.
+
+### Worktree result
+
+- `OptraGuardHook` remains the sole OPTRA-authored production candidate. No `GuardRegistry` or unrelated contract was added.
+- Constructor hardening now requires deployed code at the PoolManager and both token addresses, caps `maxPolicyAge` at 900 seconds, and on chain ID `4663` pins the official PoolManager address while requiring contract-code admin and pool creator addresses plus a keeper distinct from admin.
+- Mainnet keeper rotation also rejects setting the admin as keeper. A regression test was first run red, then passed after the guard was added.
+- The engineering default for a future instance remains `maxPolicyAge=300` seconds. That is not a finalized Mainnet constructor packet.
+- `test/OptraRobinhoodMainnetFork.t.sol` verifies the live Mainnet PoolManager against its pinned runtime hash and simulates a synthetic hook/pool entirely in fork state. Its mock tokens and writes are not deployed to Robinhood Chain.
+
+### Verification record
+
+From `contracts/`:
+
+| Check | Result |
+|---|---|
+| `forge fmt --check` | Passed. |
+| `forge build --sizes` | Passed with Solidity 0.8.26; `OptraGuardHook` runtime 7,085 bytes and initcode 8,369 bytes. |
+| `forge test --fuzz-runs 1000` | 33 passed, 0 failed, 4 optional fork suites skipped; freshness fuzz 1,000 runs; invariant handler 128,000 calls. |
+| `forge lint` | Passed. |
+| `forge coverage --ir-minimum --report summary --no-match-coverage 'script|test'` | 100% lines, 98.36% statements, 90.48% branches, 100% functions. Foundry notes that `--ir-minimum` can affect source mapping. |
+| Slither on `src/OptraGuardHook.sol` | 101 detectors, 0 reported results; the timestamp detector was explicitly excluded because chain time is intentionally used for freshness. |
+| Robinhood Mainnet fork, chain ID 4663, block 118774800 | 1/1 fork test passed. This verifies only the tested PoolManager/callback path, not production assets, route, or economic behavior. |
+
+This is a focused internal delta review, not an independent security audit. See `docs/INTERNAL_AUDIT.md`, `docs/THREAT_MODEL.md`, `docs/INCIDENT_RESPONSE.md`, `docs/KNOWN_LIMITATIONS.md`, and `docs/MAINNET_CHECKLIST.md` for scope and current gates.
+
+### Exact deployment packet status
+
+No eligible Mainnet transaction batch exists, so no signer, complete constructor argument tuple, gas ceiling, or owner approval request is issued. The Mainnet PoolManager address is known, but underlying token, quote token, initializer contract, Safe/admin, keeper, production deployer, and verified route are unresolved. The testnet deployment script is chain-guarded for chain ID `46630` and deploys synthetic test fixtures; it is not a Mainnet deployment script.
+
+Robinhood's [Stock Token documentation](https://docs.robinhood.com/chain/stock-tokens/) says asset trading capabilities vary by session and must be checked per asset. It also states that Stock Tokens may not be offered, sold, or delivered in the United States or to/for U.S. persons. The asset/jurisdiction decision therefore requires formal review rather than an engineering guess. Robinhood's [network documentation](https://docs.robinhood.com/chain/connecting/) marks the official public RPC as rate-limited and not recommended for production; a trusted provider must be selected for any eventual signer-specific dry run.
+
+The exact Phase A Testnet packet recorded in `docs/onchain-hardening-testnet-preparation-2026-11-16.md` is stale after the hook bytecode change. Its predicted CREATE2 address, salt/init-code hash, constructor bytes, and gas values must not be reused.
+
+### Future verification sequence (not executed)
+
+1. Record formal PM approval and approve the exact eligible token pair, jurisdictional eligibility, session/venue policy model, fee/tick spacing/initial price, and trusted pool initializer.
+2. Select and verify the Mainnet multisig/admin, distinct keeper, deployer, and recovery process; add a chain-4663-only deploy script with explicit opt-in, manager address/runtime verification, zero deployer roles, and no synthetic/example deployment path.
+3. After independent review/audit and Testnet acceptance, simulate the exact Mainnet batch on a trusted provider/fork with the selected signer address; record exact calldata, predicted address, gas estimate and explicit ceiling. Do not sign or broadcast during this step.
+4. Generate the verification inputs for the exact compiled source, constructor bytes, compiler/optimizer/via-IR/EVM settings. Verify through the supported Blockscout/Sourcify path and independently read back code, roles, pool ID, permissions, and paused/no-policy state after a separately approved broadcast.
+5. Request final Project Owner transaction approval only after the complete exact batch and all independent gates are recorded. No Live Trading, CallPut execution, liquidity provision, or fund movement is included in this hook deployment scope.
