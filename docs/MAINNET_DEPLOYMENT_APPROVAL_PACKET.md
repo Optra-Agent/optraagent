@@ -14,9 +14,18 @@ Scope: deploys only `OptraGuardHook` (Uniswap v4 spot swap-direction gate). It i
 | Indicative fee at observed price | ~3.36e13 wei (~0.0000336 ETH). Indicative only: a real-asset estimate is still required. |
 | Source SHA-256 | `cc952a87aa28ab78754de3abe3b9015fc1f706baaf922f797f74b5a8de723ba2` (see `docs/INDEPENDENT_AUDIT_HANDOFF.md`) |
 
-## Owner wallet balances
+## Verified candidate values and wallet status (read-only, block ~119.05M)
 
-Not verified: no owner or deployer address is recorded anywhere in the repo or briefs. Supply the deployer EOA and the balance check is one read-only `cast balance` call. The wallet must hold at least the total fee ceiling.
+| Item | Result |
+|---|---|
+| MSFT stock token `0xe93237C50D904957Cf27E7B1133b510C669c2e74` | code present, symbol MSFT, 18 decimals, supply 3,479.39 |
+| USDG `0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168` | code present, symbol USDG, 6 decimals |
+| `0x27f35B08…aBBd9` (`optra-testnet-deployer`) | Testnet-only by its own record. Mainnet: 0 ETH, nonce 0, 0 USDG. Not a valid Mainnet deployer. |
+| Mainnet deployer / trading wallet | Not supplied. No balances can be read. |
+
+These two tokens are verifiable candidates only; whether MSFT/USDG is the approved pair, the fee, spacing, price, creator and route remain owner decisions. No existing OPTRA-hook pool exists (the hook is not deployed).
+
+The deployer must hold at least `OPTRA_MAINNET_TOTAL_FEE_CEILING_WEI` (indicative 3.4e13 wei).
 
 ## Strict preflight result (`optra-mainnet-preflight.sh --strict`)
 
