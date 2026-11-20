@@ -148,7 +148,7 @@ function ExecutionModes() {
       </article>
       <article className="xm-card" data-mode="live" style={at(1)}>
         <header><h3>Manual CallPut</h3><Chip tone="neutral">Signing disabled</Chip></header>
-        <p>Direct-wallet CallPut opens, closes, and expiry settlement can be prepared and reviewed. Signing is disabled by default. OPTRA has not verified an executed CallPut order.</p>
+        <p>Direct-wallet CallPut preparation and review are implemented for opens, closes, and expiry settlement. Signing is disabled by default. OPTRA has not verified an executed CallPut order.</p>
         <p><strong>Autonomous agents</strong> <Chip tone="ember">Unavailable</Chip></p>
         <p>OPTRA agents do not submit CallPut requests. No owner-specific automation grant or connected order worker exists.</p>
         <p>Before agent-initiated orders:</p>

@@ -280,7 +280,7 @@ test("Paper, manual CallPut, and autonomous execution are represented truthfully
   const restricted = modes.locator('[data-mode="live"]');
   await expect(restricted.getByRole("heading", { name: "Manual CallPut" })).toBeVisible();
   await expect(restricted.getByText("Signing disabled", { exact: true })).toBeVisible();
-  await expect(restricted.getByText(/opens, closes, and expiry settlement can be prepared and reviewed/i)).toBeVisible();
+  await expect(restricted.getByText(/CallPut preparation and review are implemented for opens, closes, and expiry settlement/i)).toBeVisible();
   await expect(restricted.getByText(/has not verified an executed CallPut order/i)).toBeVisible();
   await expect(restricted.getByText("Autonomous agents", { exact: true })).toBeVisible();
   await expect(restricted.getByText("Unavailable", { exact: true })).toBeVisible();
