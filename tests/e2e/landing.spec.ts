@@ -27,7 +27,8 @@ test("landing capability claims match the catalog and roadmap items are not pres
   await expect(proof.getByText("Live execution")).toBeVisible();
   await expect(proof.getByText("Disabled", { exact: true })).toBeVisible();
   await expect(proof.getByText("An MCP server and pay-per-call endpoints are planned, not built.", { exact: false })).toBeVisible();
-  await expect(proof.locator('.xm-card[data-mode="live"]').getByText("Planned", { exact: true })).toBeVisible();
+  await expect(proof.locator('.xm-card[data-mode="live"]').getByText("Signing disabled", { exact: true })).toBeVisible();
+  await expect(proof.locator('.xm-card[data-mode="live"]').getByText("Planned", { exact: true })).toHaveCount(0);
   await expect(page.locator("#agents .pn-agents").getByText("Preview", { exact: true })).toHaveCount(3);
 });
 
@@ -269,18 +270,26 @@ test.describe("pinned Protective Floor", () => {
   });
 });
 
-test("Paper and Live are separate execution modes and Live offers no action", async ({ page }) => {
+test("Paper, manual CallPut, and autonomous execution are represented truthfully", async ({ page }) => {
   await page.goto("/?splash=off");
   const modes = page.getByRole("group", { name: "Execution modes" });
   await modes.scrollIntoViewIfNeeded();
   await expect(modes.getByRole("heading", { name: "Paper Trading" })).toBeVisible();
   await expect(modes.getByText("Working today")).toBeVisible();
   await expect(modes.getByRole("link", { name: "Launch a paper agent" })).toHaveAttribute("href", "/agents");
-  await expect(modes.getByRole("heading", { name: "Live Trading" })).toBeVisible();
-  await expect(modes.getByText("Nothing in Optra can place a real-money order today.", { exact: false })).toBeVisible();
-  // Live has a link to the claims and no button that could start anything.
-  await expect(modes.locator('[data-mode="live"]').getByRole("button")).toHaveCount(0);
-  await expect(modes.getByRole("link", { name: /What Live still needs/ })).toHaveAttribute("href", "/verify");
+  const restricted = modes.locator('[data-mode="live"]');
+  await expect(restricted.getByRole("heading", { name: "Manual CallPut" })).toBeVisible();
+  await expect(restricted.getByText("Signing disabled", { exact: true })).toBeVisible();
+  await expect(restricted.getByText(/opens, closes, and expiry settlement can be prepared and reviewed/i)).toBeVisible();
+  await expect(restricted.getByText(/has not verified an executed CallPut order/i)).toBeVisible();
+  await expect(restricted.getByText("Autonomous agents", { exact: true })).toBeVisible();
+  await expect(restricted.getByText("Unavailable", { exact: true })).toBeVisible();
+  await expect(restricted.getByText(/agents do not submit CallPut requests/i)).toBeVisible();
+  await expect(restricted.getByText("Live Trading", { exact: true })).toHaveCount(0);
+  await expect(restricted.getByText("Planned", { exact: true })).toHaveCount(0);
+  await expect(restricted.getByText("Written venue permission and an owner-specific grant", { exact: true })).toBeVisible();
+  await expect(restricted.getByRole("button")).toHaveCount(0);
+  await expect(restricted.getByRole("link", { name: /What autonomous trading still needs/ })).toHaveAttribute("href", "/verify");
 });
 
 test("the opening causes no hydration mismatch on a first load or a reload", async ({ page }) => {

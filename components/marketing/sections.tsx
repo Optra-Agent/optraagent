@@ -135,7 +135,7 @@ export function Story({ rails }: { rails: RiskRail[] }) {
 
 /* ─────────────────────────── Proof ─────────────────────────── */
 
-/** Paper and Live are execution modes. They are not Agent mode and Manual mode, which are about who decides. Live is shown as planned and has no control. */
+/** Keep paper, manual venue actions, and autonomous execution as separate capabilities. */
 function ExecutionModes() {
   const paper = ["Virtual capital", "Supported rule configuration", "Backtesting", "Paper agent launch", "Automated paper evaluation", "Explainable decisions in Optra Tape"];
   return (
@@ -147,10 +147,13 @@ function ExecutionModes() {
         <Link className={cn(buttonVariants())} href="/agents">Launch a paper agent</Link>
       </article>
       <article className="xm-card" data-mode="live" style={at(1)}>
-        <header><h3>Live Trading</h3><Chip>Planned</Chip></header>
-        <p>The same agents with real wallet capital. It is a separate mode and it is not built. Nothing in Optra can place a real-money order today.</p>
+        <header><h3>Manual CallPut</h3><Chip tone="neutral">Signing disabled</Chip></header>
+        <p>Direct-wallet CallPut opens, closes, and expiry settlement can be prepared and reviewed. Signing is disabled by default. OPTRA has not verified an executed CallPut order.</p>
+        <p><strong>Autonomous agents</strong> <Chip tone="ember">Unavailable</Chip></p>
+        <p>OPTRA agents do not submit CallPut requests. No owner-specific automation grant or connected order worker exists.</p>
+        <p>Before agent-initiated orders:</p>
         <ul>{LIVE_REQUIREMENTS.map((item) => <li key={item.title}>{item.title}</li>)}</ul>
-        <Link className="xm-link" href="/verify">What Live still needs, on Verify</Link>
+        <Link className="xm-link" href="/verify">What autonomous trading still needs</Link>
       </article>
     </div>
   );
