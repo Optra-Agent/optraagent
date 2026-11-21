@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import type { FloorScene, FloorView, LabelKey } from "./floor-scene";
+import type { FloorScene, LabelKey } from "./floor-scene";
 import { floorStore, useFloor } from "./floor-store";
 import { ENTRY, floorReadout } from "./payoff";
 
@@ -60,11 +60,6 @@ export function SignatureStage() {
     const cleanups: (() => void)[] = [];
 
     const floorSlot = () => document.querySelector<HTMLElement>('[data-sig-slot="floor"]');
-    // At 1001px wide and 770px tall or more the Protective Floor is pinned: the stage holds still and the scroll turns the camera.
-    const pinned = () => {
-      const pin = document.querySelector<HTMLElement>(".fl-pin");
-      return pin ? getComputedStyle(pin).position === "sticky" : false;
-    };
 
     // The object is about 19 world units wide; at zoom 1 the overview camera frames roughly 12 units of height. At zoom 1 it spans about
     // 2 x the viewport height in pixels and is about 0.62 as tall as it is wide. The zoom that fits a slot is limited by the slot's width and height.
@@ -81,14 +76,6 @@ export function SignatureStage() {
       scene.setExplode(0);
       const visibility = smooth(0.05, 0.5, seen);
 
-      // Pinned: the position of the page inside the tall track picks the view. Not pinned: the view buttons do.
-      const track = document.querySelector<HTMLElement>(".fl-track");
-      if (track && pinned()) {
-        const box = track.getBoundingClientRect();
-        const progress = clamp(-box.top / Math.max(1, box.height - vh));
-        const next: FloorView = progress < 0.34 ? "overview" : progress < 0.67 ? "floor" : "cost";
-        if (floorStore.get().view !== next && seen > 0.5) floorStore.set({ view: next });
-      }
       layer.style.setProperty("--sig", visibility.toFixed(3));
       layer.dataset.on = visibility > 0.01 ? "1" : "0";
       scene.setActive(visibility > 0.01 && !document.hidden);

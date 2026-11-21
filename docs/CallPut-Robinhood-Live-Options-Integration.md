@@ -6,8 +6,9 @@ Checked 2026-11-20 against Robinhood Mainnet (chain 4663). No transaction was si
 
 | Item | Evidence |
 |---|---|
-| Write ABI | CallPut's official agent source (`ayggdrasil/callput-option-agent`, `src/core.ts`) and the live Robinhood MCP (`callput_execute_spread`, v0.8.2, `execution: unsigned_only`). Selector `0x4fd5f4af` = `createOpenPosition`. |
+| Write ABI | CallPut's official agent source (`ayggdrasil/callput-option-agent`, `src/core.ts`) and the current live Robinhood MCP (`callput_execute_spread`, `execution: unsigned_only`). Selector `0x4fd5f4af` = `createOpenPosition`. |
 | Caller model | Direct wallet: the signer is `msg.sender`, the request `account` and the option-token holder. The MCP says "never substitute the login owner or account address on this direct-wallet route". No OPTRA contract is in the path. |
+| Account/session capability | Refreshed live MCP network info reports a configured Robinhood `callput_account` workflow, `open_close` and `close_only` session modes, a distinct external device signer, and owner keys not accepted. This confirms a venue-supported account/session capability, not OPTRA integration, an owner grant, or permission for this worker. |
 | Approvals | USDG `approve(spender = Controller 0x0D24…0e1B)`, sized to the exact amount. Option tokens: `setApprovalForAll(controller, true)` before close/settle. `PositionManager.controller()` and `SettleManager.controller()` both return the Controller. |
 | Units | Collateral USDG, 6 decimals. Size is underlying units with 18 decimals (BTC 8). Feed `strikePrice` and `markPrice` are plain USD per unit. `underlyingAssetIndex` for AAPL = 16 (also encoded in the optionId). `executionFee()` = 60000000000000 wei, a flat native amount. |
 | Open amount | Buy spread: premium × (1 + risk premium) × size + fee. Sell spread: strike width × size + fee. Fee = min(0.03% of notional, 12.5% of premium). Reproduced byte for byte against the venue's own unsigned payload (`tests/options/fixtures/callput-robinhood-venue-prepared-open.json`). |
@@ -35,13 +36,13 @@ A receipt or tx hash is never an order. A request moves through `awaiting-reques
 | Action | Why |
 |---|---|
 | Naked single-leg open (a protective put on its own) | `createOpenPosition` accepts `_length = 1`, but the venue's tooling and supported strategies list only the four spreads. Support is not documented, so it is not exported. A protective put is not available as a direct-wallet order today. |
-| CallPut Account route (sponsored relay, session grant, delegated agent orders) | Different custody and delegation model, relayer-signed sessions, no OPTRA verification. Not implemented. |
+| CallPut Account route (sponsored relay, session grant, delegated agent orders) | Venue workflow support is now confirmed by the live MCP; OPTRA does not implement the account workflow, does not hold/authorize a device signer, and has no owner grant or independent account/session audit. Not enabled. |
 | Automated or agent-initiated orders | CallPut Terms of Use prohibit scraping, and written permission for programmatic or automated trading has not been obtained. |
 | Live Trading toggle | `LIVE_TRADING_ENABLED` is unchanged. |
 
 ## External dependencies still open
 
-1. CallPut written permission for automated or agent-operated orders (section 5 of the integration request).
+1. Confirm the exact CallPut Account policy and Terms/venue permission for this agent's automation; the live MCP reports account-session capability but does not grant OPTRA permission or an owner-specific session.
 2. Source verification of the deployed contracts. The explorer API returned 403 earlier and the bytecode is unaudited here.
 3. Whether the venue refunds unused `amountIn` after the keeper fills below the estimate. The first real order must be observed to settle this.
 4. Settlement payout (`SettlePosition` event) and the close path for an in-the-money spread have not been exercised on-chain. Both are prepared and unit tested only.

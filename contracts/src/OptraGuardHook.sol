@@ -37,6 +37,7 @@ contract OptraGuardHook is IHooks {
     event PoolBound(bytes32 indexed poolId, address indexed creator);
 
     IPoolManager public immutable poolManager;
+    /// @notice address(0) represents native ETH; quoteToken must always be an ERC-20.
     address public immutable underlyingToken;
     address public immutable quoteToken;
     address public immutable poolCreator;
@@ -57,6 +58,8 @@ contract OptraGuardHook is IHooks {
 
     constructor(
         IPoolManager poolManager_,
+        // address(0) is intentionally valid here to represent native ETH.
+        // forge-lint: disable-next-line(missing-zero-check)
         address underlyingToken_,
         address quoteToken_,
         address poolCreator_,
@@ -66,7 +69,7 @@ contract OptraGuardHook is IHooks {
     ) {
         if (
             address(poolManager_) == address(0) || address(poolManager_).code.length == 0
-                || underlyingToken_ == address(0) || underlyingToken_.code.length == 0 || quoteToken_ == address(0)
+                || (underlyingToken_ != address(0) && underlyingToken_.code.length == 0) || quoteToken_ == address(0)
                 || quoteToken_.code.length == 0 || underlyingToken_ == quoteToken_ || poolCreator_ == address(0)
                 || admin_ == address(0) || keeper_ == address(0) || maxPolicyAge_ == 0 || maxPolicyAge_ > MAX_POLICY_AGE
         ) revert InvalidConfiguration();
@@ -202,7 +205,7 @@ contract OptraGuardHook is IHooks {
     }
 
     function _sellsUnderlying(bool zeroForOne) private view returns (bool) {
-        // Currency order is address-sorted by v4. This prototype requires two ERC-20 assets.
+        // Currency order is address-sorted by v4; address(0) sorts native ETH first.
         bool underlyingIsCurrency0 = underlyingToken < quoteToken;
         return underlyingIsCurrency0 ? zeroForOne : !zeroForOne;
     }

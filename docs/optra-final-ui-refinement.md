@@ -160,7 +160,7 @@ Browser inspection at 1440, 820 and 390 for every new section, Markets and the w
 - **How it works** now uses the same component. **Sessions** got a Sessia explanation card beside the selected session and smoother selection. **Risk** was already one selector, one illustration and a labeled slider whose allowed or blocked outcome follows the real rule semantics (Haltr and Exposa block above the limit, Daylo and Drawra at or above it), so it was kept without a pin.
 - Shared pieces: `FlowPath.tsx` (the path), `story.tsx` (Lab, Sessions, Breaker, Developers, Verify).
 
-### Markets: asset logos (data-integrity finding)
+### Markets: asset logos (2026-11-13 source audit)
 
 Both sources the brief names were checked against real responses:
 
@@ -169,9 +169,13 @@ Both sources the brief names were checked against real responses:
 | Robinhood registry `GET /rhj/assets` (the feed the app already reads) | 203 of 203 active chain 4663 tokens have a `logoUrl`, all on `cdn.robinhood.com`, each file named after that token's deployment address, 195 of 203 URLs returned 200 `image/png` after retries (the other 8 kept hitting connection resets from this network and were not confirmed). **But 13 of 13 downloaded files were byte-identical** (same SHA-256, 180x180): it is Robinhood's own feather mark, not a company logo. |
 | Crius token profile `GET /v1/robinhood/token/{address}` | `data.metadata.logo` and `logo_original` are `null` for all 12 stock tokens sampled (AAPL, MSFT, NVDA, TSLA, AMD, GOOGL, AMZN, META, NFLX, DIS, HIMS, ADBE). |
 
-So no allowed source supplies genuine per-asset logos today, and guessing URLs, favicons or other sites' images is out of bounds. I did **not** show the identical Robinhood mark on 203 rows: it would label every asset with Robinhood's brand while the footer states OPTRA is not affiliated with it. Coverage of genuine per-asset logos is therefore **0 of 203**, and every row shows an accessible ticker monogram.
+At the time of the 2026-11-13 source audit, no approved source supplied genuine per-asset logos. I did **not** show the identical Robinhood mark on 203 rows: it would label every asset with Robinhood's brand while the footer states OPTRA is not affiliated with it. Coverage from the Robinhood and Crius sources was therefore **0 of 203**, and the baseline UI used accessible ticker monograms.
 
-What was built so a real source can be plugged in without rework: `verifiedLogoUrl()` in `lib/market/robinhood-feed.ts` (https only, trusted host, path exactly `/ncw_assets/logos/<chain 4663 deployment address>.png`, no credentials, port, query or fragment); an additive optional `logoUrl` on `MarketAsset` (`lib/domain/contracts.ts`); a feed option `logos: "none" | "registry"` that defaults to `"none"`; and `AssetLogo` in the app, which re-checks the host, lazy-loads without a referrer, and falls back to initials on error. Unit tests cover default-off, verified, missing, wrong host, scheme, address, query, credentials and malformed URLs. Browser tests cover a verified logo rendering (mocked image), a missing logo, an untrusted host never being requested, and a failed load falling back. No logo files are stored in the repository and no per-row provider calls are made. **Decision for the PM:** flip `logos` to `"registry"` only if showing Robinhood's generic mark is acceptable.
+The 2026-11-13 implementation used `verifiedLogoUrl()` in `lib/market/robinhood-feed.ts`, an optional `logoUrl` on `MarketAsset`, and a default-off `logos: "none" | "registry"` feed option. The registry option remains off because it supplies Robinhood's generic mark. The PM recommendation in this historical section was to leave it off unless that mark was acceptable.
+
+### Markets: LogoAPI ticker source (owner-approved 2026-11-21)
+
+The owner directed integration of the existing FLOQ ticker-logo candidate. It constructs URLs only on LogoAPI's fixed `/ticker/{TICKER}.svg` endpoint from a validated market symbol, sets `fallback=none`, sends no referrer, lazy-loads, and falls back to initials on 404 or network failure. The LogoAPI documentation checked 2026-11-21 states that `fallback=none` returns 404 instead of a favicon/name tile when a catalog logo is missing and permits commercial use without attribution. Live read-only requests for AAPL, ADBE, and MU returned 200 `image/svg+xml` responses without a fallback header. This changes the 2026-11-13 source decision; it does not turn the Robinhood registry's generic mark into a company logo. Third-party availability and per-ticker catalog correctness remain provider dependencies.
 
 Codex-owned files touched, minimally and additively, under the brief's allowance for a small metadata adapter: `lib/domain/contracts.ts` (one optional field), `lib/market/robinhood-feed.ts`, `tests/market/adapter.test.ts`.
 

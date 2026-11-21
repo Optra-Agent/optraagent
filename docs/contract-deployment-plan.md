@@ -4,28 +4,28 @@ Updated: 2026-11-20 (Asia/Jakarta)
 
 ## Current inventory
 
-The current worktree contains one OPTRA-authored Solidity contract, `OptraGuardHook`, and a Foundry workspace. The hook is still explicitly an experimental one-pool spot-direction gate, not a production-approved module. No Mainnet deployment script, production ABI integration, deployment manifest, OPTRA Testnet/Mainnet receipt, or explorer-verified OPTRA address exists. The paper MVP remains independent of contract deployment, and live execution remains disabled (`LIVE_TRADING_ENABLED=false`, `V4_CLAIM_LEVEL=L0`).
+The current worktree contains one OPTRA-authored Solidity contract, `OptraGuardHook`, a Foundry workspace, and guarded Mainnet estimate/prepare/broadcast/postflight/source-preparation tooling. The hook remains an experimental one-pool spot-direction gate, not a production-approved module. No OPTRA Testnet/Mainnet receipt or explorer-verified OPTRA address exists. The paper MVP remains independent of contract deployment, and live execution remains disabled (`LIVE_TRADING_ENABLED=false`, `V4_CLAIM_LEVEL=L0`).
 
 | State | Count | Evidence |
 |---|---:|---|
 | OPTRA-authored production-candidate sources | 1 | `contracts/src/OptraGuardHook.sol`; experimental and not deployment-approved. |
 | Shared `GuardRegistry` sources | 0 | Remains conditional; one hook currently owns its own pause state. |
 | Compiled / unit-tested | 1 / 1 | `forge build` passed; focused Foundry suite and coverage are recorded in the P4 addendum below. |
-| Robinhood Mainnet fork simulation | 1 | Transient fork-only test against PoolManager; synthetic assets and all writes remain in local fork state. |
+| Robinhood Mainnet fork simulation | 1 | `OptraRobinhoodRealAssetFork.t.sol` uses live PoolManager/USDG and live ETH/USDG reference state; balances and seeded test liquidity are fork-only overrides. |
 | OPTRA deployed / explorer verified | 0 / 0 | No OPTRA deployment receipts or verified addresses exist; external Robinhood/Uniswap dependencies are excluded. |
-| Conditional PM roadmap modules | 2 | `OptraGuardHook` and `GuardRegistry`; only the first has an experimental implementation. PM approval remains pending. |
+| Conditional PM roadmap modules | 2 | `OptraGuardHook` and `GuardRegistry`; only the first is implemented. Owner confirmed P4 scope alignment; independent/legal and exact transaction approvals remain separate. |
 
 The PM brief identifies a v4 spot pool using the hook as a future deployment target. A pool instance and the external Uniswap v4 PoolManager are not separate OPTRA-authored contract modules and do not justify a six-contract count.
 
-Foundry CLI is installed in the environment (`forge`/`cast` 1.8.3), but there is no repository Foundry configuration, Solidity source, ABI, deployment script, or OPTRA contract test to build or run.
+Foundry CLI and a repository Foundry workspace are present; Solidity tests and Mainnet deployment tooling are run from `contracts/`.
 
 ## Candidate review
 
-The original PM brief calls for `OptraGuardHook` and `GuardRegistry` in the future guarded-live phase. The master execution brief locks v4 at L0 for the MVP and prohibits spontaneous contract additions. Six registry-style candidates from the takeover request were compared with the current server-side system:
+The original PM brief calls for `OptraGuardHook` and `GuardRegistry` in the future guarded-live phase. The Project Owner has authorized P4 engineering while keeping CallPut/live execution separate. `GuardRegistry` remains conditional; no extra contract is added without a real second consumer:
 
 | Candidate | Decision | Reason |
 |---|---|---|
-| `OptraGuardHook` | **Keep as a conditional future module** | The PM roadmap requires an EVM hook for entry checks on OPTRA-owned Robinhood Chain spot pools. It must be technically feasible, audited, and approved before implementation. A v4 spot hook does not govern third-party options transactions. |
+| `OptraGuardHook` | **Implemented for P4 engineering; production gate remains NO-GO** | The owner authorized the hook for an OPTRA-owned Robinhood Chain spot pool. It remains experimental pending external review/approvals. A v4 spot hook does not govern third-party options transactions. |
 | `GuardRegistry` | **Conditional; do not assume it is a separate deployment** | A shared registry is justified if multiple guarded pools/hooks need common public state and a separately revocable keeper role. For a single hook and one initial pool, storing the minimal guard state in `OptraGuardHook` is simpler and reduces the external call/role surface. Owner approval must select one design. |
 | `AgentRegistry` | **Defer** | The current owner-scoped PostgreSQL agent records already provide the required private MVP identity and lifecycle. Onchain publication is not specified for the paper release. |
 | `RecipeRegistry` | **Defer** | Canonical recipe hashes and immutable launched recipes are already stored with the paper records. Publishing strategies by default would conflict with private, owner-scoped recipes. Revisit only with an explicit public-sharing requirement. |
@@ -150,10 +150,10 @@ Any future status display must show each contract separately as `Planned`, `Comp
 
 ## Deployment blockers
 
-- The Project Owner authorized P4 engineering on 2026-11-20. The original PM brief still says its status is a working brief awaiting PM approval; no PM sign-off is recorded.
-- V4 PoolManager code is present on both chains and the mainnet v4 router is listed, but testnet router support, a usable pool path, hook permission address, and selected token pair are not verified.
+- The Project Owner authorized P4 engineering and explicitly confirmed PM scope alignment on 2026-11-20; do not request routine PM re-confirmation. Exact transaction approval remains separate.
+- A technical ETH/USDG pool candidate is selected and real-asset fork-tested. It is a new hook-specific pool, not the existing dynamic-fee ETH/USDG pool; the initial price and liquidity plan remain separate, time-sensitive operational gates.
 - Public RPCs returned valid chain IDs and bytecode in this read-only session, but repeat calls reset intermittently; use a trusted provider and verify its chain ID immediately before deployment.
-- No exact Mainnet stock-token/quote-token pair, approved initializer route, multisig admin, keeper, or Mainnet deployer is selected. A deployment script and signer-specific measured Mainnet gas plan do not exist.
+- The current candidate is native ETH/USDG. The deployer, Safe candidate, and distinct keeper candidate are supplied and read-only checked. Cross-project Safe authorization, keeper operator/key custody, production RPC approval, owner-approved gas ceilings, independent audit, and asset/jurisdiction evidence remain outstanding; no approval-eligible packet exists.
 - The hook is not a full onchain implementation of Breaker/Sessions policy: it stores one keeper-published pause bit and does not consume authenticated per-asset session or venue state.
 - Internal checks do not replace an independent security audit. No independent audit or Mainnet receipt exists.
 
@@ -161,15 +161,15 @@ This contract roadmap is separate from paper web release readiness. It does not 
 
 ## 2026-11-20 P4 engineering verification and Mainnet gate
 
-The Project Owner authorized P4 engineering and asked that PM approval and exact transaction approval remain separate. This addendum supersedes the earlier inventory/readiness statements in this plan. It does not constitute PM approval, an independent audit, or permission to broadcast.
+The Project Owner authorized P4 engineering and confirmed PM scope alignment while keeping exact transaction approval separate. This addendum supersedes earlier readiness statements in this plan. It is not an independent audit or permission to broadcast.
 
 ### Worktree result
 
 - `OptraGuardHook` remains the sole OPTRA-authored production candidate. No `GuardRegistry` or unrelated contract was added.
-- Constructor hardening now requires deployed code at the PoolManager and both token addresses, caps `maxPolicyAge` at 900 seconds, and on chain ID `4663` pins the official PoolManager address while requiring contract-code admin and pool creator addresses plus a keeper distinct from admin.
+- Constructor hardening requires deployed code at PoolManager and quote-token addresses; native ETH is represented by `address(0)` as the underlying. It caps `maxPolicyAge` at 900 seconds and on chain ID `4663` pins the official PoolManager address while requiring contract-code admin/pool-creator addresses and a keeper distinct from admin.
 - Mainnet keeper rotation also rejects setting the admin as keeper. A regression test was first run red, then passed after the guard was added.
 - The engineering default for a future instance remains `maxPolicyAge=300` seconds. That is not a finalized Mainnet constructor packet.
-- `test/OptraRobinhoodMainnetFork.t.sol` verifies the live Mainnet PoolManager against its pinned runtime hash and simulates a synthetic hook/pool entirely in fork state. Its mock tokens and writes are not deployed to Robinhood Chain.
+- `test/OptraRobinhoodMainnetFork.t.sol` remains a synthetic infrastructure regression test. `test/OptraRobinhoodRealAssetFork.t.sol` additionally verifies a new native ETH/USDG hook pool against live Mainnet PoolManager/USDG and a live reference-pool price; fork balances/liquidity are state overrides only.
 
 ### Verification record
 
@@ -189,7 +189,7 @@ This is a focused internal delta review, not an independent security audit. See 
 
 ### Exact deployment packet status
 
-No eligible Mainnet transaction batch exists, so no signer, complete constructor argument tuple, gas ceiling, or owner approval request is issued. The Mainnet PoolManager address is known, but underlying token, quote token, initializer contract, Safe/admin, keeper, production deployer, and verified route are unresolved. The testnet deployment script is chain-guarded for chain ID `46630` and deploys synthetic test fixtures; it is not a Mainnet deployment script.
+No eligible Mainnet transaction batch exists. The 2026-11-21 read-only candidate estimate records a predicted address, constructor tuple, and measured gas, but none is an approval hash or deployed address. The supplied Safe/admin (recommended as pool creator) and separate keeper EOA were read-only checked; cross-project authorization, keeper custody/runbook, approved production provider, external/legal evidence, audit, and owner-approved gas ceilings remain unresolved. The deployer EOA is supplied. Deployment scripts remain gated.
 
 Robinhood's [Stock Token documentation](https://docs.robinhood.com/chain/stock-tokens/) says asset trading capabilities vary by session and must be checked per asset. It also states that Stock Tokens may not be offered, sold, or delivered in the United States or to/for U.S. persons. The asset/jurisdiction decision therefore requires formal review rather than an engineering guess. Robinhood's [network documentation](https://docs.robinhood.com/chain/connecting/) marks the official public RPC as rate-limited and not recommended for production; a trusted provider must be selected for any eventual signer-specific dry run.
 
@@ -197,8 +197,8 @@ The exact Phase A Testnet packet recorded in `docs/onchain-hardening-testnet-pre
 
 ### Future verification sequence (not executed)
 
-1. Record formal PM approval and approve the exact eligible token pair, jurisdictional eligibility, session/venue policy model, fee/tick spacing/initial price, and trusted pool initializer.
-2. Select and verify the Mainnet multisig/admin, distinct keeper, deployer, and recovery process; add a chain-4663-only deploy script with explicit opt-in, manager address/runtime verification, zero deployer roles, and no synthetic/example deployment path.
+1. No routine PM scope confirmation is outstanding. Obtain asset/jurisdiction and pool-route evidence for the selected native ETH/USDG candidate.
+2. Obtain the actual multisig/admin Safe and separate keeper EOA/operator, verify the Safe owner set/threshold, and approve Safe as pool creator. Use the supplied deployer as a distinct EOA after a fresh signer/balance check.
 3. After independent review/audit and Testnet acceptance, simulate the exact Mainnet batch on a trusted provider/fork with the selected signer address; record exact calldata, predicted address, gas estimate and explicit ceiling. Do not sign or broadcast during this step.
 4. Generate the verification inputs for the exact compiled source, constructor bytes, compiler/optimizer/via-IR/EVM settings. Verify through the supported Blockscout/Sourcify path and independently read back code, roles, pool ID, permissions, and paused/no-policy state after a separately approved broadcast.
 5. Request final Project Owner transaction approval only after the complete exact batch and all independent gates are recorded. No Live Trading, CallPut execution, liquidity provision, or fund movement is included in this hook deployment scope.
@@ -214,6 +214,18 @@ This section supersedes earlier statements in this document that no Mainnet depl
 
 Read-only verification on 2026-11-20 through `https://robinhood.drpc.org` returned chain ID `4663`. The PoolManager at `0x8366a39CC670B4001A1121B8F6A443A643e40951` matched runtime size `24009` and SHA-256 `6eb21c69298b064e37fcf8089a941ae096fe08c0f179b2d399567aef1b10585b`; the CREATE2 factory at `0x4e59b44847b379578588920cA78FbF26c0B4956C` matched size `69` and SHA-256 `e0af82ad2e5188285db8ba0b2ae054d13f0fd4fe325c48c7f2dace48454404b9`. These are point-in-time runtime observations, not production-provider approval or source verification.
 
-Focused preflight execution verified chain ID and both runtime fingerprints, then stopped with exit code 2 because the owner has not selected deployer, Safe, keeper, pool creator, underlying/quote, fee, tick spacing, initial price, or policy age. No exact candidate was available for `eth_estimateGas`; no packet, real-asset fork measurement, or Mainnet broadcast was produced. The existing accepted Mainnet fork test uses synthetic assets and cannot satisfy the required owner-selected real-asset simulation.
+The preflight verified chain ID and both runtime fingerprints. Engineering selected native ETH/USDG, static fee 3000, tick spacing 60, policy age 300 seconds, and the supplied Safe candidate as admin/pool creator; the supplied keeper is a separate EOA candidate and not one of the Safe's owners. The latest real-asset fork test passed on chain 4663 at block 119544065 using live PoolManager/USDG and reference-pool state, with fork-only balance/liquidity overrides. A read-only `eth_estimateGas` result is available for the supplied candidate tuple, but gas/fee ceilings and funding limits are not owner-approved. The estimate used a public RPC without production-provider approval.
 
-The exact unresolved decisions and current NO-GO posture are consolidated in `docs/MAINNET_OWNER_DECISIONS.md`; operator steps and environment names are in `docs/MAINNET_DEPLOYMENT_RUNBOOK.md`. All deployment approval gates remain outstanding, including PM approval, asset/jurisdiction/pool route, Safe/admin, keeper, signer, trusted provider, explicit gas ceilings, real-asset fork/gas evidence, independent audit, and final approval of a specific packet hash.
+The exact unresolved external decisions and current NO-GO posture are consolidated in `docs/MAINNET_OWNER_DECISIONS.md`; operator steps and environment names are in `docs/MAINNET_DEPLOYMENT_RUNBOOK.md`. P4 engineering scope is confirmed. Remaining gates are cross-project Safe authorization, keeper operator/key custody, legal/provider/audit evidence, owner-approved gas and fee ceilings, a fresh funding check, and explicit approval of a specific final packet hash.
+
+### 2026-11-20 owner-wallet refresh
+
+The owner supplied deployment EOA `0xAa8fDF2f96aFC037D50659CFd09fDF3Fac060bBf` and Foundry keystore label `optra-mainnet-deployer`. Read-only Robinhood Mainnet checks at block `119108809` observed `0.00042 ETH` and `0.45027 USDG`; no keystore material was accessed. This is a historical observation; see the current refresh below. Only `OptraGuardHook` is an OPTRA-authored production candidate; existing Robinhood PoolManager/CREATE2 contracts are dependencies, and test mocks are local-only. The hook deployment would not create/init a pool; future pool initialization and liquidity are separate owner-approved actions. No OPTRA Mainnet contract is deployed.
+
+## 2026-11-21 candidate refresh — read-only, not approval
+
+- Supplied deployer `0xAa8fDF2f96aFC037D50659CFd09fDF3Fac060bBf`, Safe candidate `0xf9C76ef996C5cbC73E4E23927D6EecB3295c8d45`, and keeper candidate `0x23439a41eDC01D58d3Aaa0C75E9dFEE0C0196848` were used as the ETH/USDG engineering tuple. The Safe readback at block 119433484 showed Safe L2 v1.5.0, 3 owners, threshold 2, and no enabled modules. Cross-project Safe authorization and keeper operator/key custody remain unconfirmed.
+- Read-only CREATE2/gas report: `contracts/.local/optra-mainnet-p4-candidate-estimate-20261121-current.json`, block 119537033, estimate 1,676,133 gas, source SHA-256 `03ead9705a22ecf8255ad4193705f99094dc82c929ecda9be8e43cc677e864e8`, Foundry config SHA-256 `abf3a679c9566b4eb2ccca9cfc0632ce82ef53ebaa1f4ae5a9a2f7d29099121a`. It derives candidate CREATE2 address `0x98332827Ff79e07eCD1A63CC04462D3817622080` and salt `0x7f0289f5660a0648a66c492761168c6d2ff2b6dce746111185dbdcef5772437b`; `eth_getCode` returned empty at block 119544065. These are predictions, not a deployed contract address.
+- Candidate gas proposal only: 130% gas limit 2,178,973; at observed gas price 20,018,000 wei, an illustrative 2x max-fee candidate with zero priority fee caps cost at 87,237,363,028,000 wei. The candidate cap is unapproved and the estimate used a public RPC that is not approved for production signing.
+- Current real-asset fork: block 119544065, one test passed, gas 655,383; local log SHA-256 `e3a6014841a325331ba7b3d9058956afc12f6ab69914c2526b43c18e4e9d85f1`. Fork-only USDG balance/liquidity overrides were used; no transaction was sent.
+- Fresh strict preflight passed chain 4663 and pinned PoolManager/CREATE2 fingerprints, then blocked on Mainnet acknowledgement, owner-approved gas ceilings, provider/PM/asset/jurisdiction/pool/keeper-runbook approvals, and independent audit/evidence references. No approval-eligible transaction packet or `approvalSha256` exists. No source-verification submission, signature, broadcast, pool initialization, liquidity provision, or Live Trading activation occurred.

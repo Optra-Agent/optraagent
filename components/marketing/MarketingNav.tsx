@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
+import { Menu } from "lucide-react";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
@@ -32,7 +33,7 @@ export function MarketingNav() {
         </div>
         <Sheet open={open} onOpenChange={setOpen}>
           <SheetTrigger asChild>
-            <Button variant="outline" size="sm" className="m-menu" aria-label="Open page sections">Menu</Button>
+            <Button variant="outline" size="icon" className="m-menu" aria-label="Open page sections"><Menu aria-hidden /></Button>
           </SheetTrigger>
           <SheetContent side="right" className="sidebar-sheet w-[280px] max-w-[85vw] gap-0 p-0">
             <SheetHeader className="sr-only">

@@ -179,6 +179,38 @@ export const paperAccounts = pgTable("paper_accounts", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
+export const callputOrders = pgTable("callput_orders", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  ownerId: uuid("owner_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  clientIntentId: varchar("client_intent_id", { length: 128 }).notNull(),
+  account: varchar("account", { length: 42 }).notNull(),
+  chainId: integer("chain_id").notNull(),
+  kind: varchar("kind", { length: 16 }).notNull(),
+  intent: jsonb("intent").$type<Record<string, unknown>>().notNull(),
+  payloadHash: varchar("payload_hash", { length: 64 }).notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  uniqueIndex("callput_orders_owner_intent_idx").on(table.ownerId, table.clientIntentId),
+  index("callput_orders_owner_created_idx").on(table.ownerId, table.createdAt),
+]);
+
+export const callputOrderEvents = pgTable("callput_order_events", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  orderId: uuid("order_id").notNull().references(() => callputOrders.id, { onDelete: "cascade" }),
+  ownerId: uuid("owner_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  clientEventId: varchar("client_event_id", { length: 36 }).notNull(),
+  referenceKind: varchar("reference_kind", { length: 24 }).notNull(),
+  transactionKind: varchar("transaction_kind", { length: 32 }).notNull(),
+  transactionHash: varchar("transaction_hash", { length: 66 }).notNull(),
+  requestKey: varchar("request_key", { length: 66 }),
+  payloadHash: varchar("payload_hash", { length: 64 }).notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  uniqueIndex("callput_order_events_owner_event_idx").on(table.ownerId, table.clientEventId),
+  index("callput_order_events_order_created_idx").on(table.orderId, table.createdAt),
+]);
+
 export const usersRelations = relations(users, ({ many }) => ({ sessions: many(sessions) }));
 export const sessionsRelations = relations(sessions, ({ one }) => ({ user: one(users, { fields: [sessions.userId], references: [users.id] }) }));
 
@@ -203,4 +235,4 @@ export const hourlyMarketSamplesRelations = relations(hourlyMarketSamples, ({ on
   snapshot: one(marketSnapshots, { fields: [hourlyMarketSamples.snapshotId], references: [marketSnapshots.id] }),
 }));
 
-export const schema = { users, authChallenges, sessions, backtestRuns, agents, marketSnapshots, hourlyMarketSamples, paperDecisions, paperOrders, paperPositions, paperAccounts };
+export const schema = { users, authChallenges, sessions, backtestRuns, agents, marketSnapshots, hourlyMarketSamples, paperDecisions, paperOrders, paperPositions, paperAccounts, callputOrders, callputOrderEvents };

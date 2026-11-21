@@ -3,28 +3,22 @@
 import { useState } from "react";
 import { cn } from "@/lib/utils";
 
-/** The server already verified the logo. The browser re-checks scheme and host so a bad value can never load. */
-const TRUSTED_HOSTS = new Set(["cdn.robinhood.com"]);
-export function trustedLogo(url: string | undefined): string | undefined {
-  if (!url) return undefined;
-  try {
-    const parsed = new URL(url);
-    return parsed.protocol === "https:" && TRUSTED_HOSTS.has(parsed.hostname) ? parsed.toString() : undefined;
-  } catch {
-    return undefined;
-  }
+/** Build only LogoAPI's fixed-origin ticker URL; `fallback=none` keeps synthetic tiles out of the Market list. */
+export function tickerLogoUrl(symbol: string): string | undefined {
+  const ticker = symbol.trim().toUpperCase();
+  if (!/^[A-Z0-9.]{1,16}$/.test(ticker)) return undefined;
+  return `https://logoapi.sh/ticker/${encodeURIComponent(ticker)}.svg?shape=square&fallback=none`;
 }
 
-/** Asset logo (verified server logo), or the ticker's initials when there is none or it fails to load. Decorative: the row names the asset. */
-export function AssetLogo({ symbol, logoUrl, size = 36, className }: { symbol: string; logoUrl?: string; size?: number; className?: string }) {
+/** LogoAPI ticker logo, or ticker initials when none is available or loading fails. Decorative: the row names the asset. */
+export function AssetLogo({ symbol, size = 36, className }: { symbol: string; size?: number; className?: string }) {
   const [failed, setFailed] = useState<readonly string[]>([]);
-  // A verified server logo wins; otherwise show ticker initials.
-  const remote = trustedLogo(logoUrl);
-  const src = remote && !failed.includes(remote) ? remote : undefined;
+  const logo = tickerLogoUrl(symbol);
+  const src = logo && !failed.includes(logo) ? logo : undefined;
   return (
     <span className={cn("asset-logo", className)} data-fallback={src ? "0" : "1"} style={{ width: size, height: size }} aria-hidden="true">
       {src ? (
-        // eslint-disable-next-line @next/next/no-img-element -- remote host is allowlisted above; no image optimizer config is needed
+        // eslint-disable-next-line @next/next/no-img-element -- fixed LogoAPI origin, validated ticker, native SVG and onError fallback
         <img src={src} alt="" width={size} height={size} loading="lazy" decoding="async" referrerPolicy="no-referrer" onError={() => setFailed((list) => [...list, src])} />
       ) : (
         <span className="asset-initials">{symbol.slice(0, 3)}</span>

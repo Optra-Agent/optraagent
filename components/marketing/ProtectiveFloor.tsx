@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useEffect } from "react";
 import type { CSSProperties } from "react";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -27,6 +28,38 @@ export function ProtectiveFloor() {
   const { params, view, gl } = useFloor();
   const readout = floorReadout(params);
   const caption = VIEWS.find((item) => item.id === view)?.caption ?? "";
+
+  // Keep the accessible view controls scroll-synchronized even when the optional WebGL scene cannot initialize.
+  useEffect(() => {
+    let frame = 0;
+    const sync = () => {
+      if (frame) return;
+      frame = window.requestAnimationFrame(() => {
+        frame = 0;
+        const pin = document.querySelector<HTMLElement>(".fl-pin");
+        const track = document.querySelector<HTMLElement>(".fl-track");
+        const stage = document.querySelector<HTMLElement>(".fl-stage");
+        if (!pin || !track || !stage || getComputedStyle(pin).position !== "sticky") return;
+
+        const rect = stage.getBoundingClientRect();
+        const visible = (Math.min(rect.bottom, window.innerHeight) - Math.max(rect.top, 0)) / Math.max(1, Math.min(rect.height, window.innerHeight));
+        if (visible <= 0.5) return;
+
+        const progress = Math.max(0, Math.min(1, -track.getBoundingClientRect().top / Math.max(1, track.offsetHeight - window.innerHeight)));
+        const next = progress < 0.34 ? "overview" : progress < 0.67 ? "floor" : "cost";
+        if (floorStore.get().view !== next) floorStore.set({ view: next });
+      });
+    };
+
+    window.addEventListener("scroll", sync, { passive: true });
+    window.addEventListener("resize", sync);
+    sync();
+    return () => {
+      window.removeEventListener("scroll", sync);
+      window.removeEventListener("resize", sync);
+      if (frame) window.cancelAnimationFrame(frame);
+    };
+  }, []);
 
   // Pinned, a view button scrolls to its part of the track so the scroll and the buttons never disagree. Not pinned, it sets the view directly.
   const chooseView = (id: FloorView) => {

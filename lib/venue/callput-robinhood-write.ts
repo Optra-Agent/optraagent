@@ -655,6 +655,60 @@ export function extractCallPutRequestKey(
   return unique[0] as Hex;
 }
 
+export type CallPutSettlementEvent = {
+  account: Address;
+  underlyingAssetIndex: number;
+  optionTokenId: bigint;
+  size: bigint;
+  amountOut: bigint;
+  settlePrice: bigint;
+};
+
+/** Extracts only a matching SettlePosition event from the pinned Settlement Manager. */
+export function extractCallPutSettlement(
+  receipt: Pick<TransactionReceipt, "status" | "logs">,
+  expected: { account: Address; underlyingAssetIndex: number; optionTokenId: bigint },
+): CallPutSettlementEvent {
+  if (receipt.status !== "success") throw new Error("Transaction reverted; no CallPut settlement was created.");
+  const matches: CallPutSettlementEvent[] = [];
+  for (const log of receipt.logs) {
+    if (getAddress(log.address) !== getAddress(CALLPUT_ROBINHOOD_CONTRACTS.settleManager)) continue;
+    try {
+      const event = decodeEventLog({ abi: CALLPUT_WRITE_ABIS.settleManager, data: log.data, topics: log.topics });
+      if (event.eventName !== "SettlePosition") continue;
+      const args = event.args as {
+        account: Address;
+        underlyingAssetIndex: number | bigint;
+        optionTokenId: bigint;
+        size: bigint;
+        amountOut: bigint;
+        settlePrice: bigint;
+      };
+      const underlyingAssetIndex = Number(args.underlyingAssetIndex);
+      if (
+        getAddress(args.account) === getAddress(expected.account) &&
+        underlyingAssetIndex === expected.underlyingAssetIndex &&
+        args.optionTokenId === expected.optionTokenId &&
+        args.size > 0n
+      ) {
+        matches.push({
+          account: getAddress(args.account),
+          underlyingAssetIndex,
+          optionTokenId: args.optionTokenId,
+          size: args.size,
+          amountOut: args.amountOut,
+          settlePrice: args.settlePrice,
+        });
+      }
+    } catch {
+      // Ignore unrelated events from the Settlement Manager.
+    }
+  }
+  if (matches.length === 0) throw new Error("No matching SettlePosition event for this account and option token.");
+  if (matches.length > 1) throw new Error("Receipt contains several matching SettlePosition events; refusing to pick one.");
+  return matches[0];
+}
+
 export type CallPutReconciliation = {
   state:
     | "awaiting-request-key"
@@ -709,4 +763,84 @@ export function reconcileCallPutOpen(params: {
     return { state: "executed-balance-confirmed", evidence: `Request Executed and the wallet holds ${optionTokenBalanceRaw} raw units of option token ${request.optionTokenId} (reported sizeOut ${sizeOut}).`, fillConfirmed: true };
   }
   return { state: "executed-balance-unconfirmed", evidence: "Request reports Executed, but the wallet balance does not yet independently confirm the reported size. Not treated as a fill.", fillConfirmed: false };
+}
+
+export type CallPutCloseReconciliation = {
+  state:
+    | "awaiting-request-key"
+    | "request-not-found"
+    | "pending"
+    | "pending-past-delay"
+    | "cancelled"
+    | "executed-position-confirmed"
+    | "executed-position-unconfirmed";
+  evidence: string;
+  fillConfirmed: boolean;
+};
+
+/** A close is confirmed only when an Executed close request and matching option-token reduction agree. */
+export function reconcileCallPutClose(params: {
+  request: CallPutRobinhoodRequestSnapshot | null;
+  requestKey: Hex | null;
+  account: Address;
+  optionTokenId: bigint;
+  preBalanceRaw: bigint;
+  balanceAfterRaw: bigint | null;
+  nowMs: number;
+}): CallPutCloseReconciliation {
+  const { request, requestKey, account, optionTokenId, preBalanceRaw, balanceAfterRaw, nowMs } = params;
+  if (!requestKey || !request) {
+    return { state: "awaiting-request-key", evidence: "No close request key is available yet. A transaction hash alone does not establish a close.", fillConfirmed: false };
+  }
+  if (request.kind !== "close" || request.requestKey.toLowerCase() !== requestKey.toLowerCase()) {
+    throw new Error("Close request snapshot does not match the stored request key.");
+  }
+  if (request.status === "Not found") {
+    return { state: "request-not-found", evidence: "PositionManager has no close record for this key (blockTime = 0).", fillConfirmed: false };
+  }
+  if (request.account && getAddress(request.account) !== getAddress(account)) {
+    throw new Error("Close request account differs from the tracked account.");
+  }
+  if (request.optionTokenId !== null && request.optionTokenId !== optionTokenId) {
+    throw new Error("Close request position token differs from the tracked position token.");
+  }
+  if (request.status === "Cancelled") {
+    return { state: "cancelled", evidence: "Keeper outcome: Cancelled. No close is confirmed.", fillConfirmed: false };
+  }
+  if (request.status === "Pending") {
+    const submitted = request.submittedAt === null ? null : Number(request.submittedAt);
+    const stale = submitted !== null && nowMs / 1000 > submitted + CALLPUT_LIMITS.maxTimeDelaySeconds;
+    return stale
+      ? { state: "pending-past-delay", evidence: "Still Pending beyond the 180s maxTimeDelay. Keep polling; do not resubmit blindly.", fillConfirmed: false }
+      : { state: "pending", evidence: "Close is pending in the keeper queue. No position reduction is claimed.", fillConfirmed: false };
+  }
+  const requestedSize = request.size ?? 0n;
+  const reduction = balanceAfterRaw === null || balanceAfterRaw > preBalanceRaw ? 0n : preBalanceRaw - balanceAfterRaw;
+  if (requestedSize > 0n && reduction >= requestedSize) {
+    return { state: "executed-position-confirmed", evidence: `Close request Executed and the wallet's option-token balance decreased by ${reduction} raw units (request size ${requestedSize}).`, fillConfirmed: true };
+  }
+  return { state: "executed-position-unconfirmed", evidence: "Close request reports Executed, but the matching wallet balance reduction is not independently confirmed.", fillConfirmed: false };
+}
+
+export type CallPutSettlementReconciliation = {
+  state: "awaiting-settlement-event" | "settled-position-confirmed" | "settled-position-unconfirmed";
+  evidence: string;
+  fillConfirmed: boolean;
+};
+
+/** A settlement is confirmed only when its matching event and position-token reduction agree. */
+export function reconcileCallPutSettlement(params: {
+  settlement: CallPutSettlementEvent | null;
+  preBalanceRaw: bigint;
+  balanceAfterRaw: bigint | null;
+}): CallPutSettlementReconciliation {
+  const { settlement, preBalanceRaw, balanceAfterRaw } = params;
+  if (!settlement) {
+    return { state: "awaiting-settlement-event", evidence: "No matching SettlePosition event has been recovered yet.", fillConfirmed: false };
+  }
+  const reduction = balanceAfterRaw === null || balanceAfterRaw > preBalanceRaw ? 0n : preBalanceRaw - balanceAfterRaw;
+  if (settlement.size > 0n && reduction >= settlement.size) {
+    return { state: "settled-position-confirmed", evidence: `Matching SettlePosition event reports ${settlement.size} raw units and the wallet's balance decreased by ${reduction} raw units.`, fillConfirmed: true };
+  }
+  return { state: "settled-position-unconfirmed", evidence: "SettlePosition event is present, but the corresponding wallet balance reduction is not independently confirmed.", fillConfirmed: false };
 }

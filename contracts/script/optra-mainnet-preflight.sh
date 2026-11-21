@@ -149,6 +149,18 @@ fi
 
 if ((config_complete)); then
   for name in OPTRA_MAINNET_DEPLOYER OPTRA_MAINNET_ADMIN_SAFE OPTRA_MAINNET_KEEPER OPTRA_MAINNET_POOL_CREATOR OPTRA_MAINNET_UNDERLYING OPTRA_MAINNET_QUOTE; do
+    if [[ "$name" == "OPTRA_MAINNET_UNDERLYING" ]]; then
+      value="${!name:-}"
+      normalized="$(lowercase "$value")"
+      if [[ ! "$value" =~ ^0x[0-9a-fA-F]{40}$ ]]; then
+        printf 'FAIL: %s must be a 20-byte EVM address.\n' "$name" >&2
+        exit 1
+      fi
+      if [[ "$normalized" == 0x0000000000000000000000000000000000000000 ]]; then
+        printf '%s\n' 'PASS: OPTRA_MAINNET_UNDERLYING is native ETH (address(0)).'
+        continue
+      fi
+    fi
     require_address "$name"
   done
   deployer="$(lowercase "$OPTRA_MAINNET_DEPLOYER")"
@@ -162,6 +174,7 @@ if ((config_complete)); then
     printf '%s\n' 'FAIL: deployer must be distinct from Safe/admin and keeper.' >&2; exit 1;
   }
   [[ "$keeper" != "$admin" ]] || { printf '%s\n' 'FAIL: keeper must be distinct from Safe/admin.' >&2; exit 1; }
+  [[ "$creator" == "$admin" ]] || { printf '%s\n' 'FAIL: selected P4 route requires the Safe/admin to be the pool creator.' >&2; exit 1; }
 
   python3 - "$OPTRA_MAINNET_POOL_FEE" "$OPTRA_MAINNET_TICK_SPACING" "$OPTRA_MAINNET_INITIAL_SQRT_PRICE_X96" "$OPTRA_MAINNET_MAX_POLICY_AGE" <<'PY'
 import sys
@@ -206,6 +219,10 @@ PY
 
   for token_name in OPTRA_MAINNET_UNDERLYING OPTRA_MAINNET_QUOTE; do
     token="${!token_name}"
+    if [[ "$token_name" == "OPTRA_MAINNET_UNDERLYING" && "$(lowercase "$token")" == "0x0000000000000000000000000000000000000000" ]]; then
+      printf '%s\n' 'PASS: OPTRA_MAINNET_UNDERLYING is native ETH (no ERC-20 code/decimals expected).'
+      continue
+    fi
     code="$(rpc code "$token")"
     [[ "$code" != '0x' && -n "$code" ]] || { printf 'FAIL: %s has no runtime code.\n' "$token_name" >&2; exit 1; }
     decimals="$(rpc call "$token" 'decimals()(uint8)')"
@@ -223,6 +240,8 @@ PY
   [[ "$safe_code" != '0x' && -n "$safe_code" ]] || { printf '%s\n' 'FAIL: Safe/admin has no runtime code.' >&2; exit 1; }
   creator_code="$(rpc code "$OPTRA_MAINNET_POOL_CREATOR")"
   [[ "$creator_code" != '0x' && -n "$creator_code" ]] || { printf '%s\n' 'FAIL: pool creator has no runtime code.' >&2; exit 1; }
+  keeper_code="$(rpc code "$OPTRA_MAINNET_KEEPER")"
+  [[ "$keeper_code" == '0x' || -z "$keeper_code" ]] || { printf '%s\n' 'FAIL: configured keeper must be the separately operated EOA, not a contract.' >&2; exit 1; }
   owners="$(rpc call "$OPTRA_MAINNET_ADMIN_SAFE" 'getOwners()(address[])')"
   threshold="$(rpc call "$OPTRA_MAINNET_ADMIN_SAFE" 'getThreshold()(uint256)')"
   python3 - "$owners" "$threshold" <<'PY'

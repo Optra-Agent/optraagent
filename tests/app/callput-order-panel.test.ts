@@ -11,10 +11,10 @@ import { CALLPUT_WRITE_ABIS } from "../../lib/venue/callput-robinhood-write";
 
 const ACCOUNT = "0x000000000000000000000000000000000000dEaD" as const;
 const KEY = `0x${"ab".repeat(32)}` as const;
-const mocks = vi.hoisted(() => ({ publicClient: null as unknown, walletClient: null as unknown }));
+const mocks = vi.hoisted(() => ({ chainId: 4663, publicClient: null as unknown, walletClient: null as unknown }));
 
 vi.mock("wagmi", () => ({
-  useAccount: () => ({ address: "0x000000000000000000000000000000000000dEaD", chainId: 4663, isConnected: true }),
+  useAccount: () => ({ address: "0x000000000000000000000000000000000000dEaD", chainId: mocks.chainId, isConnected: true }),
   usePublicClient: () => mocks.publicClient,
   useWalletClient: () => ({ data: mocks.walletClient }),
 }));
@@ -47,6 +47,9 @@ function publicClient(receiptLogs: unknown[] = [], o: { usdg?: bigint; eth?: big
   return {
     getChainId: vi.fn(async () => { if (o.rpcFail) throw new Error("HTTP request failed. URL: https://rpc.mainnet.chain.robinhood.com"); return 4663; }),
     getBalance: vi.fn(async () => o.eth ?? 10n ** 17n),
+    estimateGas: vi.fn(async () => 21_000n),
+    estimateFeesPerGas: vi.fn(async () => ({ gasPrice: 1_000_000_000n })),
+    getGasPrice: vi.fn(async () => 1_000_000_000n),
     readContract: vi.fn(async ({ functionName }: { functionName: string }) => {
       if (functionName === "controller") return CALLPUT_ROBINHOOD_CONTRACTS.controller;
       if (functionName === "executionFee") return 60_000_000_000_000n;
@@ -57,6 +60,7 @@ function publicClient(receiptLogs: unknown[] = [], o: { usdg?: bigint; eth?: big
       throw new Error(`unexpected ${functionName}`);
     }),
     waitForTransactionReceipt: vi.fn(async () => ({ status: o.receiptStatus ?? "success", logs: receiptLogs })),
+    getTransactionReceipt: vi.fn(async () => ({ status: o.receiptStatus ?? "success", logs: receiptLogs })),
   };
 }
 
@@ -81,9 +85,21 @@ async function prepareOrder(user: ReturnType<typeof userEvent.setup>) {
 describe("CallPutOrderPanel", () => {
   beforeEach(() => {
     window.localStorage.clear();
-    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify(feed()), { status: 200 })));
+    mocks.chainId = 4663;
+    vi.stubGlobal("fetch", vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+      const method = init?.method ?? "GET";
+      if (url.includes("/market?")) return new Response(JSON.stringify(feed()), { status: 200 });
+      if (url === "/api/venue/callput/orders" && method === "POST") {
+        return new Response(JSON.stringify({ order: { id: "123e4567-e89b-42d3-a456-426614174000" } }), { status: 201 });
+      }
+      if (url.endsWith("/events")) {
+        return new Response(JSON.stringify({ event: { verification: "client-reported-reference" } }), { status: 201 });
+      }
+      return new Response(JSON.stringify({ orders: [] }), { status: 200 });
+    }));
   });
-  afterEach(() => { cleanup(); vi.unstubAllEnvs(); vi.unstubAllGlobals(); mocks.walletClient = null; });
+  afterEach(() => { cleanup(); vi.unstubAllEnvs(); vi.unstubAllGlobals(); mocks.chainId = 4663; mocks.walletClient = null; });
 
   it("previews a prepared order but cannot sign when the build flag is off", async () => {
     mocks.publicClient = publicClient();
@@ -104,6 +120,7 @@ describe("CallPutOrderPanel", () => {
   it("requires per-transaction review, signs once, captures the request key and never claims a fill", async () => {
     const topics = encodeEventTopics({ abi: CALLPUT_WRITE_ABIS.positionManager, eventName: "GenerateRequestKey", args: { account: ACCOUNT, key: KEY, isOpen: true } });
     const pc = publicClient([{ address: CALLPUT_ROBINHOOD_CONTRACTS.positionManager, topics, data: encodeAbiParameters([], []) }]);
+    pc.estimateFeesPerGas.mockImplementationOnce(async () => ({ maxFeePerGas: 2_000_000_000n, maxPriorityFeePerGas: 100_000_000n } as never));
     mocks.publicClient = pc;
     const sendTransaction = vi.fn(async () => `0x${"cd".repeat(32)}`);
     mocks.walletClient = { sendTransaction, chain: { id: 4663 } };
@@ -121,19 +138,137 @@ describe("CallPutOrderPanel", () => {
 
     await screen.findByText(KEY);
     expect(sendTransaction).toHaveBeenCalledTimes(1);
-    const call = (sendTransaction.mock.calls as unknown as Array<[{ to: string; value: bigint }]>)[0][0];
-    expect(call.to).toBe(CALLPUT_ROBINHOOD_CONTRACTS.positionManager);
-    expect(call.value).toBe(60_000_000_000_000n);
+    const call = (sendTransaction.mock.calls as unknown as Array<[{
+      to: string; value: bigint; gas: bigint; maxFeePerGas: bigint; maxPriorityFeePerGas: bigint; gasPrice?: bigint;
+    }]>)[0][0];
+    expect(call).toMatchObject({
+      to: CALLPUT_ROBINHOOD_CONTRACTS.positionManager,
+      value: 60_000_000_000_000n,
+      gas: 21_000n,
+      maxFeePerGas: 2_000_000_000n,
+      maxPriorityFeePerGas: 100_000_000n,
+    });
+    expect(call.gasPrice).toBeUndefined();
     expect(screen.getByRole("status", { name: "" }).textContent).toMatch(/not a fill yet/);
+    const intentWrite = vi.mocked(fetch).mock.calls.find(([url, init]) => url === "/api/venue/callput/orders" && init?.method === "POST");
+    expect(intentWrite).toBeDefined();
+    const persistedIntent = JSON.parse(String(intentWrite?.[1]?.body)).intent;
+    expect(persistedIntent).toMatchObject({ kind: "open", chainId: 4663, underlying: "AAPL" });
+    expect(persistedIntent).not.toHaveProperty("txHash");
+    expect(persistedIntent).not.toHaveProperty("requestKey");
     const stored = JSON.parse(window.localStorage.getItem("optra.callput.robinhood.intents.v1") ?? "[]");
     expect(stored[0]).toMatchObject({ requestKey: KEY, kind: "open", chainId: 4663 });
     await waitFor(() => expect(screen.queryByText("executed-balance-confirmed")).toBeNull());
+  });
+
+  it("does not open the wallet prompt when the server cannot persist the order intent", async () => {
+    const fetchMock = vi.fn(async (input: string | URL | Request) => {
+      const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+      return url.includes("/market?")
+        ? new Response(JSON.stringify(feed()), { status: 200 })
+        : new Response(JSON.stringify({ error: { code: "DATABASE_UNAVAILABLE" } }), { status: 503 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    mocks.publicClient = publicClient([eventLog()]);
+    const sendTransaction = vi.fn(async () => `0x${"cd".repeat(32)}`);
+    mocks.walletClient = { sendTransaction, chain: { id: 4663 } };
+    const Panel = await loadPanel(true);
+    const user = userEvent.setup();
+    render(createElement(Panel));
+    await prepareOrder(user);
+    await signFirst(user);
+
+    expect(fetchMock).toHaveBeenCalledWith("/api/venue/callput/orders", expect.objectContaining({ method: "POST" }));
+    expect(sendTransaction).not.toHaveBeenCalled();
+  });
+
+  it("shows the RPC gas estimate and maximum network fee in the transaction review", async () => {
+    const pc = publicClient();
+    mocks.publicClient = pc;
+    mocks.walletClient = { sendTransaction: vi.fn(), chain: { id: 4663 } };
+    const Panel = await loadPanel(false);
+    const user = userEvent.setup();
+    render(createElement(Panel));
+    await prepareOrder(user);
+
+    expect(screen.getByText("Estimated gas limit")).toBeTruthy();
+    expect(screen.getByText("21000", { exact: true })).toBeTruthy();
+    expect(screen.getByText("Estimated network fee ceiling (wei)")).toBeTruthy();
+    expect(screen.getByText("21000000000000", { exact: true })).toBeTruthy();
+    expect(screen.getByText(/^calldata 0x[0-9a-f]+$/)).toBeTruthy();
+    expect(pc.estimateGas).toHaveBeenCalledTimes(1);
+  });
+
+  it("refuses to open when the connected wallet changes chains after order preparation", async () => {
+    const pc = publicClient();
+    const sendTransaction = vi.fn();
+    mocks.publicClient = pc;
+    mocks.walletClient = { sendTransaction, chain: { id: 4663 } };
+    const Panel = await loadPanel(true);
+    const user = userEvent.setup();
+    render(createElement(Panel));
+    await prepareOrder(user);
+
+    mocks.chainId = 1;
+    await user.click(screen.getByRole("checkbox"));
+    await user.click(screen.getByRole("button", { name: "Sign in wallet" }));
+
+    expect((await screen.findByRole("alert")).textContent).toMatch(/Switch to Robinhood Mainnet/i);
+    expect(sendTransaction).not.toHaveBeenCalled();
+  });
+
+  it("blocks an open when native balance cannot cover its execution fee plus estimated gas", async () => {
+    const pc = publicClient([], { eth: 80_000_000_000_000n });
+    mocks.publicClient = pc;
+    mocks.walletClient = { sendTransaction: vi.fn(), chain: { id: 4663 } };
+    const Panel = await loadPanel(true);
+    const user = userEvent.setup();
+    render(createElement(Panel));
+    await user.click(screen.getByRole("button", { name: "Load market" }));
+    const expiry = await screen.findByLabelText("Expiry");
+    await user.selectOptions(expiry, expiry.querySelectorAll("option")[1].getAttribute("value") as string);
+    const long = screen.getByLabelText("Long leg");
+    const options = long.querySelectorAll("option");
+    await user.selectOptions(long, options[2].value);
+    await user.selectOptions(screen.getByLabelText("Short leg"), options[1].value);
+    await user.click(screen.getByRole("button", { name: "Prepare order" }));
+
+    expect((await screen.findByRole("alert")).textContent).toMatch(/execution fee plus estimated gas/i);
+    expect(screen.queryByText("Order review")).toBeNull();
+    expect(pc.estimateGas).toHaveBeenCalledTimes(1);
   });
 
   const eventLog = () => ({
     address: CALLPUT_ROBINHOOD_CONTRACTS.positionManager,
     topics: encodeEventTopics({ abi: CALLPUT_WRITE_ABIS.positionManager, eventName: "GenerateRequestKey", args: { account: ACCOUNT, key: KEY, isOpen: true } }),
     data: encodeAbiParameters([], []),
+  });
+
+  it("persists a broadcast transaction and recovers its request key without resubmitting after an RPC error", async () => {
+    const pc = publicClient([eventLog()]);
+    pc.waitForTransactionReceipt.mockRejectedValueOnce(new Error("RPC receipt timeout"));
+    const txHash = `0x${"cd".repeat(32)}`;
+    const sendTransaction = vi.fn(async () => txHash);
+    mocks.publicClient = pc;
+    mocks.walletClient = { sendTransaction, chain: { id: 4663 } };
+    const Panel = await loadPanel(true);
+    const user = userEvent.setup();
+    render(createElement(Panel));
+    await prepareOrder(user);
+    await signFirst(user);
+
+    expect((await screen.findByRole("alert")).textContent).toMatch(/RPC receipt timeout/);
+    const savedWhileUnknown = JSON.parse(window.localStorage.getItem("optra.callput.robinhood.intents.v1") ?? "[]")[0];
+    expect(savedWhileUnknown.pendingTransaction).toMatchObject({ kind: "open-spread", txHash, status: "submitted" });
+    expect((screen.getByRole("button", { name: "Sign in wallet" }) as HTMLButtonElement).disabled).toBe(true);
+    expect(sendTransaction).toHaveBeenCalledTimes(1);
+
+    await user.click(screen.getByRole("button", { name: "Recover transaction" }));
+    await screen.findByText(KEY);
+
+    const recovered = JSON.parse(window.localStorage.getItem("optra.callput.robinhood.intents.v1") ?? "[]")[0];
+    expect(recovered).toMatchObject({ requestKey: KEY, pendingTransaction: { kind: "open-spread", txHash, status: "confirmed" } });
+    expect(sendTransaction).toHaveBeenCalledTimes(1);
   });
 
   async function signFirst(user: ReturnType<typeof userEvent.setup>) {
@@ -151,12 +286,14 @@ describe("CallPutOrderPanel", () => {
     await prepareOrder(user);
     await signFirst(user);
     expect((await screen.findByRole("alert")).textContent).toBe("You rejected the request in your wallet. Nothing was sent.");
-    expect(window.localStorage.getItem("optra.callput.robinhood.intents.v1")).toBeNull();
+    const savedDraft = JSON.parse(window.localStorage.getItem("optra.callput.robinhood.intents.v1") ?? "[]")[0];
+    expect(savedDraft).toMatchObject({ kind: "open", chainId: 4663, serverOrderId: "123e4567-e89b-42d3-a456-426614174000" });
+    expect(savedDraft.pendingTransaction).toBeUndefined();
     // retry stays possible: the same transaction is offered again
     expect(screen.getByRole("button", { name: "Sign in wallet" })).toBeTruthy();
   });
 
-  it("does not store a request or claim success when the mined transaction reverts", async () => {
+  it("persists and displays a reverted transaction without offering it again", async () => {
     mocks.publicClient = publicClient([], { receiptStatus: "reverted" });
     mocks.walletClient = { sendTransaction: vi.fn(async () => `0x${"cd".repeat(32)}`), chain: { id: 4663 } };
     const Panel = await loadPanel(true);
@@ -165,8 +302,11 @@ describe("CallPutOrderPanel", () => {
     await prepareOrder(user);
     await signFirst(user);
     expect((await screen.findByRole("alert")).textContent).toMatch(/reverted/);
-    expect(screen.queryByText("Last submitted request")).toBeNull();
-    expect(window.localStorage.getItem("optra.callput.robinhood.intents.v1")).toBeNull();
+    expect(await screen.findByText("Last transaction")).toBeTruthy();
+    expect(screen.getByText("reverted")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Sign in wallet" })).toBeNull();
+    expect(JSON.parse(window.localStorage.getItem("optra.callput.robinhood.intents.v1") ?? "[]")[0])
+      .toMatchObject({ txHash: `0x${"cd".repeat(32)}`, requestKey: null, pendingTransaction: { status: "reverted" } });
   });
 
   it("refuses to sign an open quote older than 60 seconds", async () => {
@@ -181,6 +321,8 @@ describe("CallPutOrderPanel", () => {
     vi.spyOn(Date, "now").mockImplementation(() => realNow() + 61_000);
     await signFirst(user);
     expect((await screen.findByRole("alert")).textContent).toMatch(/older than 60 seconds/);
+    expect(screen.queryByText("Order review")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Sign in wallet" })).toBeNull();
     expect(sendTransaction).not.toHaveBeenCalled();
     vi.restoreAllMocks();
   });
@@ -257,6 +399,95 @@ describe("CallPutOrderPanel", () => {
       render(createElement(Panel));
       await user.click(await screen.findByRole("button", { name: "Refresh status" }));
     }
+
+    it("restores a server-persisted transaction and rechecks its request onchain after local storage is empty", async () => {
+      const txHash = `0x${"cd".repeat(32)}` as const;
+      const orderId = "123e4567-e89b-42d3-a456-426614174010";
+      const clientIntentId = "123e4567-e89b-42d3-a456-426614174011";
+      const serverOrder = {
+        id: orderId,
+        clientIntentId,
+        account: ACCOUNT,
+        chainId: 4663,
+        kind: "open",
+        intent: {
+          version: 1, chainId: 4663, account: ACCOUNT, kind: "open", strategy: "BuyPutSpread", underlying: "AAPL",
+          underlyingAssetIndex: 16, longOptionId: golden.request.longOptionId, shortOptionId: golden.request.shortOptionId,
+          expiry: 1_800_000_000, sizeRaw: "1000", minSizeRaw: "780", amountInRaw: "900811", createdAtMs: Date.now(),
+        },
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        events: [
+          { id: "event-1", orderId, eventId: "123e4567-e89b-42d3-a456-426614174012", referenceKind: "transaction", transactionKind: "open-spread", transactionHash: txHash, requestKey: null, createdAt: new Date().toISOString(), verification: "client-reported-reference" },
+          { id: "event-2", orderId, eventId: "123e4567-e89b-42d3-a456-426614174013", referenceKind: "request-key", transactionKind: "open-spread", transactionHash: txHash, requestKey: KEY, createdAt: new Date(Date.now() + 1).toISOString(), verification: "client-reported-reference" },
+        ],
+      };
+      vi.stubGlobal("fetch", vi.fn(async (input: string | URL | Request) => {
+        const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+        return url === "/api/venue/callput/orders"
+          ? new Response(JSON.stringify({ orders: [serverOrder] }), { status: 200 })
+          : new Response(JSON.stringify({ event: { verification: "client-reported-reference" } }), { status: 200 });
+      }));
+      mocks.publicClient = publicClient([eventLog()], { request: pending });
+      const sendTransaction = vi.fn();
+      mocks.walletClient = { sendTransaction, chain: { id: 4663 } };
+      const Panel = await loadPanel(false);
+      const user = userEvent.setup();
+      render(createElement(Panel));
+
+      expect(await screen.findByText(KEY)).toBeTruthy();
+      expect(JSON.parse(window.localStorage.getItem("optra.callput.robinhood.intents.v1") ?? "[]")[0])
+        .toMatchObject({ serverOrderId: orderId, txHash, requestKey: KEY });
+      await user.click(await screen.findByRole("button", { name: "Recover transaction" }));
+      expect(await screen.findByText("pending")).toBeTruthy();
+      expect(sendTransaction).not.toHaveBeenCalled();
+    });
+
+    it("does not downgrade a locally confirmed open receipt when hydrating server references", async () => {
+      const txHash = `0x${"cd".repeat(32)}` as const;
+      const orderId = "123e4567-e89b-42d3-a456-426614174014";
+      const clientIntentId = "123e4567-e89b-42d3-a456-426614174015";
+      const createdAtMs = Date.now();
+      window.localStorage.setItem("optra.callput.robinhood.intents.v1", JSON.stringify([{
+        version: 1, chainId: 4663, account: ACCOUNT, kind: "open", strategy: "BuyPutSpread", underlying: "AAPL",
+        underlyingAssetIndex: 16, longOptionId: golden.request.longOptionId, shortOptionId: golden.request.shortOptionId,
+        expiry: 1_800_000_000, sizeRaw: "1000", minSizeRaw: "780", amountInRaw: "900811", createdAtMs,
+        clientIntentId, serverOrderId: orderId, txHash, requestKey: KEY,
+        pendingTransaction: { kind: "open-spread", txHash, status: "confirmed", eventId: "123e4567-e89b-42d3-a456-426614174016", historySynced: true },
+        requestKeyEventId: "123e4567-e89b-42d3-a456-426614174017", requestKeySynced: true,
+      }]));
+      const serverOrder = {
+        id: orderId, clientIntentId, account: ACCOUNT, chainId: 4663, kind: "open",
+        intent: {
+          version: 1, chainId: 4663, account: ACCOUNT, kind: "open", strategy: "BuyPutSpread", underlying: "AAPL",
+          underlyingAssetIndex: 16, longOptionId: golden.request.longOptionId, shortOptionId: golden.request.shortOptionId,
+          expiry: 1_800_000_000, sizeRaw: "1000", minSizeRaw: "780", amountInRaw: "900811", createdAtMs,
+        },
+        createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
+        events: [
+          { id: "event-1", orderId, eventId: "123e4567-e89b-42d3-a456-426614174016", referenceKind: "transaction", transactionKind: "open-spread", transactionHash: txHash, requestKey: null, createdAt: new Date().toISOString(), verification: "client-reported-reference" },
+          { id: "event-2", orderId, eventId: "123e4567-e89b-42d3-a456-426614174017", referenceKind: "request-key", transactionKind: "open-spread", transactionHash: txHash, requestKey: KEY, createdAt: new Date(Date.now() + 1).toISOString(), verification: "client-reported-reference" },
+        ],
+      };
+      const fetchMock = vi.fn(async () => new Response(JSON.stringify({ orders: [serverOrder] }), { status: 200 }));
+      vi.stubGlobal("fetch", fetchMock);
+      mocks.publicClient = publicClient();
+      mocks.walletClient = { sendTransaction: vi.fn(), chain: { id: 4663 } };
+      const Panel = await loadPanel(false);
+      render(createElement(Panel));
+
+      await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+      await waitFor(() => {
+        const hydrated = JSON.parse(window.localStorage.getItem("optra.callput.robinhood.intents.v1") ?? "[]")[0];
+        expect(hydrated).toMatchObject({
+          serverOrderId: orderId,
+          txHash,
+          requestKey: KEY,
+          pendingTransaction: { status: "confirmed", txHash },
+          requestKeySynced: true,
+        });
+      });
+    });
 
     it("shows a pending request as pending, not filled", async () => {
       await refresh(pending);

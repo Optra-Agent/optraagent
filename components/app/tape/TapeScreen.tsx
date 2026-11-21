@@ -8,6 +8,7 @@ import { useAuthSession } from "../AuthSessionProvider";
 import { formatUtc, shortHash, titleCase, errorText } from "../format";
 import { OrdersTable, PositionGrid, TapeList } from "../paper";
 import { CallPutOrderPanel } from "./CallPutOrderPanel";
+import { CallPutPositionActions } from "./CallPutPositionActions";
 import { CallPutRequestTracker } from "./CallPutRequestTracker";
 import { Chip, JourneyRail, PageHeader, Skeleton, StateBlock, Panel } from "../ui";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -142,6 +143,7 @@ export function TapeScreen({ agentId }: { agentId: string }) {
 
       {!agentId ? <AgentPicker /> : null}
       <CallPutOrderPanel />
+      <CallPutPositionActions />
       <CallPutRequestTracker />
       {state === "loading" ? <div className="state-panel" role="status"><Skeleton lines={4} /><span className="sr-only">Loading persisted paper history…</span></div> : null}
       {state === "error" ? (

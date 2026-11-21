@@ -203,7 +203,7 @@ export function MarketScreen() {
                   {results.slice(0, shown).map((market) => (
                     <li key={market.symbol}>
                       <button type="button" className="mk-row" aria-pressed={market.symbol === selected} aria-label={`${market.symbol}, ${cleanName(market.name)}. Open details`} onClick={() => open(market.symbol)}>
-                        <span className="mk-asset"><AssetLogo symbol={market.symbol} logoUrl={market.logoUrl} /><span className="mk-asset-text"><b>{market.symbol}</b><span>{cleanName(market.name)}</span></span></span>
+                        <span className="mk-asset"><AssetLogo symbol={market.symbol} /><span className="mk-asset-text"><b>{market.symbol}</b><span>{cleanName(market.name)}</span></span></span>
                         <span className="mk-mult mono">{Number(market.currentMultiplier).toFixed(4)}{adjusted(market) ? <Chip tone="ember">≠ 1</Chip> : null}</span>
                         <span className="mk-token mono">{market.tokenAddress ? shortAddress(market.tokenAddress) : "n/a"}</span>
                         <ChevronRight aria-hidden />
@@ -219,7 +219,7 @@ export function MarketScreen() {
               {asset ? (
                 <>
                   <div className="mk-detail-head">
-                    <div className="mk-detail-id"><AssetLogo symbol={asset.symbol} logoUrl={asset.logoUrl} size={48} /><div><p className="eyebrow">{asset.symbol}</p><h2>{cleanName(asset.name)}</h2></div></div>
+                    <div className="mk-detail-id"><AssetLogo symbol={asset.symbol} size={48} /><div><p className="eyebrow">{asset.symbol}</p><h2>{cleanName(asset.name)}</h2></div></div>
                     {quoteStatus === "ready" && snapshot ? <Chip tone={blocked ? "ember" : "azure"}>{snapshot.stale ? "Quote stale" : snapshot.tradingHalt ? "Trading halted" : "Fresh quote"}</Chip> : null}
                   </div>
 

@@ -1,8 +1,8 @@
 "use client";
 
-import { useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { useAccount, usePublicClient, useWalletClient } from "wagmi";
-import { getAddress, parseUnits, type Address, type Hex } from "viem";
+import { getAddress, isAddress, parseUnits, type Address, type Hex, type PublicClient } from "viem";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { NativeSelect } from "@/components/ui/native-select";
@@ -24,11 +24,19 @@ import {
   reconcileCallPutOpen,
   type CallPutOpenSpreadPlan,
   type CallPutOrderIntent,
+  type CallPutPreparedTransaction,
   type CallPutReconciliation,
   type CallPutSpreadStrategy,
   type CallPutUnderlyingSymbol,
 } from "@/lib/venue/callput-robinhood-write";
 import { robinhoodMainnet } from "@/lib/chain/robinhood";
+import {
+  appendCallPutOrderReference,
+  createCallPutLedgerId,
+  createCallPutOrderIntent,
+  listCallPutOrderIntents,
+} from "@/lib/venue/callput-order-ledger-client";
+import type { CallPutOrderIntentRecord } from "@/lib/venue/callput-order-ledger";
 import { formatUtc } from "../format";
 import { Chip, Panel } from "../ui";
 
@@ -36,12 +44,78 @@ import { Chip, Panel } from "../ui";
 export const CALLPUT_LIVE_ORDERS_ENABLED = process.env.NEXT_PUBLIC_CALLPUT_LIVE_ORDERS === "true";
 const INTENT_STORAGE_KEY = "optra.callput.robinhood.intents.v1";
 const QUOTE_MAX_AGE_MS = 60_000;
+const GAS_QUOTE_MAX_AGE_MS = 30_000;
 
 function nowMs(): number {
   return Date.now();
 }
 
 const INTENT_EVENT = "optra-callput-intents";
+
+type StoredCallPutOrderIntent = CallPutOrderIntent & {
+  clientIntentId?: string;
+  serverOrderId?: string;
+  requestKeyEventId?: string;
+  requestKeySynced?: boolean;
+  pendingTransaction?: {
+    kind: CallPutPreparedTransaction["kind"];
+    txHash: Hex;
+    status: "submitted" | "confirmed" | "reverted";
+    eventId?: string;
+    historySynced?: boolean;
+  };
+};
+
+type CallPutGasQuote = {
+  gasLimit: bigint;
+  maxFeePerGas: bigint;
+  maxPriorityFeePerGas: bigint | null;
+  legacyGasPrice: bigint | null;
+  totalCostWei: bigint;
+};
+
+function persistedOpenIntent(intent: CallPutOrderIntent): CallPutOrderIntentRecord {
+  return {
+    version: intent.version,
+    chainId: intent.chainId,
+    account: intent.account,
+    kind: "open",
+    strategy: intent.strategy,
+    underlying: intent.underlying,
+    underlyingAssetIndex: intent.underlyingAssetIndex,
+    longOptionId: intent.longOptionId,
+    shortOptionId: intent.shortOptionId,
+    expiry: intent.expiry,
+    sizeRaw: intent.sizeRaw,
+    minSizeRaw: intent.minSizeRaw,
+    amountInRaw: intent.amountInRaw,
+    createdAtMs: intent.createdAtMs,
+  };
+}
+
+async function estimateCallPutGas(client: PublicClient, tx: CallPutPreparedTransaction): Promise<CallPutGasQuote> {
+  const [gasLimit, fees] = await Promise.all([
+    client.estimateGas({ account: tx.from, to: tx.to, data: tx.data, value: tx.value }),
+    client.estimateFeesPerGas(),
+  ]);
+  const eip1559 = fees.maxFeePerGas !== undefined && fees.maxFeePerGas !== null;
+  if (eip1559 && !fees.maxPriorityFeePerGas) throw new Error("The RPC returned an incomplete EIP-1559 fee quote; no transaction is offered.");
+  const maxFeePerGas = eip1559 ? fees.maxFeePerGas! : fees.gasPrice ?? await client.getGasPrice();
+  const maxPriorityFeePerGas = eip1559 ? fees.maxPriorityFeePerGas! : null;
+  return {
+    gasLimit,
+    maxFeePerGas,
+    maxPriorityFeePerGas,
+    legacyGasPrice: fees.gasPrice ?? null,
+    totalCostWei: gasLimit * maxFeePerGas,
+  };
+}
+
+function callPutGasRequest(gas: CallPutGasQuote) {
+  return gas.maxPriorityFeePerGas === null
+    ? { gas: gas.gasLimit, gasPrice: gas.legacyGasPrice ?? gas.maxFeePerGas }
+    : { gas: gas.gasLimit, maxFeePerGas: gas.maxFeePerGas, maxPriorityFeePerGas: gas.maxPriorityFeePerGas };
+}
 
 function subscribeIntents(onChange: () => void) {
   window.addEventListener("storage", onChange);
@@ -56,17 +130,49 @@ function readIntentsRaw(): string {
   return window.localStorage.getItem(INTENT_STORAGE_KEY) ?? "[]";
 }
 
-function parseIntents(raw: string): CallPutOrderIntent[] {
+function parseIntents(raw: string): StoredCallPutOrderIntent[] {
   try {
     const parsed: unknown = JSON.parse(raw);
-    return Array.isArray(parsed) ? (parsed as CallPutOrderIntent[]).filter((item) => item?.version === 1 && item.chainId === CALLPUT_ROBINHOOD_CHAIN_ID) : [];
+    return Array.isArray(parsed) ? (parsed as StoredCallPutOrderIntent[]).filter((item) => item?.version === 1 && item.chainId === CALLPUT_ROBINHOOD_CHAIN_ID) : [];
   } catch {
     return [];
   }
 }
 
-function saveIntent(intent: CallPutOrderIntent) {
-  const others = parseIntents(readIntentsRaw()).filter((item) => !(item.requestKey && item.requestKey === intent.requestKey));
+function mergeRecoveredIntent(existing: StoredCallPutOrderIntent | undefined, recovered: StoredCallPutOrderIntent): StoredCallPutOrderIntent {
+  if (!existing) return recovered;
+  const existingPending = existing.pendingTransaction;
+  const recoveredPending = recovered.pendingTransaction;
+  const sameTransaction = Boolean(existingPending && recoveredPending && existingPending.txHash.toLowerCase() === recoveredPending.txHash.toLowerCase());
+  const pendingTransaction = existingPending && sameTransaction
+    ? {
+      ...recoveredPending,
+      ...existingPending,
+      eventId: recoveredPending?.eventId ?? existingPending.eventId,
+      historySynced: Boolean(recoveredPending?.historySynced || existingPending.historySynced),
+    }
+    : existingPending?.historySynced === false
+      ? existingPending
+      : recoveredPending ?? existingPending;
+  const keepLocalRequest = Boolean(existing.requestKey && !existing.requestKeySynced);
+  const requestKey = keepLocalRequest ? existing.requestKey : recovered.requestKey ?? existing.requestKey;
+  return {
+    ...recovered,
+    clientIntentId: recovered.clientIntentId ?? existing.clientIntentId,
+    serverOrderId: recovered.serverOrderId ?? existing.serverOrderId,
+    txHash: existing.txHash ?? recovered.txHash,
+    requestKey,
+    requestKeyEventId: keepLocalRequest ? existing.requestKeyEventId : recovered.requestKeyEventId ?? existing.requestKeyEventId,
+    requestKeySynced: requestKey === recovered.requestKey ? Boolean(recovered.requestKeySynced) : Boolean(existing.requestKeySynced),
+    pendingTransaction,
+  };
+}
+
+function saveIntent(intent: StoredCallPutOrderIntent) {
+  const identity = (item: StoredCallPutOrderIntent) => [
+    item.account.toLowerCase(), item.createdAtMs, item.strategy, item.longOptionId, item.shortOptionId, item.sizeRaw,
+  ].join(":");
+  const others = parseIntents(readIntentsRaw()).filter((item) => identity(item) !== identity(intent));
   window.localStorage.setItem(INTENT_STORAGE_KEY, JSON.stringify([intent, ...others].slice(0, 50)));
   window.dispatchEvent(new Event(INTENT_EVENT));
 }
@@ -102,15 +208,69 @@ export function CallPutOrderPanel() {
   const [size, setSize] = useState("1");
   const [maxCollateral, setMaxCollateral] = useState("5");
   const [plan, setPlan] = useState<CallPutOpenSpreadPlan | null>(null);
+  const [gasQuote, setGasQuote] = useState<CallPutGasQuote | null>(null);
   const [preparedAt, setPreparedAt] = useState(0);
+  const [clientIntentId, setClientIntentId] = useState<string | null>(null);
+  const [serverOrderId, setServerOrderId] = useState<string | null>(null);
   const [done, setDone] = useState<string[]>([]);
   const [reviewed, setReviewed] = useState<number | null>(null);
   const intentsRaw = useSyncExternalStore(subscribeIntents, readIntentsRaw, () => "[]");
-  const intent = useMemo(() => parseIntents(intentsRaw)[0] ?? null, [intentsRaw]);
+  const accountIntents = useMemo(() => parseIntents(intentsRaw)
+    .filter((item) => address && item.account.toLowerCase() === address.toLowerCase()), [intentsRaw, address]);
+  const intent = accountIntents[0] ?? null;
+  const pendingTransactionIntent = accountIntents.find((item) => item.pendingTransaction?.status === "submitted") ?? null;
   const [reconciliation, setReconciliation] = useState<CallPutReconciliation | null>(null);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [working, setWorking] = useState(false);
+
+  useEffect(() => {
+    if (!address) return;
+    const connectedAddress = address;
+    let active = true;
+    void listCallPutOrderIntents().then((orders) => {
+      if (!active) return;
+      const owned = orders
+        .filter((order) => order.kind === "open" && isAddress(order.account) && order.account.toLowerCase() === connectedAddress.toLowerCase())
+        .sort((a, b) => a.intent.createdAtMs - b.intent.createdAtMs)
+        .slice(-50);
+      for (const order of owned) {
+        if (order.kind !== "open" || order.intent.kind !== "open") continue;
+        const events = [...order.events].sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+        const transaction = events.filter((event) => event.referenceKind === "transaction").at(-1);
+        const request = events.filter((event) => event.referenceKind === "request-key" && event.transactionKind === "open-spread").at(-1);
+        const recoveredIntent: CallPutOrderIntent = {
+          ...order.intent,
+          account: getAddress(order.intent.account),
+          longOptionId: order.intent.longOptionId as Hex,
+          shortOptionId: order.intent.shortOptionId as Hex,
+          txHash: null,
+          requestKey: null,
+        };
+        const recovered: StoredCallPutOrderIntent = {
+          ...recoveredIntent,
+          clientIntentId: order.clientIntentId,
+          serverOrderId: order.id,
+          txHash: (request?.transactionHash ?? (transaction?.transactionKind === "open-spread" ? transaction.transactionHash : null)) as Hex | null,
+          requestKey: (request?.requestKey as Hex | undefined) ?? null,
+          pendingTransaction: transaction ? {
+            kind: transaction.transactionKind,
+            txHash: transaction.transactionHash as Hex,
+            status: "submitted",
+            eventId: transaction.eventId,
+            historySynced: true,
+          } : undefined,
+          requestKeyEventId: request?.eventId,
+          requestKeySynced: Boolean(request),
+        };
+        const existing = parseIntents(readIntentsRaw()).find((item) =>
+          item.clientIntentId === recovered.clientIntentId && item.account.toLowerCase() === connectedAddress.toLowerCase(),
+        );
+        saveIntent(mergeRecoveredIntent(existing, recovered));
+      }
+    }).catch(() => {});
+    return () => { active = false; };
+  }, [address]);
 
   const side = strategy.includes("Call") ? "call" : "put";
   const sideLegs = useMemo(() => {
@@ -124,7 +284,8 @@ export function CallPutOrderPanel() {
   const legs = useMemo(() => sideLegs.filter((option) => String(option.expiryTimestamp) === expiry), [sideLegs, expiry]);
 
   function resetPlan() {
-    setPlan(null); setDone([]); setReviewed(null); setMessage(""); setError("");
+    setPlan(null); setGasQuote(null); setDone([]); setReviewed(null); setMessage(""); setError("");
+    setClientIntentId(null); setServerOrderId(null);
   }
 
   async function loadMarket() {
@@ -157,8 +318,18 @@ export function CallPutOrderPanel() {
         strategy, underlying, longOptionId: longId as Hex, shortOptionId: shortId as Hex, size, maxCollateralRaw,
         market, wallet: { ...wallet, chainId: chainId ?? wallet.chainId }, nowMs: nowMs(),
       });
+      const firstTransaction = result.transactions[0];
+      if (!firstTransaction) throw new Error("No transaction was prepared for this order.");
+      const estimatedGas = await estimateCallPutGas(publicClient, firstTransaction);
+      const requiredNativeBalance = firstTransaction.value + estimatedGas.totalCostWei;
+      if (wallet.nativeBalanceWei < requiredNativeBalance) {
+        throw new Error(`Native balance cannot cover the execution fee plus estimated gas. Required at least ${requiredNativeBalance} wei; wallet has ${wallet.nativeBalanceWei} wei.`);
+      }
       setPlan(result);
+      setGasQuote(estimatedGas);
       setPreparedAt(nowMs());
+      setClientIntentId(createCallPutLedgerId());
+      setServerOrderId(null);
     } catch (failure) {
       setError(reason(failure, "The order could not be prepared."));
     } finally {
@@ -168,33 +339,135 @@ export function CallPutOrderPanel() {
 
   async function sign(index: number) {
     if (!plan || !walletClient || !publicClient || !address || busy.current) return;
+    if (pendingTransactionIntent) {
+      setError("A previously submitted transaction still needs receipt recovery. Do not submit it again.");
+      return;
+    }
+    const walletChainId = (walletClient as unknown as { chain?: { id?: number } }).chain?.id;
+    if (chainId !== CALLPUT_ROBINHOOD_CHAIN_ID || (walletChainId !== undefined && walletChainId !== CALLPUT_ROBINHOOD_CHAIN_ID)) {
+      setError(`Switch to Robinhood Mainnet (chain ${CALLPUT_ROBINHOOD_CHAIN_ID}) before signing.`);
+      return;
+    }
     const tx = plan.transactions[index];
     if (!tx || done.includes(tx.kind)) return;
     if (tx.kind === "open-spread" && nowMs() - preparedAt > QUOTE_MAX_AGE_MS) {
+      resetPlan();
       setError("This quote is older than 60 seconds. Prepare the order again before signing.");
       return;
     }
+    if (!gasQuote || nowMs() - preparedAt > GAS_QUOTE_MAX_AGE_MS) {
+      setPlan(null); setGasQuote(null); setReviewed(null);
+      setError("The gas estimate is missing or older than 30 seconds. Prepare again before signing.");
+      return;
+    }
     busy.current = true;
-    setWorking(true); setError(""); setMessage("Waiting for wallet approval…");
+    setWorking(true); setError(""); setMessage("Saving order intent to server history…");
     try {
+      const intentId = clientIntentId ?? createCallPutLedgerId();
+      const persistedOrderId = serverOrderId ?? (await createCallPutOrderIntent({
+        clientIntentId: intentId,
+        intent: persistedOpenIntent(plan.intent),
+      })).orderId;
+      setClientIntentId(intentId);
+      setServerOrderId(persistedOrderId);
+      const draft: StoredCallPutOrderIntent = { ...plan.intent, clientIntentId: intentId, serverOrderId: persistedOrderId };
+      saveIntent(draft);
+      if (tx.kind === "open-spread" && nowMs() - preparedAt > QUOTE_MAX_AGE_MS) {
+        resetPlan();
+        setError("This quote expired while saving the order. Prepare again before signing.");
+        return;
+      }
+      if (nowMs() - preparedAt > GAS_QUOTE_MAX_AGE_MS) {
+        resetPlan();
+        setError("The gas estimate expired while saving the order. Prepare again before signing.");
+        return;
+      }
+      if (await publicClient.getChainId() !== CALLPUT_ROBINHOOD_CHAIN_ID) {
+        throw new Error(`Switch to Robinhood Mainnet (chain ${CALLPUT_ROBINHOOD_CHAIN_ID}) before signing.`);
+      }
+      const currentWalletChain = (walletClient as unknown as { chain?: { id?: number } }).chain?.id;
+      if (currentWalletChain !== CALLPUT_ROBINHOOD_CHAIN_ID) {
+        throw new Error(`Switch to Robinhood Mainnet (chain ${CALLPUT_ROBINHOOD_CHAIN_ID}) before signing.`);
+      }
+      const currentNativeBalance = await publicClient.getBalance({ address: getAddress(address) });
+      if (currentNativeBalance < tx.value + gasQuote.totalCostWei) {
+        throw new Error("Native balance no longer covers this transaction's execution fee plus estimated gas. Prepare again after funding the wallet.");
+      }
+      setMessage("Waiting for wallet approval…");
+      const transactionEventId = createCallPutLedgerId();
       const hash = await walletClient.sendTransaction({
         account: getAddress(address), chain: robinhoodMainnet, to: tx.to, data: tx.data, value: tx.value,
+        ...callPutGasRequest(gasQuote),
       });
-      setMessage(`Submitted ${hash}. Waiting for confirmation…`);
+      const pendingTransaction = { kind: tx.kind, txHash: hash, status: "submitted" as const, eventId: transactionEventId, historySynced: false };
+      const submittedIntent: StoredCallPutOrderIntent = {
+        ...draft,
+        txHash: tx.kind === "open-spread" ? hash : plan.intent.txHash,
+        pendingTransaction,
+      };
+      saveIntent(submittedIntent);
+      let transactionHistorySynced = false;
+      try {
+        await appendCallPutOrderReference(persistedOrderId, {
+          eventId: transactionEventId,
+          referenceKind: "transaction",
+          transactionKind: tx.kind,
+          transactionHash: hash,
+        });
+        transactionHistorySynced = true;
+      } catch {
+        // The broadcast hash remains recoverable locally; retry this reference during receipt recovery.
+      }
+      const trackedTransaction = { ...pendingTransaction, historySynced: transactionHistorySynced };
+      const trackedIntent = { ...submittedIntent, pendingTransaction: trackedTransaction };
+      saveIntent(trackedIntent);
+      setMessage(`Submitted ${hash}. Waiting for confirmation${transactionHistorySynced ? "…" : "; server history sync is pending."}`);
       const receipt = await publicClient.waitForTransactionReceipt({ hash });
-      if (receipt.status !== "success") throw new Error("The transaction reverted on-chain.");
+      if (receipt.status !== "success") {
+        saveIntent({
+          ...trackedIntent,
+          txHash: tx.kind === "open-spread" ? hash : plan.intent.txHash,
+          pendingTransaction: { ...trackedTransaction, status: "reverted" },
+        });
+        setPlan(null); setGasQuote(null); setReviewed(null); setDone([]);
+        throw new Error("The transaction reverted on-chain.");
+      }
       setDone((current) => [...current, tx.kind]);
       setReviewed(null);
       if (tx.kind === "open-spread") {
         const requestKey = extractCallPutRequestKey(receipt, { account: address, isOpen: true });
-        const stored: CallPutOrderIntent = { ...plan.intent, txHash: hash, requestKey };
+        const requestKeyEventId = trackedIntent.requestKeyEventId ?? createCallPutLedgerId();
+        let stored: StoredCallPutOrderIntent = {
+          ...trackedIntent,
+          txHash: hash,
+          requestKey,
+          requestKeyEventId,
+          requestKeySynced: false,
+          pendingTransaction: { ...trackedTransaction, status: "confirmed" },
+        };
         saveIntent(stored);
+        try {
+          await appendCallPutOrderReference(persistedOrderId, {
+            eventId: requestKeyEventId,
+            referenceKind: "request-key",
+            transactionKind: "open-spread",
+            transactionHash: hash,
+            requestKey,
+          });
+          stored = { ...stored, requestKeySynced: true };
+          saveIntent(stored);
+        } catch {
+          // The receipt and request key stay in browser storage for a later idempotent sync retry.
+        }
         setReconciliation(null);
-        setMessage("Request submitted. It is queued with the CallPut keeper and is not a fill yet.");
+        setMessage(`Request submitted. It is queued with the CallPut keeper and is not a fill yet.${stored.requestKeySynced ? "" : " Server history sync is pending."}`);
       } else {
-        setMessage("Approval confirmed. Review and sign the next transaction.");
+        saveIntent({ ...trackedIntent, pendingTransaction: { ...trackedTransaction, status: "confirmed" } });
+        setPlan(null); setGasQuote(null); setDone([]);
+        setMessage("Approval confirmed. Prepare again to re-read allowance and refresh gas before the open request.");
       }
     } catch (failure) {
+      setReviewed(null);
       setError(reason(failure, "The wallet transaction did not complete."));
       setMessage("");
     } finally {
@@ -204,20 +477,86 @@ export function CallPutOrderPanel() {
   }
 
   async function refreshStatus() {
-    if (!intent?.requestKey || !publicClient) return;
+    if (!intent || !publicClient) return;
     setWorking(true); setError("");
     try {
-      const request = await readCallPutRobinhoodRequest(publicClient, "open", intent.requestKey);
+      let currentIntent = pendingTransactionIntent ?? intent;
+      let pendingTransaction = currentIntent.pendingTransaction;
+      if (pendingTransaction?.eventId && !pendingTransaction.historySynced && currentIntent.serverOrderId) {
+        try {
+          await appendCallPutOrderReference(currentIntent.serverOrderId, {
+            eventId: pendingTransaction.eventId,
+            referenceKind: "transaction",
+            transactionKind: pendingTransaction.kind,
+            transactionHash: pendingTransaction.txHash,
+          });
+          pendingTransaction = { ...pendingTransaction, historySynced: true };
+          currentIntent = { ...currentIntent, pendingTransaction };
+          saveIntent(currentIntent);
+        } catch {
+          // Continue with chain reconciliation; the stored browser reference can be retried later.
+        }
+      }
+      if (pendingTransaction?.status === "submitted") {
+        const receipt = await publicClient.getTransactionReceipt({ hash: pendingTransaction.txHash });
+        if (receipt.status !== "success") {
+          saveIntent({
+            ...currentIntent,
+            pendingTransaction: { ...pendingTransaction, status: "reverted" },
+          });
+          setMessage("The submitted transaction reverted. No CallPut request was created.");
+          return;
+        }
+        if (pendingTransaction.kind === "open-spread") {
+          const requestKey = extractCallPutRequestKey(receipt, { account: currentIntent.account, isOpen: true });
+          const requestKeyEventId = currentIntent.requestKeyEventId ?? createCallPutLedgerId();
+          currentIntent = {
+            ...currentIntent,
+            txHash: pendingTransaction.txHash,
+            requestKey,
+            requestKeyEventId,
+            requestKeySynced: false,
+            pendingTransaction: { ...pendingTransaction, status: "confirmed" },
+          };
+          saveIntent(currentIntent);
+        } else {
+          saveIntent({
+            ...currentIntent,
+            pendingTransaction: { ...pendingTransaction, status: "confirmed" },
+          });
+          setDone((current) => current.includes(pendingTransaction.kind) ? current : [...current, pendingTransaction.kind]);
+          setMessage("Transaction confirmed. Review the updated on-chain wallet state before preparing another order.");
+          return;
+        }
+      }
+      const requestKey = currentIntent.requestKey;
+      if (!requestKey) return;
+      if (currentIntent.serverOrderId && currentIntent.requestKeyEventId && !currentIntent.requestKeySynced && currentIntent.txHash) {
+        try {
+          await appendCallPutOrderReference(currentIntent.serverOrderId, {
+            eventId: currentIntent.requestKeyEventId,
+            referenceKind: "request-key",
+            transactionKind: "open-spread",
+            transactionHash: currentIntent.txHash,
+            requestKey,
+          });
+          currentIntent = { ...currentIntent, requestKeySynced: true };
+          saveIntent(currentIntent);
+        } catch {
+          // Preserve the on-chain request read even when the history service is temporarily unavailable.
+        }
+      }
+      const request = await readCallPutRobinhoodRequest(publicClient, "open", requestKey);
       let balance: bigint | null = null;
       if (request.status === "Executed" && request.optionTokenId !== null) {
-        const token = getAddress(CALLPUT_ROBINHOOD_UNDERLYINGS[intent.underlying].optionsToken);
+        const token = getAddress(CALLPUT_ROBINHOOD_UNDERLYINGS[currentIntent.underlying].optionsToken);
         const balances = await publicClient.readContract({
           address: token, abi: CALLPUT_WRITE_ABIS.optionsToken, functionName: "balanceOfBatch",
-          args: [[intent.account as Address], [request.optionTokenId]],
+          args: [[currentIntent.account as Address], [request.optionTokenId]],
         });
         balance = balances[0] ?? 0n;
       }
-      setReconciliation(reconcileCallPutOpen({ intent, request, optionTokenBalanceRaw: balance, nowMs: nowMs() }));
+      setReconciliation(reconcileCallPutOpen({ intent: currentIntent, request, optionTokenBalanceRaw: balance, nowMs: nowMs() }));
     } catch (failure) {
       setError(reason(failure, "The request could not be read."));
     } finally {
@@ -291,7 +630,7 @@ export function CallPutOrderPanel() {
         {!isConnected ? <p role="status" className="mt-2 text-sm text-muted-foreground">Connect a wallet to prepare an order.</p> : null}
       </div>
 
-      {plan ? (
+      {plan && gasQuote ? (
         <div className="mt-4 grid gap-3 border-t border-border pt-4" aria-live="polite">
           <h3 className="text-sm font-semibold">Order review</h3>
           <dl className="grid grid-cols-1 gap-x-6 gap-y-2 text-sm sm:grid-cols-2">
@@ -299,7 +638,10 @@ export function CallPutOrderPanel() {
             <div><dt className="text-xs text-muted-foreground">Estimated fee (USDG, included)</dt><dd className="mono">{plan.quote.estimatedOpenFeeUsdg.toFixed(6)}</dd></div>
             <div><dt className="text-xs text-muted-foreground">Minimum fill (raw size)</dt><dd className="mono">{plan.minSizeRaw.toString()}</dd></div>
             <div><dt className="text-xs text-muted-foreground">Execution fee (wei, not assumed refundable)</dt><dd className="mono">{plan.transactions.at(-1)?.value.toString()}</dd></div>
+            <div><dt className="text-xs text-muted-foreground">Estimated gas limit</dt><dd className="mono">{gasQuote.gasLimit.toString()}</dd></div>
+            <div><dt className="text-xs text-muted-foreground">Estimated network fee ceiling (wei)</dt><dd className="mono">{gasQuote.totalCostWei.toString()}</dd></div>
           </dl>
+          {plan.transactions.length > 1 ? <p className="text-xs text-muted-foreground">Gas shown is for the approval step. After it confirms, prepare again to re-read allowance and estimate the open request.</p> : null}
           <ol className="grid gap-2">
             {plan.transactions.map((tx, index) => (
               <li key={tx.kind} className="rounded-md border border-border p-3 text-sm">
@@ -308,15 +650,17 @@ export function CallPutOrderPanel() {
                   {done.includes(tx.kind) ? <Chip tone="gain">Confirmed</Chip> : <Chip>{index === nextIndex ? "Next" : "Waiting"}</Chip>}
                 </div>
                 <p className="mono mt-1 break-all text-xs text-muted-foreground">to {tx.to} · value {tx.value.toString()} wei</p>
+                <p className="mono mt-1 break-all text-xs text-muted-foreground">calldata {tx.data}</p>
                 {index === nextIndex ? (
                   <div className="mt-2 grid gap-2">
                     <label className="flex items-center gap-2 text-xs">
                       <input type="checkbox" checked={reviewed === index} onChange={(event) => setReviewed(event.target.checked ? index : null)} />
                       I reviewed this exact transaction and approve it.
                     </label>
-                    <Button type="button" disabled={!CALLPUT_LIVE_ORDERS_ENABLED || reviewed !== index || !walletClient || working} onClick={() => void sign(index)}>
+                    <Button type="button" disabled={!CALLPUT_LIVE_ORDERS_ENABLED || reviewed !== index || !walletClient || working || Boolean(pendingTransactionIntent)} onClick={() => void sign(index)}>
                       Sign in wallet
                     </Button>
+                    {pendingTransactionIntent ? <p className="text-xs text-muted-foreground">A submitted transaction must be recovered before another signature.</p> : null}
                     {!CALLPUT_LIVE_ORDERS_ENABLED ? <p className="text-xs text-muted-foreground">Signing is disabled in this build. Nothing was sent.</p> : null}
                   </div>
                 ) : null}
@@ -329,12 +673,15 @@ export function CallPutOrderPanel() {
       {message ? <p role="status" className="mt-3 text-sm text-muted-foreground">{message}</p> : null}
       {error ? <p role="alert" className="mt-3 text-sm text-[var(--ember-text)]">{error}</p> : null}
 
-      {intent?.requestKey ? (
+      {intent?.requestKey || pendingTransactionIntent || intent?.pendingTransaction ? (
         <div className="mt-4 grid gap-2 border-t border-border pt-4" aria-live="polite">
-          <h3 className="text-sm font-semibold">Last submitted request</h3>
-          <p className="mono break-all text-xs">{intent.requestKey}</p>
-          <p className="text-xs text-muted-foreground">{intent.strategy} · {intent.underlying} · size {intent.sizeRaw} raw</p>
-          <div><Button type="button" variant="outline" onClick={() => void refreshStatus()} disabled={working || !publicClient}>Refresh status</Button></div>
+          <h3 className="text-sm font-semibold">{intent?.requestKey ? "Last submitted request" : pendingTransactionIntent ? "Submitted transaction" : "Last transaction"}</h3>
+          {intent?.requestKey ? <p className="mono break-all text-xs">{intent.requestKey}</p> : null}
+          {pendingTransactionIntent?.pendingTransaction ? <p className="mono break-all text-xs">Transaction {pendingTransactionIntent.pendingTransaction.txHash}</p> : null}
+          {!pendingTransactionIntent && intent?.pendingTransaction ? <p className="mono break-all text-xs">Transaction {intent.pendingTransaction.txHash}</p> : null}
+          {(pendingTransactionIntent ?? intent)?.pendingTransaction ? <Chip tone={(pendingTransactionIntent ?? intent)?.pendingTransaction?.status === "reverted" ? "ember" : "neutral"}>{(pendingTransactionIntent ?? intent)?.pendingTransaction?.status}</Chip> : null}
+          <p className="text-xs text-muted-foreground">{(pendingTransactionIntent ?? intent)?.strategy} · {(pendingTransactionIntent ?? intent)?.underlying} · size {(pendingTransactionIntent ?? intent)?.sizeRaw} raw</p>
+          <div><Button type="button" variant="outline" onClick={() => void refreshStatus()} disabled={working || !publicClient || (!pendingTransactionIntent && !intent?.requestKey)}>{pendingTransactionIntent ? "Recover transaction" : "Refresh status"}</Button></div>
           {reconciliation ? (
             <p role="status" className="text-sm">
               <Chip tone={reconciliation.fillConfirmed ? "gain" : "neutral"}>{reconciliation.state}</Chip> {reconciliation.evidence}

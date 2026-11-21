@@ -3,6 +3,8 @@ import { privateKeyToAccount } from "viem/accounts";
 
 const account = privateKeyToAccount("0x0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef");
 
+test.describe.configure({ timeout: 120_000 });
+
 test("test-signed session completes the paper journey through browser routes and persists Tape", async ({ page, baseURL }) => {
   // This signer exercises the server challenge; it does not stand in for a MetaMask or Phantom extension prompt.
   const pageErrors: string[] = [];

@@ -78,49 +78,65 @@ test("Markets shows an error state with retry when the list fails", async ({ pag
   await expect(page.getByRole("button", { name: "Retry" })).toBeVisible();
 });
 
-const PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/q842iQAAAABJRU5ErkJggg==", "base64");
-const logo = (address: string) => `https://cdn.robinhood.com/ncw_assets/logos/${address}.png`;
+const SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1 1"><circle cx=".5" cy=".5" r=".5" fill="#f60"/></svg>';
+const logoApi = (symbol: string) => `https://logoapi.sh/ticker/${symbol}.svg?shape=square&fallback=none`;
 
-test("Markets shows server-verified logos, uses initials without an approved logo, and never loads an untrusted host", async ({ page }) => {
+test("Markets loads LogoAPI ticker logos and uses initials when no catalog logo exists", async ({ page }) => {
   const requested: string[] = [];
+  const robinhoodRequested: string[] = [];
+  const untrustedRequested: string[] = [];
   await page.route("**/api/markets", (route) => route.fulfill({ json: { markets: [
-    { ...apple, logoUrl: logo(apple.tokenAddress) },
+    { ...apple, logoUrl: `https://cdn.robinhood.com/ncw_assets/logos/${apple.tokenAddress}.png` },
     { ...adobe },
     { ...micron, logoUrl: "https://evil.example/logo.png" },
   ] } }));
   await page.route("**/api/markets/AAPL", (route) => route.fulfill({ json: snapshot }));
   await page.route("**/api/backtests/coverage?symbol=AAPL", (route) => route.fulfill({ json: coverage(true) }));
-  await page.route("https://cdn.robinhood.com/**", (route) => { requested.push(route.request().url()); return route.fulfill({ contentType: "image/png", body: PNG }); });
-  await page.route("https://evil.example/**", (route) => { requested.push(route.request().url()); return route.abort(); });
+  await page.route("https://logoapi.sh/**", (route) => {
+    const url = new URL(route.request().url());
+    requested.push(url.href);
+    if (url.pathname === "/ticker/AAPL.svg" && url.searchParams.get("shape") === "square" && url.searchParams.get("fallback") === "none") {
+      return route.fulfill({ contentType: "image/svg+xml", body: SVG });
+    }
+    if (url.pathname === "/ticker/ADBE.svg") return route.fulfill({ status: 404, contentType: "text/plain", body: "not found" });
+    return route.fulfill({ status: 503, contentType: "text/plain", body: "temporarily unavailable" });
+  });
+  await page.route("https://cdn.robinhood.com/**", (route) => { robinhoodRequested.push(route.request().url()); return route.abort(); });
+  await page.route("https://evil.example/**", (route) => { untrustedRequested.push(route.request().url()); return route.abort(); });
   await page.goto("/market");
 
   const rows = page.locator(".mk-row");
   await expect(rows).toHaveCount(3);
   const aapl = rows.filter({ hasText: "AAPL" });
-  await expect(aapl.locator("img")).toHaveAttribute("src", logo(apple.tokenAddress));
+  await expect(aapl.locator("img")).toHaveAttribute("src", logoApi("AAPL"));
   await expect(aapl.locator("img")).toHaveJSProperty("complete", true);
   await expect(aapl.locator(".asset-logo")).toHaveAttribute("data-fallback", "0");
-  // Without an approved server logo, the ticker's initials are shown.
+  // A 404 means the provider has no genuine catalog logo; use ticker initials, not its synthetic fallback.
   const adbe = rows.filter({ hasText: "ADBE" });
   await expect(adbe.locator(".asset-logo")).toHaveAttribute("data-fallback", "1");
   await expect(adbe.locator(".asset-initials")).toHaveText("ADB");
   await expect(adbe.locator("img")).toHaveCount(0);
-  // A logo on a host that is not allowlisted is ignored in favor of initials.
+  // Provider outages and untrusted market metadata also leave the initials visible.
   const mu = rows.filter({ hasText: "MU" });
   await expect(mu.locator(".asset-logo")).toHaveAttribute("data-fallback", "1");
   await expect(mu.locator(".asset-initials")).toHaveText("MU");
   await expect(mu.locator("img")).toHaveCount(0);
-  expect(requested.every((url) => url.startsWith("https://cdn.robinhood.com/"))).toBe(true);
-  // The details panel carries the larger logo and the quote still shows.
-  await expect(page.getByRole("complementary", { name: "AAPL details" }).locator("img")).toHaveAttribute("src", logo(apple.tokenAddress));
+  expect(requested).toContain(logoApi("AAPL"));
+  expect(requested).toContain(logoApi("ADBE"));
+  expect(requested).toContain(logoApi("MU"));
+  expect(requested.every((url) => url.startsWith("https://logoapi.sh/ticker/"))).toBe(true);
+  expect(robinhoodRequested).toEqual([]);
+  expect(untrustedRequested).toEqual([]);
+  await expect(page.getByRole("complementary", { name: "AAPL details" }).locator("img")).toHaveAttribute("src", logoApi("AAPL"));
   await expect(page.getByRole("complementary", { name: "AAPL details" }).getByText("355.78 USD", { exact: true })).toBeVisible();
 });
 
-test("Markets falls back directly to ticker initials when server logos fail to load", async ({ page }) => {
-  await page.route("**/api/markets", (route) => route.fulfill({ json: { markets: [{ ...apple, logoUrl: logo(apple.tokenAddress) }] } }));
+test("Markets falls back to ticker initials when LogoAPI image loading is blocked", async ({ page }) => {
+  const requested: string[] = [];
+  await page.route("**/api/markets", (route) => route.fulfill({ json: { markets: [apple] } }));
   await page.route("**/api/markets/AAPL", (route) => route.fulfill({ json: snapshot }));
   await page.route("**/api/backtests/coverage?symbol=AAPL", (route) => route.fulfill({ json: coverage(true) }));
-  await page.route("https://cdn.robinhood.com/**", (route) => route.abort());
+  await page.route("https://logoapi.sh/**", (route) => { requested.push(route.request().url()); return route.abort(); });
   const localLogoRequests: string[] = [];
   await page.route("**/img/stocks/**", (route) => { localLogoRequests.push(route.request().url()); return route.abort(); });
   await page.goto("/market");
@@ -128,5 +144,6 @@ test("Markets falls back directly to ticker initials when server logos fail to l
   await expect(row.locator(".asset-logo")).toHaveAttribute("data-fallback", "1");
   await expect(row.locator(".asset-initials")).toHaveText("AAP");
   await expect(row.locator("img")).toHaveCount(0);
+  expect(requested).toContain(logoApi("AAPL"));
   expect(localLogoRequests).toEqual([]);
 });

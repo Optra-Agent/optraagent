@@ -1,10 +1,10 @@
 # OPTRA Mainnet Contract Checklist
 
-Updated: 2026-11-20
+Updated: 2026-11-21
 
 ## Decision
 
-NO-GO. Project Owner authorization covers P4 engineering only. PM approval is not formally recorded, owner asset/pool/Safe/keeper/signer decisions are missing, and no exact Mainnet transaction batch is eligible for owner approval. No OPTRA Mainnet contract has been deployed. This checklist does not authorize signing, broadcasting, liquidity provision, Live Trading, or movement of funds.
+NO-GO. P4 engineering scope and the ETH/USDG candidate are recorded. The supplied deployer, Safe candidate, and keeper were checked read-only; Safe cross-project authorization and keeper custody/runbook remain unconfirmed. A current CREATE2/gas estimate and real-asset fork result exist as local evidence, but the RPC is not owner-approved, gas ceilings are not approved, and legal/asset, PM, route, audit, and exact-transaction approvals are absent. No OPTRA Mainnet contract has been deployed. This checklist does not authorize signing, broadcasting, liquidity provision, Live Trading, or movement of funds.
 
 The consolidated decision record is `docs/MAINNET_OWNER_DECISIONS.md`; the owner/operator procedure is `docs/MAINNET_DEPLOYMENT_RUNBOOK.md`.
 
@@ -12,20 +12,19 @@ The consolidated decision record is `docs/MAINNET_OWNER_DECISIONS.md`; the owner
 
 | Gate | Status | Evidence / blocker |
 |---|---|---|
-| Project Owner P4 engineering authorization | RECORDED | `docs/execution-ledger.md`, 2026-11-20. |
-| PM architecture/product approval | BLOCKED | `docs/OPTRA_PM_ORIGINAL_DEV_BRIEF.md` labels the brief a working brief awaiting PM approval; no formal PM sign-off recorded. |
-| Candidate source and local Foundry suite | PASS, EXPERIMENTAL | One candidate, `OptraGuardHook`; accepted P4 results in `docs/contract-deployment-plan.md` and `docs/INTERNAL_AUDIT.md`. |
-| Robinhood Mainnet chain and pinned infrastructure | VERIFIED, READ-ONLY | RPC returned chain ID 4663; PoolManager and CREATE2 factory size/SHA-256 fingerprints match `contracts/script/optra-mainnet-preflight.sh` on 2026-11-20. This is not production-provider approval or explorer source verification. |
-| Robinhood Mainnet PoolManager fork simulation | PASS, LIMITED | Previously accepted fork test uses synthetic assets and local fork writes only; it does not test the owner-selected real pair/route. |
-| Independent security audit | BLOCKED | Internal verification is not an external audit. |
-| Asset, quote, jurisdiction, and issuer eligibility | BLOCKED | No approved token pair; product/legal review is required. |
-| Pool/router/initializer route | BLOCKED | No approved production PoolKey, creator/caller, initializer, fee/tick spacing, initial price, or operational route. |
-| Safe/admin, keeper, pool creator, deployer/signer | BLOCKED | No production addresses or signer-specific operator evidence recorded. |
-| Mainnet deployment/preflight/postflight/source-preparation scripts | IMPLEMENTED, ESTIMATE PATH REHEARSED | `contracts/script/optra-mainnet-{preflight,deploy,postflight,verify-source}.sh`. `bash -n` passes. 2026-11-20: preflight and `deploy --estimate` ran on a local Robinhood Mainnet anvil fork with synthetic tokens and a mock Safe (measured `eth_estimateGas` 1,676,421; fork-test factory deploy 1,648,245). One defect found and fixed (CREATE2 address parse). `--strict`, `--prepare`, `--broadcast`, postflight not run end to end: they need real approval references. See `docs/INDEPENDENT_AUDIT_HANDOFF.md`. |
-| Trusted production RPC | BLOCKED | Public dRPC endpoint used only for read-only verification; owner must select/approve a production provider. |
-| Exact transaction batch and constructor calldata | NONE | No candidate asset/pool configuration, measured estimate, source packet, or predicted approved deployment exists. |
-| Real-asset fork and signer-specific gas report | NONE | Current accepted fork uses synthetic assets; gas limit/fee ceilings are unset. |
-| Final transaction approval | NOT REQUESTED | No hypothetical batch is presented for approval. |
+| Project Owner P4 scope authorization | RECORDED | Owner explicitly confirmed scope alignment and directed no further routine PM confirmation. |
+| Candidate source/tests | PASS, EXPERIMENTAL | `OptraGuardHook`; native ETH support was regression-tested; security scope remains spot-direction-only. |
+| Mainnet infrastructure | VERIFIED, READ-ONLY | Chain 4663; pinned PoolManager and CREATE2 runtime checks. Not production-provider approval or source verification. |
+| Real-asset fork | PASS, LIMITED | `OptraRobinhoodRealAssetFork.t.sol`: live PoolManager/USDG, live ETH/USDG reference price, fork-only balance/liquidity overrides; buy gating and ETH-out passed. |
+| Recommended engineering configuration | SELECTED | Native ETH/USDG, fee 3000, spacing 60, policy age 300 seconds; Safe as admin and pool creator; separate keeper EOA. |
+| Legal/asset eligibility | BLOCKED, EXTERNAL | Product/jurisdiction/asset approval still required; technical address verification is not legal approval. |
+| Safe/admin and keeper | CANDIDATES VERIFIED; AUTHORIZATION BLOCKED | Safe candidate readback: Safe L2 v1.5.0/no enabled modules at block 119433484; latest owner/threshold read at block 119556696 returned 3 owners/threshold 2. Supplied keeper and deployer are not among those owners. Cross-project Safe authorization, keeper operator/key custody, and runbook are not confirmed. |
+| Deployment scripts | IMPLEMENTED, GATED | Fresh strict preflight passed chain 4663 and pinned PoolManager/CREATE2 fingerprints, then stopped at missing acknowledgement, approved ceilings, and external evidence. |
+| Production RPC provider | BLOCKED, EXTERNAL | Public RPC used read-only; provider approval missing. |
+| Gas report/funding | CANDIDATE ONLY | Read-only estimate at block 119537033: 1,676,133 gas. A 130% candidate limit is 2,178,973 units. At block 119544065, deployer nonce was 0, balance 0.00042 ETH, and observed gas price was 20,018,000 wei. Candidate fee caps remain unapproved; no funding or fee sufficiency is asserted for a final transaction. |
+| Independent security audit | BLOCKED, EXTERNAL | Internal test/fork evidence is not an independent audit. |
+| Exact transaction packet | NOT APPROVAL-ELIGIBLE | Local estimate records predicted CREATE2 candidate `0x98332827Ff79e07eCD1A63CC04462D3817622080` (no code at block 119544065), salt, init-code hash, and calldata. No final approval hash exists; values and packet require refresh after approved RPC/evidence and owner-set gas ceilings. |
+| Final transaction approval | NOT REQUESTED | There is no executable packet to approve. |
 
 ## Known contract and deployment boundaries
 
@@ -33,20 +32,20 @@ Constructor shape: `(poolManager, underlyingToken, quoteToken, poolCreator, admi
 
 - PoolManager is source-pinned at `0x8366a39CC670B4001A1121B8F6A443A643e40951` on chain ID `4663`; the preflight verifies its live code size and SHA-256 fingerprint.
 - The CREATE2 factory is `0x4e59b44847b379578588920cA78FbF26c0B4956C`; the preflight verifies its pinned runtime fingerprint.
-- Underlying, quote, pool creator, Safe/admin, keeper, fee, tick spacing, initial price, and Mainnet policy age remain owner decisions. `300` seconds is only the engineering default; contract maximum is `900` seconds.
-- Mainnet constructor requires contract code at PoolManager, underlying, quote, pool creator, and admin; the designated deployer is an EOA and must be distinct from admin and keeper.
+- Engineering candidate: underlying native ETH (`address(0)`), quote USDG at `0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168`, fee 3000, spacing 60, policy age 300 seconds. Initial sqrt price is refreshed from the live reference pool immediately before separate pool initialization; contract maximum policy age is 900 seconds.
+- Mainnet constructor requires code at PoolManager, quote token, Safe pool creator, and Safe admin; the keeper is a distinct EOA; the deployer is an EOA distinct from admin and keeper.
 - The deploy-only transaction creates an unbound hook with entries paused and no published/fresh policy. Pool initialization and liquidity are separate owner-reviewed actions.
 
-No signer, complete argument tuple, transaction sequence, gas ceiling, or exact approval hash is available. The prior Testnet Phase A packet is stale after the hook bytecode change and must not be reused.
+The supplied deployer and constructor roles are now in the candidate tuple. The read-only estimate is not an owner-approved transaction packet; gas/fee ceilings, external evidence, and the exact approval hash remain unavailable. The prior Testnet Phase A packet is stale after the hook bytecode change and must not be reused.
 
 ## Gates before an exact packet
 
-1. Record formal PM approval for P4 scope and acknowledge the spot-only/non-CallPut limitations.
-2. Obtain product/legal confirmation for a specific token pair, users/jurisdiction, issuer restrictions, and asset-specific trading availability. Do not infer eligibility from a ticker or registry status.
-3. Approve the exact pool route and initializer, including verified code, PoolKey, creator/caller, fee, spacing, initial price, liquidity plan, and operational ownership.
-4. Select and verify the Safe/admin, owners/threshold/recovery, distinct keeper, pool creator, deployer, and key custody/incident response.
+1. No further routine PM scope confirmation is needed; the Project Owner confirmed it. Keep that approval separate from exact transaction approval.
+2. Obtain product/legal confirmation for the proposed native ETH/USDG pair, users/jurisdiction, and asset availability. Do not infer legal eligibility from a ticker or contract code.
+3. Record the exact pool route and initializer: Safe as creator, static fee 3000, spacing 60, fresh initial price, and separate liquidity ownership/funding plan.
+4. Confirm cross-project authorization and owner control for the supplied Safe candidate; confirm keeper operator/key custody, recovery, and incident-response runbook. The observed Safe owner count/threshold does not by itself establish OPTRA authorization.
 5. Complete the independent audit for the exact source and deployment scope; resolve findings. Internal checks are not an audit.
-6. Run the selected-real-asset fork simulation and measured gas estimate against an owner-approved trusted provider. Record source/dependency hashes, compiler settings, exact calldata, estimate, max gas, fee price and total fee ceiling.
+6. Re-run the real-asset fork and gas estimate against an owner-approved trusted provider. Record source/dependency hashes, compiler settings, exact calldata, estimate, owner-approved max gas, fee price and total fee ceiling.
 7. Prepare source-verification inputs for the exact build (Solidity 0.8.26, optimizer 44,444,444, via-IR, Cancun, metadata settings). Verify the chain-specific explorer route.
 8. Only after all gates pass, generate the exact packet and request explicit Project Owner approval of its `approvalSha256`. PM/product approval and transaction approval remain separate gates.
 

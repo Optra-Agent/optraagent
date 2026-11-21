@@ -283,6 +283,17 @@ contract OptraGuardHookPermissionTest is OptraGuardHookFixture {
         );
     }
 
+    function test_nativeUnderlyingCurrencyCanBindToUsdQuotePool() public {
+        OptraGuardHook nativeHook = _deployHook(address(0), address(quote), address(this), KEEPER);
+        PoolKey memory nativeKey =
+            _poolKey(address(0), address(quote), IHooks(address(nativeHook)), POOL_FEE, TICK_SPACING);
+
+        manager.initialize(nativeKey, uint160(Q96));
+
+        assertTrue(nativeHook.poolBound());
+        assertEq(nativeHook.configuredPoolId(), PoolId.unwrap(nativeKey.toId()));
+    }
+
     function test_constructorRejectsPolicyAgeAboveProductionMaximum() public {
         vm.expectRevert(OptraGuardHook.InvalidConfiguration.selector);
         new OptraGuardHook(

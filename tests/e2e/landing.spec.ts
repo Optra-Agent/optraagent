@@ -51,9 +51,30 @@ test("mobile landing has no horizontal overflow and the menu closes with Escape"
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
   expect(overflow).toBeLessThanOrEqual(0);
 
-  await page.getByRole("button", { name: "Open page sections" }).click();
+  const menuButton = page.getByRole("button", { name: "Open page sections" });
+  await expect(menuButton.locator("svg")).toHaveCount(1);
+  await expect(menuButton).toHaveText("");
+  const menuButtonSize = await menuButton.evaluate((button) => {
+    const rect = button.getBoundingClientRect();
+    return { width: rect.width, height: rect.height };
+  });
+  expect(menuButtonSize.width).toBeGreaterThanOrEqual(44);
+  expect(menuButtonSize.height).toBeGreaterThanOrEqual(44);
+  await menuButton.click();
   const drawer = page.getByRole("dialog");
+  const floorLink = drawer.getByRole("link", { name: "Floor", exact: true });
+  await expect(floorLink).toBeVisible();
   await expect(drawer.getByRole("link", { name: "How it works" })).toBeVisible();
+  const layers = await page.evaluate(() => {
+    const zIndex = (selector: string) => Number.parseInt(getComputedStyle(document.querySelector(selector)!).zIndex, 10);
+    return {
+      header: zIndex(".m-header"),
+      panel: zIndex('[data-slot="sheet-content"]'),
+      overlay: zIndex('[data-slot="sheet-overlay"]'),
+    };
+  });
+  expect(layers.panel, "menu panel must paint above the sticky header").toBeGreaterThan(layers.header);
+  expect(layers.overlay, "menu backdrop must paint above the sticky header").toBeGreaterThan(layers.header);
   await page.keyboard.press("Escape");
   await expect(drawer).toBeHidden();
 });
@@ -267,6 +288,21 @@ test.describe("pinned Protective Floor", () => {
     await at(0.5);
     const fits = await page.evaluate(() => { const pin = document.querySelector(".fl-pin")!.getBoundingClientRect(); const actions = document.querySelector(".fl-actions")!.getBoundingClientRect(); return actions.bottom <= pin.bottom + 1; });
     expect(fits).toBe(true);
+  });
+
+  test("scroll keeps the accessible view in sync when WebGL is unavailable", async ({ page }) => {
+    await page.addInitScript(() => {
+      HTMLCanvasElement.prototype.getContext = function () { return null; };
+    });
+    await page.goto("/?splash=off");
+    await expect(page.locator(".fl-stage")).toHaveAttribute("data-gl", "off");
+    await page.locator("#floor").scrollIntoViewIfNeeded();
+    await page.evaluate(() => {
+      const track = document.querySelector<HTMLElement>(".fl-track")!;
+      const top = track.getBoundingClientRect().top + window.scrollY;
+      window.scrollTo(0, top + (track.offsetHeight - window.innerHeight) * 0.5);
+    });
+    await expect(page.getByRole("button", { name: "The floor" })).toHaveAttribute("aria-pressed", "true");
   });
 });
 

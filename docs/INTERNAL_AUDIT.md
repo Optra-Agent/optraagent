@@ -4,6 +4,8 @@ Date: 2026-11-20
 Review type: Focused internal differential review of the P4 contract worktree; not an independent audit.
 Base: `48c265e6e92d78ca643bfcdf60ed5928cd671d0a` (current worktree is dirty; no commit range).
 
+Scope amendment (2026-11-20): after this review, the contract was changed to allow native ETH (`address(0)`) as underlying with an ERC-20 quote, and the Mainnet preflight was tightened to require Safe/admin as pool creator and a separate keeper EOA. The native-asset behavior has focused regression and Mainnet-fork tests, but this amendment is not a full internal re-audit and is not covered by the historical coverage/Slither counts below. Independent audit remains outstanding.
+
 ## Executive summary
 
 | Category | Count / status |

@@ -9,12 +9,15 @@ import {
   callPutUnderlyingByIndex,
   decodeCallPutOptionId,
   extractCallPutRequestKey,
+  extractCallPutSettlement,
   parseCallPutSize,
   prepareCallPutClose,
   prepareCallPutOpenSpread,
   prepareCallPutSettle,
   readCallPutWalletState,
   reconcileCallPutOpen,
+  reconcileCallPutClose,
+  reconcileCallPutSettlement,
   type CallPutOpenSpreadInput,
   type CallPutWalletState,
 } from "../../lib/venue/callput-robinhood-write";
@@ -223,6 +226,28 @@ describe("CallPut request tracking and reconciliation", () => {
     expect(() => extractCallPutRequestKey({ status: "success", logs: [] }, { account: WALLET, isOpen: true })).toThrow(/No GenerateRequestKey/);
   });
 
+  it("extracts settlement evidence only from the matching SettlePosition event", () => {
+    const optionTokenId = 99n;
+    const size = 500n;
+    const event = {
+      address: CALLPUT_ROBINHOOD_CONTRACTS.settleManager,
+      topics: encodeEventTopics({
+        abi: CALLPUT_WRITE_ABIS.settleManager,
+        eventName: "SettlePosition",
+        args: { account: WALLET, underlyingAssetIndex: 16, expiry: 1_795_795_685 },
+      }),
+      data: encodeAbiParameters(
+        [{ type: "uint256" }, { type: "uint256" }, { type: "address[]" }, { type: "uint256" }, { type: "uint256" }],
+        [optionTokenId, size, [CALLPUT_ROBINHOOD_CONTRACTS.usdg], 45n, 90n],
+      ),
+    };
+    const receipt = { status: "success", logs: [event] } as never;
+    expect(extractCallPutSettlement(receipt, { account: WALLET, underlyingAssetIndex: 16, optionTokenId }))
+      .toMatchObject({ account: WALLET, underlyingAssetIndex: 16, optionTokenId, size, amountOut: 45n, settlePrice: 90n });
+    expect(() => extractCallPutSettlement(receipt, { account: "0x0000000000000000000000000000000000000001", underlyingAssetIndex: 16, optionTokenId })).toThrow(/No matching SettlePosition/);
+    expect(() => extractCallPutSettlement(receipt, { account: WALLET, underlyingAssetIndex: 16, optionTokenId: 100n })).toThrow(/No matching SettlePosition/);
+  });
+
   const intent = () => ({ ...prepareCallPutOpenSpread(openInput()).intent, requestKey: KEY, txHash: `0x${"cd".repeat(32)}` as Hex });
   const snapshot = (overrides: Partial<CallPutRobinhoodRequestSnapshot>): CallPutRobinhoodRequestSnapshot => ({
     requestKey: KEY, kind: "open", status: "Pending", account: WALLET, underlyingAssetIndex: 16, expiry: 1n, optionTokenId: 99n,
@@ -256,6 +281,30 @@ describe("CallPut request tracking and reconciliation", () => {
   it("rejects mismatched request key or account", () => {
     expect(() => reconcileCallPutOpen({ intent: intent(), request: snapshot({ requestKey: `0x${"01".repeat(32)}` }), optionTokenBalanceRaw: null, nowMs: NOW_MS })).toThrow(/does not match/);
     expect(() => reconcileCallPutOpen({ intent: intent(), request: snapshot({ account: "0x0000000000000000000000000000000000000002" }), optionTokenBalanceRaw: null, nowMs: NOW_MS })).toThrow(/account differs/);
+  });
+
+  it("confirms a close only when its executed request is matched by an independent token-balance decrease", () => {
+    const closeRequest = snapshot({
+      kind: "close", status: "Executed", size: 500n, optionTokenId: 99n,
+      minSize: null, amountIn: null, sizeOut: null, minAmountOut: 1n,
+    });
+    expect(reconcileCallPutClose({ request: closeRequest, requestKey: KEY, account: WALLET, optionTokenId: 99n, preBalanceRaw: 1_000n, balanceAfterRaw: 500n, nowMs: NOW_MS }))
+      .toMatchObject({ state: "executed-position-confirmed", fillConfirmed: true });
+    expect(reconcileCallPutClose({ request: closeRequest, requestKey: KEY, account: WALLET, optionTokenId: 99n, preBalanceRaw: 1_000n, balanceAfterRaw: 600n, nowMs: NOW_MS }))
+      .toMatchObject({ state: "executed-position-unconfirmed", fillConfirmed: false });
+    expect(reconcileCallPutClose({ request: { ...closeRequest, status: "Pending" }, requestKey: KEY, account: WALLET, optionTokenId: 99n, preBalanceRaw: 1_000n, balanceAfterRaw: 500n, nowMs: NOW_MS }))
+      .toMatchObject({ state: "pending", fillConfirmed: false });
+    expect(() => reconcileCallPutClose({ request: closeRequest, requestKey: KEY, account: WALLET, optionTokenId: 100n, preBalanceRaw: 1_000n, balanceAfterRaw: 500n, nowMs: NOW_MS })).toThrow(/position token/);
+  });
+
+  it("confirms settlement only when a matching event and independent position-balance decrease agree", () => {
+    const settlement = { account: WALLET, underlyingAssetIndex: 16, optionTokenId: 99n, size: 500n, amountOut: 45n, settlePrice: 90n };
+    expect(reconcileCallPutSettlement({ settlement, preBalanceRaw: 1_000n, balanceAfterRaw: 500n }))
+      .toMatchObject({ state: "settled-position-confirmed", fillConfirmed: true });
+    expect(reconcileCallPutSettlement({ settlement, preBalanceRaw: 1_000n, balanceAfterRaw: 600n }))
+      .toMatchObject({ state: "settled-position-unconfirmed", fillConfirmed: false });
+    expect(reconcileCallPutSettlement({ settlement: null, preBalanceRaw: 1_000n, balanceAfterRaw: 0n }))
+      .toMatchObject({ state: "awaiting-settlement-event", fillConfirmed: false });
   });
 });
 

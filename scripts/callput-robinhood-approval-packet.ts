@@ -49,6 +49,7 @@ const eth = (w: bigint) => `${w} wei (${Number(w) / 1e18} ETH)`;
 console.log(JSON.stringify({
   chainId: 4663, block: block.toString(), signer,
   signerState: { usdgRaw: real.usdgBalanceRaw.toString(), usdgAllowanceToController: real.usdgAllowanceRaw.toString(), ethWei: real.nativeBalanceWei.toString(), executionFeeWei: real.executionFeeWei.toString() },
+  quoteStatus: { marketTimestampMs: market.timestampMs, marketAgeMs: Date.now() - market.timestampMs, quoteType: long.quoteType, longAvailable: long.marketAvailable, shortAvailable: short.marketAvailable, spotRaw: spot, longMarkRaw: long.markPriceRaw, shortMarkRaw: short.markPriceRaw, longRiskPremiumRate: long.riskPremiumRateForBuy, shortRiskPremiumRate: short.riskPremiumRateForBuy, executableVenueQuote: false, reason: "Feed marks are indicative; no executable order-specific quote was returned." },
   legs: { expiryUnix: expiry, long: { instrument: long.instrument, optionId: long.optionId }, short: { instrument: short.instrument, optionId: short.optionId } },
   size, sizeRaw: plan.sizeRaw.toString(), minSizeRaw: plan.minSizeRaw.toString(), amountInRaw: plan.quote.amountInRaw.toString(), amountInUsdg: formatUsdgRaw(plan.quote.amountInRaw),
   tx1: { to: approve.to, spender: CALLPUT_APPROVAL_SPENDER, value: "0", data: approve.data, gasEstimate: approveGas.toString(), gasCeiling: ceil(approveGas).toString() },
