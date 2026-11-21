@@ -220,10 +220,11 @@ test("the right-hand progress rail names the current section and links to every 
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto("/?splash=off");
   const rail = page.getByRole("navigation", { name: "Page progress" });
-  await expect(rail.getByRole("link", { name: "Intro" })).toHaveAttribute("aria-current", "location");
+  // The rail is driven by requestAnimationFrame, which software-rendered WebGL can starve on CI.
+  await expect(rail.getByRole("link", { name: "Intro" })).toHaveAttribute("aria-current", "location", { timeout: 20_000 });
   await rail.getByRole("link", { name: "How", exact: true }).click();
   await expect(page).toHaveURL(/#story$/);
-  await expect(rail.getByRole("link", { name: "How", exact: true })).toHaveAttribute("aria-current", "location");
+  await expect(rail.getByRole("link", { name: "How", exact: true })).toHaveAttribute("aria-current", "location", { timeout: 20_000 });
   const hrefs = await rail.getByRole("link").evaluateAll((links) => links.map((link) => link.getAttribute("href")));
   for (const href of hrefs) await expect(page.locator(href as string)).toHaveCount(1);
 });

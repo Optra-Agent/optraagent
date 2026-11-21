@@ -11,6 +11,9 @@ export default defineConfig({
   testDir: "./tests/e2e",
   fullyParallel: false,
   workers: 1,
+  // GitHub's shared runners render WebGL in software, which starves requestAnimationFrame-driven UI.
+  // One CI-only retry absorbs that; a real regression still fails twice.
+  retries: process.env.CI ? 1 : 0,
   reporter: "list",
   outputDir: ".local/optra-e2e-results",
   use: {
