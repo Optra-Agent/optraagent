@@ -211,6 +211,56 @@ export const callputOrderEvents = pgTable("callput_order_events", {
   index("callput_order_events_order_created_idx").on(table.orderId, table.createdAt),
 ]);
 
+/** Durable emergency stop per owner. A missing row means stopped; only the Live Agent store can clear it. */
+export const liveAgentControls = pgTable("live_agent_controls", {
+  ownerId: uuid("owner_id").primaryKey().references(() => users.id, { onDelete: "cascade" }),
+  stopped: boolean("stopped").notNull().default(true),
+  stopReason: varchar("stop_reason", { length: 200 }),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+/** Owner-specific CallPut Live Agent grant. Created `proposed`; `active` requires every autonomy evidence reference. */
+export const liveAgentGrants = pgTable("live_agent_grants", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  ownerId: uuid("owner_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  agentId: varchar("agent_id", { length: 64 }).notNull(),
+  tradingAddress: varchar("trading_address", { length: 42 }).notNull(),
+  route: varchar("route", { length: 24 }).notNull(),
+  policy: jsonb("policy").$type<Record<string, unknown>>().notNull(),
+  evidence: jsonb("evidence").$type<Record<string, unknown>>().notNull().default({}),
+  status: varchar("status", { length: 16 }).notNull().default("proposed"),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  index("live_agent_grants_owner_status_idx").on(table.ownerId, table.status),
+  uniqueIndex("live_agent_grants_one_active_idx").on(table.ownerId, table.agentId).where(sql`${table.status} = 'active'`),
+]);
+
+/** Every automated order attempt, keyed by a deterministic idempotency key so a decision can never submit twice. */
+export const liveAgentRequests = pgTable("live_agent_requests", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  ownerId: uuid("owner_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  grantId: uuid("grant_id").notNull().references(() => liveAgentGrants.id, { onDelete: "restrict" }),
+  idempotencyKey: varchar("idempotency_key", { length: 64 }).notNull(),
+  state: varchar("state", { length: 16 }).notNull().default("reserved"),
+  collateralRaw: varchar("collateral_raw", { length: 78 }).notNull(),
+  transactionHash: varchar("transaction_hash", { length: 66 }),
+  requestKey: varchar("request_key", { length: 66 }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  uniqueIndex("live_agent_requests_owner_key_idx").on(table.ownerId, table.idempotencyKey),
+  index("live_agent_requests_owner_state_idx").on(table.ownerId, table.state),
+]);
+
+/** One single-flight scheduler lease per owner; expiry makes a crashed holder recoverable. */
+export const liveAgentLeases = pgTable("live_agent_leases", {
+  ownerId: uuid("owner_id").primaryKey().references(() => users.id, { onDelete: "cascade" }),
+  holder: varchar("holder", { length: 64 }).notNull(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+});
+
 export const usersRelations = relations(users, ({ many }) => ({ sessions: many(sessions) }));
 export const sessionsRelations = relations(sessions, ({ one }) => ({ user: one(users, { fields: [sessions.userId], references: [users.id] }) }));
 
@@ -235,4 +285,4 @@ export const hourlyMarketSamplesRelations = relations(hourlyMarketSamples, ({ on
   snapshot: one(marketSnapshots, { fields: [hourlyMarketSamples.snapshotId], references: [marketSnapshots.id] }),
 }));
 
-export const schema = { users, authChallenges, sessions, backtestRuns, agents, marketSnapshots, hourlyMarketSamples, paperDecisions, paperOrders, paperPositions, paperAccounts, callputOrders, callputOrderEvents };
+export const schema = { users, authChallenges, sessions, backtestRuns, agents, marketSnapshots, hourlyMarketSamples, paperDecisions, paperOrders, paperPositions, paperAccounts, callputOrders, callputOrderEvents, liveAgentControls, liveAgentGrants, liveAgentRequests, liveAgentLeases };

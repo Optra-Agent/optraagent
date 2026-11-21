@@ -1,6 +1,6 @@
 # CallPut Live Agent — Execution Architecture and Authorization Boundary
 
-Status: pure safety guard and request classifiers implemented; autonomous submission DISABLED. Current CallPut MCP confirms a supported Account/session route, but OPTRA has no owner-specific CallPut Account, session grant, persistent monitor, or integrated execution worker.
+Status: pure safety guard, request classifiers and a durable store (grants, stop, lease, request ledger) implemented and tested; autonomous submission DISABLED. Current CallPut MCP confirms a supported Account/session route, but OPTRA has no owner-specific CallPut Account, session grant, persistent monitor, or integrated execution worker.
 
 ## What the venue supports (verified)
 
@@ -24,9 +24,26 @@ Status: pure safety guard and request classifiers implemented; autonomous submis
 - `liveAgentIdempotencyKey`, `classifyRequests` + `shouldHaltNewOrders`, `canAcquireLease`.
 - Default policy: stopped, empty allowlist, BuyPutSpread only, 10 USDG per order, 25 USDG open/day, 2 orders/day, 1 pending request.
 
+## Durable store (lib/venue/callput-live-agent-store.ts, migration 0006, 15 integration tests)
+
+- Tables: `live_agent_controls` (durable emergency stop; a missing row means stopped), `live_agent_grants` (owner grant; created `proposed`, `active` only with all five autonomy evidence references; one active grant per owner and agent), `live_agent_requests` (idempotency-keyed request ledger with monotonic states `reserved -> submitted -> pending -> executed|cancelled|stale|unknown -> closed`), `live_agent_leases` (one expiring single-flight lease per owner).
+- Hard caps no grant row can exceed: 10 USDG per order, 25 USDG open and daily, 5 orders per day, 1 pending request, 0.0003 ETH execution fee, 30-day grant lifetime. Assets and strategies must come from the venue allowlists; unknown fields are rejected.
+- `reserveAuthorizedLiveAgentOrder` reserves a request row only when `LIVE_TRADING_ENABLED` is exactly `true`, the grant is active for this agent with every evidence reference, the durable stop is clear, the caller holds the unexpired lease, no request is stale or unknown, and the pure policy in `callput-live-agent-guard` passes. Reserving is bookkeeping: it signs and submits nothing. A replayed decision returns the existing row.
+- `reconcileLiveAgentRequests` maps on-chain snapshots to request states; a stale request, a tracked key with no snapshot, or a submitted transaction without a request key after 10 minutes trips the durable stop. The stop survives a database reopen (tested). `revokeLiveAgentGrant` also stops the agent. Every grant, evidence, lease and request call is scoped by owner id (cross-owner access tested).
+- `resumeLiveAgent` refuses unless the flag is on, an unexpired active grant has full evidence, and no request is stale or unknown. Evidence values are recorded references; the code does not verify them against the venue or chain.
+
+## Worker, scheduler and owner controls (integrated, 30 integration and component tests)
+
+- `runLiveAgentTick` (lib/venue/callput-live-agent-worker.ts): acquire the lease; reconcile in-flight requests from on-chain snapshots; stop on stale or unknown; ask the plan source for a plan; run every gate and reserve idempotently; submit only through a supplied `LiveAgentSubmitter`. A failed RPC read or quote means no order and no guessed state. An ambiguous submission error marks the request `unknown` and trips the durable stop; only `NotBroadcastError` cancels cleanly.
+- `runLiveAgentSchedule` and `POST /api/cron/live-agent` (bearer `CRON_SECRET`): disabled unless `LIVE_TRADING_ENABLED=true`. Enabled, it visits active unexpired grants. The default plan source returns no plan (no mapping from a Paper Agent decision to a CallPut order is approved) and there is no bundled submitter, so a pass reconciles and monitors only. The schedule is not enabled on Railway.
+- Owner API (session-authenticated, owner-scoped): `GET /api/venue/callput/live-agent` (state, grants, requests), `POST .../stop`, `POST .../grants` (propose only; hard caps enforced), `POST .../grants/{id}/revoke` (also stops). Evidence recording, activation and resume are deliberately not exposed.
+- Tape shows an "Agent controls" panel: state, grants, requests, Emergency stop and Revoke. It reports execution off and no submission route on this deployment.
+- Tested: restart recovery, duplicate tick and idempotent replay, risk-limit enforcement, authorization expiry, RPC failures, ambiguous and proven-unsent submission failures, revocation, lease contention, owner isolation.
+
 ## Not implemented, by design
 
-- No key custody, signing, session-key issuance, or submission path. No API route or scheduler calls this module yet. Persistent request storage/monitoring, database-backed leases, and durable emergency-stop state are not implemented. Standalone Protective Put execution stays disabled.
+- No key custody, signing, session-key issuance, or submission path: `submitter` is intentionally unimplemented because CallPut has not confirmed a delegation model for OPTRA agents. Production keeps `LIVE_TRADING_ENABLED=false`, so every authorization fails closed there. Standalone Protective Put execution stays disabled.
+- No CallPut Account workflow client. The grant's `route` field records the owner's choice (`direct-wallet` or `callput-account`); the venue-side account, device signer and session terms remain unverified until the owner and CallPut supply them.
 
 ## Gates before enabling (owner/venue actions)
 
@@ -34,4 +51,4 @@ Status: pure safety guard and request classifiers implemented; autonomous submis
 2. For automation, the owner configures a CallPut Account workflow with the exact asset, strategy, deposit amount, maximum total collateral, session mode, and deposit gas cap; the distinct device signer and account address must be verified from venue workflow state. No grant, deposit, or signature has been made by this agent.
 3. Independently review/audit the account/session contracts and obtain owner approval of the exact permissions, spend caps, expiry and revocation. Rehearse revocation before enabling.
 4. Complete one owner-authorized order from the selected trading-account type and reconcile its open, close and settlement lifecycle and position ownership. The 2026-11-20 AAPL 350/345 put-spread scan estimated USDG 2.345 per underlying unit (about USDG 0.2345 for size 0.1); this is not an executable quote. The supplied deployment EOA's 0.45027 USDG would cover that estimate if and only if the owner designates it as the trading wallet, but no such designation or fresh order-specific quote exists. Do not move funds before exact packet review and approval.
-5. Implement database-backed monitoring/lease/stop controls and wire the pure guard only after the above account and authorization model is accepted; keep `LIVE_TRADING_ENABLED=false` until then.
+5. The database-backed lease, stop and ledger exist. Build the submission worker, API routes and scheduler only after the account and authorization model above is accepted, and keep `LIVE_TRADING_ENABLED=false` until then.

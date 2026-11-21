@@ -10,6 +10,7 @@ import { OrdersTable, PositionGrid, TapeList } from "../paper";
 import { CallPutOrderPanel } from "./CallPutOrderPanel";
 import { CallPutPositionActions } from "./CallPutPositionActions";
 import { CallPutRequestTracker } from "./CallPutRequestTracker";
+import { LiveAgentControls } from "./LiveAgentControls";
 import { Chip, JourneyRail, PageHeader, Skeleton, StateBlock, Panel } from "../ui";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -145,6 +146,7 @@ export function TapeScreen({ agentId }: { agentId: string }) {
       <CallPutOrderPanel />
       <CallPutPositionActions />
       <CallPutRequestTracker />
+      <LiveAgentControls />
       {state === "loading" ? <div className="state-panel" role="status"><Skeleton lines={4} /><span className="sr-only">Loading persisted paper history…</span></div> : null}
       {state === "error" ? (
         <StateBlock kind="error" title="Tape could not be loaded" action={<><Button variant="outline" type="button" onClick={refresh}>Retry</Button><Link className={buttonVariants({ variant: "outline" })} href="/agents">Back to agents</Link></>}>

@@ -43,6 +43,13 @@
       "when": 1795201977057,
       "tag": "0005_minor_harry_osborn",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1795244210540,
+      "tag": "0006_live_agent_store",
+      "breakpoints": true
     }
   ]
 }
