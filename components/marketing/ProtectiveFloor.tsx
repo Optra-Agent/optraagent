@@ -133,7 +133,7 @@ export function ProtectiveFloor() {
             Modeled arithmetic at expiry, per 100 of entry value. Strike and premium are assumptions you set, not quotes. The paper agent prices its own premiums with Optra&apos;s model and does not model venue fees. This is not a backtest and not a recorded result.
           </p>
           <div className="m-actions fl-actions">
-            <Link className={buttonVariants()} href="/agents#configure">Build this as a paper agent</Link>
+            <Link className={buttonVariants()} href="/agents#configure">Build this agent</Link>
             <a className={cn(buttonVariants({ variant: "outline" }))} href="#agents">Read the Protective Put rules</a>
           </div>
         </div>

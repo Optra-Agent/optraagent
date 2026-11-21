@@ -13,7 +13,7 @@ test.describe("Optra Agent Network (desktop)", () => {
   test("starts with one agent and the other three House Agents in a compact selector", async ({ page }) => {
     await page.goto("/");
     await expect(net(page)).toHaveAttribute("data-phase", "0");
-    await expect(svg(page).getByRole("button", { name: /^Protective Put\. Paper agent/ })).toBeAttached();
+    await expect(svg(page).getByRole("button", { name: /^Protective Put\. Agent/ })).toBeAttached();
     await expect(shown(page, "stage")).toHaveCount(0);
     await expect(shown(page, "hook")).toHaveCount(0);
     const agents = net(page).locator(".pn-agents");
@@ -174,12 +174,12 @@ test.describe("Optra Agent Network (desktop)", () => {
     const paperAgent = net(page).locator(".pn-agents").getByRole("button", { name: /Protective Put/ });
     await paperAgent.click();
     await expect(card(page)).toHaveCount(0);
-    await expect(svg(page).getByText("PAPER AGENT", { exact: true })).toBeAttached();
+    await expect(svg(page).getByText("AGENT", { exact: true })).toBeAttached();
   });
 
   test("the root and every node work from the keyboard", async ({ page }) => {
     await page.goto("/");
-    const root = svg(page).getByRole("button", { name: /^Protective Put\. Paper agent/ });
+    const root = svg(page).getByRole("button", { name: /^Protective Put\. Agent/ });
     await root.focus();
     await expect(root).toBeFocused();
     await page.keyboard.press("Enter");
@@ -234,7 +234,7 @@ test("with reduced motion the complete network is shown without growth, and noth
   await svg(page).getByRole("button", { name: /^Calmo,/ }).click();
   await expect(card(page).getByRole("heading", { name: "Calmo" })).toBeVisible();
   await page.keyboard.press("Escape");
-  await svg(page).getByRole("button", { name: /^Protective Put\. Paper agent/ }).click();
+  await svg(page).getByRole("button", { name: /^Protective Put\. Agent/ }).click();
   await card(page).getByRole("button", { name: "View decision flow" }).click();
   await expect(card(page).getByText("Entry blocked by calmo.")).toBeVisible({ timeout: 1500 });
 });
@@ -349,7 +349,7 @@ test.describe("section visuals", () => {
     await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
     await page.waitForTimeout(600);
     const final = page.locator(".m-final");
-    await expect(final.getByRole("link", { name: "Launch a paper agent" })).toBeVisible();
+    await expect(final.getByRole("link", { name: "Launch an agent" })).toBeVisible();
     await expect(final.getByRole("link", { name: "See what is verified" })).toHaveAttribute("href", "/verify");
     await expect(page.locator(".m-footer")).toBeVisible();
   });

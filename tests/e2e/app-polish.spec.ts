@@ -1,17 +1,18 @@
 import { expect, test } from "@playwright/test";
 
-test("the app sidebar groups navigation with an icon per destination and a Paper mode card", async ({ page }) => {
+test("the app sidebar groups navigation with an icon per destination and no status card", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto("/agents");
   const nav = page.getByRole("navigation", { name: "Main navigation" });
   await expect(nav.locator("a svg")).toHaveCount(7);
   await expect(nav.getByText("Workspace", { exact: true })).toBeVisible();
   await expect(nav.getByText("Reference", { exact: true })).toBeVisible();
-  await expect(page.getByLabel("Sidebar").getByText("PAPER MODE")).toBeVisible();
+  await expect(page.getByLabel("Sidebar").getByText("PAPER MODE")).toHaveCount(0);
+  await expect(page.getByLabel("Sidebar").getByText(/Virtual USDG/)).toHaveCount(0);
   const banner = page.getByRole("banner");
   await expect(banner.getByText("Agents", { exact: true })).toBeVisible();
   await expect(banner.getByText("Robinhood Chain")).toBeVisible();
-  await expect(banner.getByRole("note")).toHaveAttribute("title", /Real-money execution is disabled/);
+  await expect(banner.getByRole("note")).toHaveCount(0);
 });
 
 test("Agents leads with a connect card, a featured Protective Put and locked previews", async ({ page }) => {

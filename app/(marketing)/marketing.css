@@ -18,8 +18,6 @@
 .m-eyebrow { margin: 0 0 18px; color: var(--dim); font-family: var(--font-data); font-size: 12px; font-weight: 500; letter-spacing: 0.08em; }
 
 /* ───────── Hero: centered copy, then the real app preview the beam lands on ───────── */
-.paper-banner { display: flex; align-items: center; justify-content: center; gap: 12px; padding: 7px 24px; border-bottom: 1px solid var(--line-soft); background: #0e0f12; color: var(--muted); font-size: 12px; text-align: center; }
-.paper-banner strong { color: var(--ember-text); font-family: var(--font-data); font-size: 11px; font-weight: 500; letter-spacing: 0.08em; }
 
 .hero { position: relative; isolation: isolate; overflow: clip; padding-bottom: 72px; text-align: center; }
 .hero-copy { position: relative; z-index: 3; display: grid; justify-items: center; width: min(1040px, calc(100% - 48px)); margin: 0 auto; padding: 36px 0 0; }
@@ -54,7 +52,6 @@
 .preview-shell .topbar { position: static; padding: 8px 20px; backdrop-filter: none; }
 .preview-shell .sidebar-link { width: 100%; text-align: left; background: none; border: 0; }
 .preview-shell .sidebar-link[aria-current="page"] { background: linear-gradient(135deg, #17202c, var(--raised)); }
-.preview-shell .topbar-paper-text { display: none; }
 .preview-page { padding: 22px 26px 0; }
 /* The first screen is in place at first paint. Only a screen the visitor switches to eases in. */
 .preview-page[data-switched="1"] { animation: pv-in 360ms var(--m-ease) both; }

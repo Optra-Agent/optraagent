@@ -248,7 +248,6 @@ function FlowCard({ c, scenario }: { c: Ctl; scenario: FlowScenario }) {
       <h3>{recorded ? "A public Tape record" : "How one tick becomes a decision"}</h3>
       <div className="pn-chips">
         <Chip tone={recorded ? "azure" : "ember"}>{recorded ? "Public Tape record" : "Illustrative only"}</Chip>
-        <Chip>Paper</Chip>
       </div>
       <div className="pn-seg" role="group" aria-label="Example">
         {c.scenarios.map((row) => <button key={row.id} type="button" aria-pressed={row.id === scenario.id} onClick={() => c.startFlow(row)}>{row.label}</button>)}
@@ -580,7 +579,7 @@ export function AgentGraph({ data, recorded = null }: GraphProps) {
             <Node
               node={nodeById("root")}
               show
-              label={`${agent.name}. ${ready ? "Paper agent. Explore it." : "Preview, strategy overview. Show details."}`}
+              label={`${agent.name}. ${ready ? "Agent. Explore it." : "Preview, strategy overview. Show details."}`}
               pressed={sel === "root"}
               onActivate={() => (ready && idle && !reduced() ? c.explore() : c.select("root"))}
               state={{ active: sel === "root" ? "1" : "0", ready: ready ? "1" : "0" }}
@@ -603,8 +602,8 @@ export function AgentGraph({ data, recorded = null }: GraphProps) {
               </g>
               <text className="pn-root-name" y="118" textAnchor="middle">{agent.name}</text>
               <g className="pn-root-more" data-compact={phase >= 2 ? "1" : "0"}>
-                <text className="pn-root-tag pn-mono" y="140" textAnchor="middle" data-ready={ready ? "1" : "0"}>{ready ? "PAPER AGENT" : "PREVIEW"}</text>
-                <text className="pn-root-sub" y="160" textAnchor="middle">{ready ? "15 hooks · paper only · modeled premiums" : "Strategy overview · research preview"}</text>
+                <text className="pn-root-tag pn-mono" y="140" textAnchor="middle" data-ready={ready ? "1" : "0"}>{ready ? "AGENT" : "PREVIEW"}</text>
+                <text className="pn-root-sub" y="160" textAnchor="middle">{ready ? "15 hooks · modeled premiums" : "Strategy overview · research preview"}</text>
               </g>
             </Node>
 
@@ -678,7 +677,7 @@ export function AgentGraph({ data, recorded = null }: GraphProps) {
         <button type="button" className="pm-root" onClick={() => (ready && idle && !reduced() ? c.explore() : c.select("root"))} aria-pressed={sel === "root"} data-ready={ready ? "1" : "0"}>
           <AgentCharacter id={agent.id} size={40} />
           <span className="pm-root-name">{agent.name}</span>
-          <small>{ready ? "PAPER AGENT · 15 hooks" : "PREVIEW · Strategy overview"}</small>
+          <small>{ready ? "AGENT · 15 hooks" : "PREVIEW · Strategy overview"}</small>
         </button>
         {ready ? (
           <ol className="pm-tree" style={{ "--grow": phase / 5 } as CSSProperties} aria-label="Protective Put hook stages">

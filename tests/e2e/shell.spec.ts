@@ -9,7 +9,6 @@ test("desktop app shell shows one sidebar with every section and marks the curre
     await expect(nav.getByRole("link", { name: label, exact: true })).toBeVisible();
   }
   await expect(nav.getByRole("link", { name: "Hooks", exact: true })).toHaveAttribute("aria-current", "page");
-  await expect(page.getByRole("banner").getByText("PAPER", { exact: true })).toBeVisible();
   await expect(page.getByRole("banner").getByRole("button", { name: "Connect wallet", exact: true })).toBeVisible();
 });
 
@@ -52,12 +51,12 @@ test("wallet dialog opens from the topbar, closes with Escape, and is reachable 
   await expect(page.getByRole("dialog", { name: "Choose an EVM wallet" })).toBeVisible();
 });
 
-test("the topbar names Paper as the mode and offers no Live control", async ({ page }) => {
+test("the topbar carries no mode banner and offers no Live control", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.goto("/agents");
   const banner = page.getByRole("banner");
-  await expect(banner.getByText("PAPER", { exact: true })).toBeVisible();
-  await expect(banner.getByText("Real-money execution is disabled")).toBeVisible();
+  await expect(banner.getByText("PAPER", { exact: true })).toHaveCount(0);
+  await expect(banner.getByText("Real-money execution is disabled")).toHaveCount(0);
   await expect(banner.getByRole("button", { name: /Live/ })).toHaveCount(0);
   await expect(banner.getByText("Planned")).toHaveCount(0);
 });

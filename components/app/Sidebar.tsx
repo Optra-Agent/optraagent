@@ -54,10 +54,6 @@ export function SidebarView({ active, interactive = true, onNavigate, preview }:
           </div>
         ))}
       </nav>
-      <div className="sidebar-foot">
-        <p className="sidebar-foot-head"><ShieldCheck className="sidebar-foot-icon" aria-hidden /><strong>PAPER MODE</strong></p>
-        <span>Virtual USDG. Modeled premiums. Live trading is disabled.</span>
-      </div>
     </>
   );
 }

@@ -22,7 +22,7 @@ const TOTAL = 4800;
 const DOCK = 1000;
 const RING: CharacterId[] = ["gate", "strike", "size", "pulse", "expiry", "covered_call", "cash_secured_put", "earnings_straddle"];
 const RADIUS = 37;
-const STATUS: [number, string][] = [[0, "LOADING THE AGENT CAST"], [0.4, "ASSEMBLING SIX RULE STAGES"], [0.64, "CONNECTING THE ROUTES"], [0.86, "PAPER MODE READY"]];
+const STATUS: [number, string][] = [[0, "LOADING THE AGENT CAST"], [0.4, "ASSEMBLING SIX RULE STAGES"], [0.64, "CONNECTING THE ROUTES"], [0.86, "READY TO LAUNCH"]];
 
 /** Module state outlives a client-side navigation but not a page load, so a reload plays the opening and a link inside the site does not. */
 let played = false;

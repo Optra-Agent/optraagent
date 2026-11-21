@@ -15,10 +15,6 @@ export default function MarketingLayout({ children }: Readonly<{ children: React
     <div className="m-frame">
       <Splash recipeHash={getForgeDemo().validHash} />
       <a className="skip-link" href="#top">Skip to content</a>
-      <div className="paper-banner" role="note">
-        <strong>PAPER</strong>
-        <span>Virtual USDG. Option premiums are modeled. Real-money execution is disabled.</span>
-      </div>
       <MarketingNav />
       <main id="top">{children}</main>
       <footer className="m-footer">

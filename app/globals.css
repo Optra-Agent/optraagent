@@ -112,10 +112,6 @@ button:disabled, select:disabled, input:disabled { cursor: not-allowed; }
 .sidebar-link:hover .sidebar-icon { color: var(--muted); }
 .sidebar-link[aria-current="page"] { background: linear-gradient(135deg, #17202c, var(--raised)); color: var(--text); font-weight: 600; box-shadow: inset 0 0 0 1px #2c3a4d; }
 .sidebar-link[aria-current="page"] .sidebar-icon { color: var(--azure-hover); }
-.sidebar-foot { display: grid; gap: 8px; margin: 0 12px 16px; padding: 14px; border: 1px solid var(--line); border-radius: var(--r); background: var(--surface); color: var(--muted); font-size: 12px; line-height: 1.5; }
-.sidebar-foot-head { display: flex; align-items: center; gap: 8px; margin: 0; }
-.sidebar-foot-icon { width: 15px; height: 15px; color: var(--ember-text); }
-.sidebar-foot strong { color: var(--ember-text); font-family: var(--font-data); font-size: 11px; font-weight: 500; letter-spacing: 0.08em; }
 .shell-main { display: flex; flex-direction: column; min-width: 0; min-height: 100dvh; }
 .topbar { position: sticky; top: 0; z-index: 40; display: flex; align-items: center; gap: 16px; min-height: 60px; padding: 8px 32px; border-bottom: 1px solid var(--line-soft); background: rgb(11 12 14 / 0.92); backdrop-filter: blur(10px); }
 .topbar-where { display: flex; align-items: baseline; gap: 8px; min-width: 0; font-size: 14px; }
@@ -125,8 +121,6 @@ button:disabled, select:disabled, input:disabled { cursor: not-allowed; }
 .topbar-context { display: flex; align-items: center; gap: 8px; margin-left: 12px; min-width: 0; }
 .topbar-chip { display: inline-flex; align-items: center; gap: 8px; min-height: 28px; padding: 0 10px; border: 1px solid var(--line); border-radius: var(--r-sm); color: var(--muted); font-size: 12px; white-space: nowrap; }
 .topbar-net i { width: 7px; height: 7px; border-radius: 50%; background: var(--gain); }
-.topbar-paper { border-color: var(--ember-line); background: var(--ember-wash); color: var(--muted); }
-.topbar-paper strong { color: var(--ember-text); font-family: var(--font-data); font-size: 11px; font-weight: 500; letter-spacing: 0.08em; }
 .topbar-actions { display: flex; align-items: center; gap: 12px; margin-left: auto; }
 .topbar-session { display: flex; align-items: center; }
 .topbar-menu { display: none; }
@@ -499,9 +493,6 @@ a.template-cta:hover svg { transform: translateX(3px); }
   .journey-step:nth-child(3n)::before { display: none; }
 }
 
-@media (max-width: 1180px) {
-  .topbar-paper-text { display: none; }
-}
 
 @media (max-width: 1023px) {
   .shell { grid-template-columns: minmax(0, 1fr); }
@@ -525,7 +516,7 @@ a.template-cta:hover svg { transform: translateX(3px); }
   .journey ol { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .journey-step:nth-child(2n)::before { display: none; }
   .journey-step:nth-child(3n)::before { display: block; }
-  .topbar-paper-text, .topbar-crumb, .topbar-slash, .topbar-net { display: none; }
+  .topbar-crumb, .topbar-slash, .topbar-net { display: none; }
   .topbar-context { margin-left: 4px; }
   .topbar-chip { padding-right: 4px; padding-left: 4px; }
   .topbar-actions { gap: 6px; }
@@ -839,8 +830,7 @@ a.ag-pill:hover svg { transform: translateX(3px); }
   /* The tab bar already says where you are, so the topbar gives its room to the mode chips and the wallet. */
   .topbar-where { display: none; }
   .topbar-context { overflow: visible; }
-  .topbar-paper { flex: none; }
-}
+  }
 
 /* Where blue means data or an agent, not an action: the network graph, the hero cast, the payoff drawings and the phones keep it. */
 .pn, .ens, .fd, .ph-row, .splash-box { --azure: var(--blue); --azure-hover: var(--blue-hover); --azure-wash: var(--blue-wash); --azure-line: var(--blue-line); }

@@ -17,5 +17,4 @@ test("Tape screen shows persisted decision reasons and position empty state", as
   await expect(page.getByRole("heading", { name: "Optra Tape", exact: true })).toBeVisible();
   await expect(page.getByText("Hook catalog is unavailable.", { exact: true })).toBeVisible();
   await expect(page.getByText("No paper positions.", { exact: true })).toBeVisible();
-  await expect(page.getByText("PAPER", { exact: true }).first()).toBeVisible();
 });

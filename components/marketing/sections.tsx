@@ -46,17 +46,17 @@ export function Hero({ facts }: { facts: Facts }) {
           </p>
           <p className="hero-gloss">Hooked agents. Every strike explained.</p>
           <div className="hero-actions">
-            <Link className={cn(buttonVariants({ size: "lg" }))} href="/agents">Launch a paper agent</Link>
+            <Link className={cn(buttonVariants({ size: "lg" }))} href="/agents">Launch an agent</Link>
             <a className={cn(buttonVariants({ variant: "outline", size: "lg" }))} href="#floor">See the protective floor</a>
           </div>
-          <p className="hero-micro">Start on paper with virtual money and no deposit. The options are synthetic and modeled. Not shares, not investment advice.</p>
+          <p className="hero-micro">No deposit needed. Options are synthetic and modeled from Robinhood Chain stock-token prices. Not shares, not investment advice.</p>
         </div>
         <div className="hero-slot">
           <AgentEnsemble stages={STAGE_ORDER.map((stage) => ({ id: stage, label: stageLabel(stage), line: STAGE_QUESTION[stage] }))} />
         </div>
       </div>
       <ul className="hero-proof m-wrap" aria-label="Current scope">
-        <li>Paper only. Live trading disabled</li>
+        <li>Every decision recorded on Optra Tape</li>
         <li>{facts.paperReadyTemplates.length} of {facts.templates.length} House Agents paper ready</li>
         <li>{facts.hookLive} of {facts.hookTotal} hooks implemented</li>
         <li>Modeled premiums. Venue fees not modeled</li>
@@ -71,7 +71,7 @@ export function HeroPreview({ facts }: { facts: Facts }) {
     <section className="hero-preview" id="app" aria-labelledby="app-title">
       <div className="pv-lead">
         <p className="m-eyebrow">INSIDE THE APP</p>
-        <h2 id="app-title">The screens you will run on paper.</h2>
+        <h2 id="app-title">The screens you will run.</h2>
         <p>Same sidebar, same journey, same House Agent cards. Read only here, live in the app.</p>
       </div>
       <HeroStage>
@@ -88,8 +88,8 @@ export function HouseAgents({ facts, graph, recorded }: { facts: Facts; graph: G
   return (
     <section className="m-section" id="agents" aria-labelledby="agents-title">
       <div className="m-wrap">
-        <SectionHead titleId="agents-title" eyebrow="HOUSE AGENTS" title="One House Agent runs on paper today. Three are next.">
-          <p>An Optra Agent is a recipe of rules, not a chatbot. Select Protective Put to see its six hook stages, read each rule, and replay how one tick becomes a paper decision. The other three stay in Preview until their venue and data requirements are verified.</p>
+        <SectionHead titleId="agents-title" eyebrow="HOUSE AGENTS" title="One House Agent is ready today. Three are next.">
+          <p>An Optra Agent is a recipe of rules, not a chatbot. Select Protective Put to see its six hook stages, read each rule, and replay how one tick becomes a decision. The other three stay in Preview until their venue and data requirements are verified.</p>
         </SectionHead>
         <AgentGraph data={graph} recorded={recorded} />
         <p className="graph-foot">{facts.hookLive} of {facts.hookTotal} hooks have evaluators, all used by Protective Put. Hook text and recipe values are read from the same catalog the public API serves.</p>
@@ -125,7 +125,7 @@ export function Story({ rails }: { rails: RiskRail[] }) {
     <section className="m-section" id="story" aria-labelledby="story-title">
       <div className="m-wrap">
         <SectionHead titleId="story-title" eyebrow="HOW IT WORKS" title="From rules to a reasoned decision.">
-          <p>One agent, four steps. Build Protective Put from rules, backtest it, run it on paper, then read why it acted. Everything here is paper: virtual money, modeled premiums, no real-money path.</p>
+          <p>One agent, four steps. Build Protective Put from rules, backtest it, run it as a simulation, then read why it acted. Execution is simulated with virtual capital and modeled premiums.</p>
         </SectionHead>
         <StoryScene stages={STAGE_ORDER.map((stage) => ({ id: stage, label: stageLabel(stage), line: STAGE_QUESTION[stage] }))} rails={rails} />
       </div>
@@ -137,14 +137,14 @@ export function Story({ rails }: { rails: RiskRail[] }) {
 
 /** Keep paper, manual venue actions, and autonomous execution as separate capabilities. */
 function ExecutionModes() {
-  const paper = ["Virtual capital", "Supported rule configuration", "Backtesting", "Paper agent launch", "Automated paper evaluation", "Explainable decisions in Optra Tape"];
+  const paper = ["Virtual capital", "Supported rule configuration", "Backtesting", "Agent launch", "Automated evaluation", "Explainable decisions in Optra Tape"];
   return (
     <div className="xm reveal-stagger" role="group" aria-label="Execution modes">
       <article className="xm-card" data-mode="paper" style={at(0)}>
         <header><h3>Paper Trading</h3><Chip tone="azure">Working today</Chip></header>
         <p>Run an agent against virtual capital with modeled premiums. The full path works end to end.</p>
         <ul>{paper.map((item) => <li key={item}>{item}</li>)}</ul>
-        <Link className={cn(buttonVariants())} href="/agents">Launch a paper agent</Link>
+        <Link className={cn(buttonVariants())} href="/agents">Launch an agent</Link>
       </article>
       <article className="xm-card" data-mode="live" style={at(1)}>
         <header><h3>Manual CallPut</h3><Chip tone="neutral">Signing disabled</Chip></header>
@@ -237,14 +237,14 @@ export function FinalCta() {
           <FinaleCast />
           <span className="fin-floor" aria-hidden="true" />
           <div className="m-wrap m-final-inner">
-            <p className="m-eyebrow">PAPER FIRST</p>
-            <h2 id="final-title">Your first agent runs on paper.</h2>
+            <p className="m-eyebrow">START HERE</p>
+            <h2 id="final-title">Launch your first agent.</h2>
             <p>Pick Protective Put, backtest it on past prices, launch it with virtual money, and read why it acted on the Tape. Nothing here needs a deposit or touches real money.</p>
             <div className="m-actions">
-              <Link className={buttonVariants({ size: "lg" })} href="/agents">Launch a paper agent</Link>
+              <Link className={buttonVariants({ size: "lg" })} href="/agents">Launch an agent</Link>
               <Link className={buttonVariants({ variant: "outline", size: "lg" })} href="/verify">See what is verified</Link>
             </div>
-            <p className="fin-note">Virtual USDG. Modeled premiums. Not investment advice.</p>
+            <p className="fin-note">Modeled premiums. Not investment advice.</p>
           </div>
           <span className="fin-curtain fin-curtain-l" aria-hidden="true" />
           <span className="fin-curtain fin-curtain-r" aria-hidden="true" />

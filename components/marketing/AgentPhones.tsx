@@ -64,7 +64,7 @@ export function AgentPhones({ facts, ticks }: { facts: Facts; ticks: FlowScenari
             <b>Backtest</b>
             <span>Needs 1,441 hourly candles. No return is shown until a complete run exists.</span>
           </div>
-          <Link className={buttonVariants({ size: "sm" }) + " ph-cta"} href="/agents">Launch a paper agent</Link>
+          <Link className={buttonVariants({ size: "sm" }) + " ph-cta"} href="/agents">Launch an agent</Link>
         </Phone>
 
         <Phone title="Decision log" badge="Illustrative" tone="ember" label="Decision log screen: three example ticks with the reason for each">

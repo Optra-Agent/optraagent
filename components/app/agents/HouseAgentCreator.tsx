@@ -122,7 +122,7 @@ export function HouseAgentCreator() {
         <div className="strategy-summary" aria-live="polite">
           <p className="eyebrow">YOUR STRATEGY</p>
           <p className="strategy-line">Protect <b className="mono">{sharesValid ? shares : "?"} {symbol || "shares"}</b> with a put <b>7% out of the money</b>, about 30 days out.</p>
-          <p className="strategy-sub">Premium capped at 2% of the holding per entry, paid from <span className="mono">${capitalValid ? Number(capital).toLocaleString("en-US") : "?"}</span> of virtual capital. Premiums are modeled.</p>
+          <p className="strategy-sub">Premium capped at 2% of the holding per entry, paid from <span className="mono">${capitalValid ? Number(capital).toLocaleString("en-US") : "?"}</span> of virtual capital. Simulated execution: premiums are modeled and no real funds or onchain orders are involved.</p>
         </div>
         <Button type="submit" size="lg" className="w-full" disabled={busy || marketsLoading || symbols.length === 0 || !formValid}>{busy ? "Creating…" : "Create paper draft"}</Button>
       </form>

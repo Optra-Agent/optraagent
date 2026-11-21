@@ -5,8 +5,8 @@ test("landing states the product within the first viewport and keeps the paper-f
 
   await expect(page.getByRole("heading", { level: 1, name: "No-Code Options Trading Agents." })).toBeVisible();
   await expect(page.locator("#intro").getByText("BUILD · DEPLOY · CONTROL", { exact: true })).toBeVisible();
-  await expect(page.getByText("Start on paper with virtual money and no deposit. The options are synthetic and modeled. Not shares, not investment advice.", { exact: true })).toBeVisible();
-  await expect(page.getByRole("link", { name: "Launch a paper agent" }).first()).toHaveAttribute("href", "/agents");
+  await expect(page.getByText("No deposit needed. Options are synthetic and modeled from Robinhood Chain stock-token prices. Not shares, not investment advice.", { exact: true })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Launch an agent" }).first()).toHaveAttribute("href", "/agents");
   await expect(page.getByRole("link", { name: "See the protective floor" })).toHaveAttribute("href", "#floor");
   // The hero preview is the real Agents screen: same sidebar, journey rail and template cards, read-only.
   const preview = page.locator(".hero-card .preview-shell");
@@ -133,7 +133,7 @@ test.describe("without JavaScript", () => {
   test("the hero, the preview and every section are readable and the CSS beam is present", async ({ page }) => {
     await page.goto("/");
     await expect(page.getByRole("heading", { level: 1, name: "No-Code Options Trading Agents." })).toBeVisible();
-    await expect(page.getByRole("link", { name: "Launch a paper agent" }).first()).toBeVisible();
+    await expect(page.getByRole("link", { name: "Launch an agent" }).first()).toBeVisible();
     await expect(page.locator(".hero-beam-fallback")).toBeAttached();
     await expect(page.locator(".hero-card .preview-shell")).toBeAttached();
     for (const id of [...sectionIds, "floor"]) await expect(page.locator(`#${id} h2`).first()).toBeAttached();
@@ -172,10 +172,10 @@ test("the opening plays on every page load, can be skipped, never blocks the pag
   const splash = page.locator(".splash");
   await expect(splash).toHaveAttribute("data-state", /boot|form|cast/, { timeout: 15000 });
   // The loader names what it is doing and counts along its own timeline.
-  await expect(splash.locator(".splash-status-line")).toHaveText(/AGENT CAST|RULE STAGES|ROUTES|PAPER MODE/);
+  await expect(splash.locator(".splash-status-line")).toHaveText(/AGENT CAST|RULE STAGES|ROUTES|READY TO LAUNCH/);
   await expect(splash.locator(".splash-count")).toContainText("%");
   // The page underneath stays operable while the opening plays.
-  await expect(page.getByRole("link", { name: "Launch a paper agent" }).first()).toBeVisible();
+  await expect(page.getByRole("link", { name: "Launch an agent" }).first()).toBeVisible();
   await page.keyboard.press("Space");
   await expect(splash).toHaveAttribute("data-state", "gone", { timeout: 4000 });
   await expect(page.locator("html")).toHaveAttribute("data-splash", "done");
@@ -314,7 +314,7 @@ test("Paper, manual CallPut, and autonomous execution are represented truthfully
   await modes.scrollIntoViewIfNeeded();
   await expect(modes.getByRole("heading", { name: "Paper Trading" })).toBeVisible();
   await expect(modes.getByText("Working today")).toBeVisible();
-  await expect(modes.getByRole("link", { name: "Launch a paper agent" })).toHaveAttribute("href", "/agents");
+  await expect(modes.getByRole("link", { name: "Launch an agent" })).toHaveAttribute("href", "/agents");
   const restricted = modes.locator('[data-mode="live"]');
   await expect(restricted.getByRole("heading", { name: "Manual CallPut" })).toBeVisible();
   await expect(restricted.getByText("Signing disabled", { exact: true })).toBeVisible();

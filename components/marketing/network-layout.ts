@@ -162,7 +162,7 @@ export function buildLayout(data: GraphData): Layout {
 }
 
 export const PHASE_COPY: Record<Phase, { title: string; line: string }> = {
-  0: { title: "Agent awakens", line: "Protective Put starts as one rule-driven paper agent." },
+  0: { title: "Agent awakens", line: "Protective Put starts as one rule-driven agent." },
   1: { title: "Strategy forms", line: "Gate, Strike, Size, Pulse and Expiry shape the recipe." },
   2: { title: "Hooks evaluate", line: "Fifteen implemented hooks connect to the five stages. Catalog-only hooks stay inactive." },
   3: { title: "Breaker protects", line: "Five risk guards surround the full rule path and can block new entries." },
