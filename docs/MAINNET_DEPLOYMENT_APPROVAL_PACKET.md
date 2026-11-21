@@ -21,7 +21,7 @@ Status: NO-GO — no approval-eligible packet exists. The supplied deployer, Saf
 
 ## Exact batch readiness
 
-No approval-eligible packet is available. A read-only candidate estimate exists at block 119537033 with estimated gas 1,676,133 and predicted CREATE2 candidate `0x98332827Ff79e07eCD1A63CC04462D3817622080`; read-only `eth_getCode` returned empty at block 119544065. This is not a deployed contract address or an approval hash. The strict preflight and deployment script remain broadcast-gated. Remaining inputs and external gates:
+No approval-eligible packet is available. A read-only candidate estimate exists at block 119617126 with estimated gas 1,676,133 and predicted CREATE2 candidate `0x4089d38251fF25936d778C799d5d3AB5658c2080`; read-only `eth_getCode` returned empty at block 119617306. This is not a deployed contract address or an approval hash. The strict preflight and deployment script remain broadcast-gated. Remaining inputs and external gates:
 
 1. Confirm the supplied Safe's cross-project authorization and owner control for this exact OPTRA deployment; do not create another Safe by default. See `docs/MAINNET_SAFE_SETUP.md`.
 2. Confirm keeper operator/key custody, incident response, and the approved keeper runbook; the supplied EOA candidate differs from the Safe and deployer.
@@ -31,7 +31,7 @@ No approval-eligible packet is available. A read-only candidate estimate exists 
 6. Owner-approved gas-unit and fee ceilings, refreshed on the approved provider, followed by a fresh deployer balance check.
 7. Regenerate the exact packet after all gates pass, then obtain explicit approval of that packet's SHA-256 before any signing/broadcast.
 
-The current candidate limit of 2,178,973 gas and illustrative fee cap of 40,036,000 wei (0.000087237363028 ETH worst-case) are engineering proposals only, not owner-approved limits. The deployer balance was 0.00042 ETH at block 119544065; this point-in-time observation does not approve a spending ceiling or replace a fresh balance check after packet approval.
+The current candidate limit of 2,178,973 gas and illustrative fee cap of 40,864,000 wei (0.000089041552672 ETH worst-case) are engineering proposals only, not owner-approved limits. The deployer balance was 0.00042 ETH at block 119617306; this point-in-time observation does not approve a spending ceiling or replace a fresh balance check after packet approval.
 
 ## Proposed transaction sequence (not approved calldata)
 

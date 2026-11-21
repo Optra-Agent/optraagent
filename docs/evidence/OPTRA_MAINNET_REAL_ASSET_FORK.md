@@ -21,9 +21,9 @@ The production candidate remains a separate hook-specific native ETH/USDG pool w
 
 ## Latest refresh — 2026-11-21
 
-- Pinned fork block: 119544065.
-- Command, from `contracts/`: `RUN_OPTRA_ROBINHOOD_REAL_ASSET_FORK=true forge test --match-path test/OptraRobinhoodRealAssetFork.t.sol --fork-url https://rpc.mainnet.chain.robinhood.com --fork-block-number 119544065 -vvv`.
-- Result: 1 passed, 0 failed, 0 skipped; test gas 655,383.
-- Local log: `contracts/.local/optra-mainnet-real-asset-fork-119544065-20261121.log`; SHA-256 `e3a6014841a325331ba7b3d9058956afc12f6ab69914c2526b43c18e4e9d85f1`.
+- Pinned fork block: 119617306.
+- Command, from `contracts/`: `RUN_OPTRA_ROBINHOOD_REAL_ASSET_FORK=true forge test --match-path test/OptraRobinhoodRealAssetFork.t.sol --fork-url https://rpc.mainnet.chain.robinhood.com --fork-block-number 119617306 -vvv`.
+- Result: 1 passed, 0 failed, 0 skipped; test gas 655,487.
+- Local log: `contracts/.local/optra-mainnet-real-asset-fork-119617306-20261121.log`; SHA-256 `bfa12968b91acf5e8c4a0c3890852e0b230c8ae866543b76e76905559732df23`.
 - The test used the live Mainnet PoolManager/USDG and live ETH/USDG reference-pool state. Test balances and candidate-pool liquidity were fork-only overrides; no transaction or real-asset movement occurred.
 - This refresh does not establish Safe authorization, approved RPC-provider status, production liquidity, legal eligibility, explorer source verification, or an independent audit.
