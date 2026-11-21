@@ -81,21 +81,46 @@ if (installExitCode !== 0) {
   process.exit(installExitCode);
 }
 
-const fixture = JSON.parse(await readFile(path.join(snapshotRoot, "tests/fixtures/aapl-crius-hourly-capture.json"), "utf8")) as {
+type HouseCapture = {
   capturedAt: string;
-  asset: unknown;
-  quote: unknown;
-  candles: unknown;
+  assets: Array<{ tokenSymbol: string; deployments: Array<{ chainId: number; contractAddress: string }> }>;
+  quotes: Record<string, unknown>;
+  candles: Record<string, unknown>;
+  earnings: Record<string, unknown>;
   corpActions: unknown[];
 };
+
+// OPTRA_E2E_FIXTURE=house serves the archived multi-symbol capture (NVDA, TSLA, MSFT) including Robinhood's earnings
+// calendar, so the House Agent journeys run against the real application backend with real recorded market data.
+const houseMode = process.env.OPTRA_E2E_FIXTURE === "house";
+const fixture = JSON.parse(await readFile(path.join(snapshotRoot, houseMode ? "tests/fixtures/market-capture-20261121.json" : "tests/fixtures/aapl-crius-hourly-capture.json"), "utf8")) as {
+  capturedAt: string;
+  asset?: unknown;
+  quote?: unknown;
+  candles: unknown;
+  corpActions: unknown[];
+} & Partial<HouseCapture>;
 const marketFixtureServer = createServer((request, response) => {
-  const pathname = new URL(request.url ?? "/", `http://${hostname}`).pathname;
+  const url = new URL(request.url ?? "/", `http://${hostname}`);
+  const pathname = url.pathname;
   let body: unknown;
-  if (pathname === "/rhj/assets") body = { assets: [fixture.asset] };
+  if (houseMode) {
+    const capture = fixture as unknown as HouseCapture;
+    const priced = /^\/rhj\/prices\/([A-Z.]+)$/.exec(pathname);
+    const candled = /^\/v1\/robinhood\/token\/(0x[0-9a-fA-F]{40})\/candles$/.exec(pathname);
+    if (pathname === "/rhj/assets") body = { assets: capture.assets };
+    else if (priced) body = capture.quotes[priced[1]!];
+    else if (pathname === "/rhj/corporate-actions") body = { corpActions: capture.corpActions };
+    else if (pathname === "/marketdata/earnings/" || pathname === "/marketdata/earnings") body = capture.earnings[url.searchParams.get("symbol") ?? ""];
+    else if (candled) {
+      const symbol = capture.assets.find((asset) => asset.deployments.some((deployment) => deployment.contractAddress.toLowerCase() === candled[1]!.toLowerCase()))?.tokenSymbol;
+      body = symbol ? capture.candles[symbol] : undefined;
+    }
+  } else if (pathname === "/rhj/assets") body = { assets: [fixture.asset] };
   else if (pathname === "/rhj/prices/AAPL") body = fixture.quote;
   else if (pathname === "/rhj/corporate-actions") body = { corpActions: fixture.corpActions };
   else if (pathname.endsWith("/candles")) body = fixture.candles;
-  else {
+  if (body === undefined) {
     response.writeHead(404, { "cache-control": "no-store" });
     response.end();
     return;
@@ -122,12 +147,14 @@ const serverExitCode = await runBun(
   {
     ...process.env,
     DATABASE_URL: undefined,
-    PGLITE_DATA_DIR: ".local/optra-db",
+    PGLITE_DATA_DIR: houseMode ? ".local/optra-db-house" : ".local/optra-db",
     APP_BASE_URL: `http://${hostname}:${port}`,
     OPTRA_MARKET_ROBINHOOD_BASE_URL: marketFixtureBaseUrl,
     OPTRA_MARKET_CRIUS_BASE_URL: `${marketFixtureBaseUrl}/v1/robinhood/token`,
     OPTRA_E2E_MARKET_AS_OF: fixture.capturedAt,
-    OPTRA_E2E_DIST_DIR: ".local/optra-next-e2e",
+    OPTRA_E2E_DIST_DIR: houseMode ? ".local/optra-next-e2e-house" : ".local/optra-next-e2e",
+    // The house-agent suite drives the three strategy agents by hand; the background scheduler must not race it.
+    PAPER_SCHEDULER_ENABLED: "false",
   },
 );
 closeMarketFixtureServer?.();

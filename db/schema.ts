@@ -63,10 +63,18 @@ export const agents = pgTable("agents", {
   recipe: jsonb("recipe").$type<RecipeV1>().notNull(),
   recipeHash: varchar("recipe_hash", { length: 71 }).notNull(),
   backtestRunId: uuid("backtest_run_id").references(() => backtestRuns.id, { onDelete: "restrict" }),
+  /** `house` marks an OPTRA-owned House Agent that runs in public, owned by the reserved OPTRA house user. */
+  kind: varchar("kind", { length: 16 }).notNull().default("user"),
+  /** `public` agents (House Agents only) expose their Decision Tape, positions and paper account without a session. */
+  visibility: varchar("visibility", { length: 16 }).notNull().default("private"),
+  houseKey: varchar("house_key", { length: 48 }),
+  launchedAt: timestamp("launched_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 }, (table) => [
   index("agents_owner_status_created_idx").on(table.ownerId, table.status, table.createdAt),
+  index("agents_visibility_status_idx").on(table.visibility, table.status),
+  uniqueIndex("agents_house_recipe_idx").on(table.houseKey, table.recipeHash).where(sql`${table.kind} = 'house'`),
 ]);
 
 export const marketSnapshots = pgTable("market_snapshots", {
@@ -131,6 +139,8 @@ export const paperOrders = pgTable("paper_orders", {
   modelName: varchar("model_name", { length: 64 }).notNull().default("black_scholes_european_put"),
   premiumSource: varchar("premium_source", { length: 16 }).notNull().default("modeled"),
   modelInputs: jsonb("model_inputs").$type<Record<string, unknown>>().notNull().default({}),
+  purpose: varchar("purpose", { length: 32 }),
+  legRole: varchar("leg_role", { length: 16 }),
   side: varchar("side", { length: 8 }).notNull(),
   quantity: varchar("quantity", { length: 64 }).notNull(),
   priceUsd: varchar("price_usd", { length: 64 }).notNull(),
@@ -154,6 +164,12 @@ export const paperPositions = pgTable("paper_positions", {
   premiumSource: varchar("premium_source", { length: 16 }).notNull().default("modeled"),
   modelInputs: jsonb("model_inputs").$type<Record<string, unknown>>().notNull().default({}),
   peakMarkPriceUsd: varchar("peak_mark_price_usd", { length: 64 }).notNull().default("0"),
+  /** `long` pays a modeled premium; `short` receives one. Rows from before the strategy engine are long puts. */
+  side: varchar("side", { length: 8 }).notNull().default("long"),
+  /** Virtual USDG reserved against a short put (strike × quantity). */
+  collateralUsd: varchar("collateral_usd", { length: 64 }).notNull().default("0"),
+  structureId: varchar("structure_id", { length: 160 }),
+  legRole: varchar("leg_role", { length: 16 }),
   openedAt: timestamp("opened_at", { withTimezone: true }).notNull().defaultNow(),
   closedAt: timestamp("closed_at", { withTimezone: true }),
   realizedPnlUsd: varchar("realized_pnl_usd", { length: 64 }).notNull().default("0"),
@@ -165,7 +181,8 @@ export const paperPositions = pgTable("paper_positions", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull(),
 }, (table) => [
   index("paper_positions_agent_status_idx").on(table.agentId, table.status),
-  uniqueIndex("paper_positions_agent_open_idx").on(table.agentId).where(sql`${table.status} = 'open'`),
+  // One open long single-leg position per agent (Protective Put). Short positions and straddle legs are limited by the engine.
+  uniqueIndex("paper_positions_agent_open_idx").on(table.agentId).where(sql`${table.status} = 'open' and ${table.side} = 'long' and ${table.structureId} is null`),
 ]);
 
 export const paperAccounts = pgTable("paper_accounts", {
@@ -176,6 +193,8 @@ export const paperAccounts = pgTable("paper_accounts", {
   peakEquityUsd: varchar("peak_equity_usd", { length: 64 }).notNull(),
   dailyStartEquityUsd: varchar("daily_start_equity_usd", { length: 64 }).notNull(),
   dailyStartDate: varchar("daily_start_date", { length: 10 }).notNull(),
+  /** Strategy-engine counters and reference-share state; `{}` for Protective Put accounts. */
+  meta: jsonb("meta").$type<Record<string, unknown>>().notNull().default({}),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

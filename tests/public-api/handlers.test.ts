@@ -11,7 +11,7 @@ describe("versioned public proof API", () => {
     const serialized = JSON.stringify(bodies);
 
     expect(agents.status).toBe(200);
-    expect(bodies[1]).toEqual({ agents: [] });
+    expect(bodies[1]).toEqual({ agents: [], executionMode: "PAPER" });
     expect(bodies[2]).toEqual({ decisions: [], orders: [], executionMode: "PAPER" });
     expect(serialized).not.toContain("ownerId");
     expect(serialized).not.toContain('"session":');
@@ -24,8 +24,8 @@ describe("versioned public proof API", () => {
 
     expect(body).toMatchObject({ v4ClaimLevel: "L0", liveTradingEnabled: false });
     expect(body.claims).toEqual(expect.arrayContaining([
-      expect.objectContaining({ id: "hook_catalog", status: "limited", statement: "36 PM hook entries are cataloged; 15 have deterministic evaluators and 21 remain catalog-only." }),
-      expect.objectContaining({ id: "house_agents", status: "verified", statement: "1 of 4 House Agent templates are paper ready." }),
+      expect.objectContaining({ id: "hook_catalog", status: "limited", statement: "36 PM hook entries are cataloged; 26 have deterministic evaluators and 10 remain catalog-only." }),
+      expect.objectContaining({ id: "house_agents", status: "verified", statement: "4 of 4 House Agent templates are paper ready." }),
       expect.objectContaining({ id: "historical_backtest", status: "limited" }),
       expect.objectContaining({ id: "live_execution", status: "disabled" }),
     ]));

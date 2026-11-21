@@ -22,6 +22,8 @@ describe("agent gallery controls", () => {
       ownedError: "",
       signedIn: true,
       onRetry,
+      selected: "protective_put",
+      onSelect: vi.fn(),
     }));
 
     const search = screen.getByLabelText("Search agents");

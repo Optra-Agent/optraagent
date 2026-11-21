@@ -20,9 +20,12 @@ describe("PM hook catalog and Protective Put recipe", () => {
       expect(catalog.definitions.filter((hook) => hook.stage === stage).map((hook) => hook.id)).toEqual(ids);
     }
     expect(catalog.definitions.filter((hook) => hook.availability === "implemented").map((hook) => hook.id).sort()).toEqual([
-      "calmo", "capra", "corpax", "coverix", "daylo", "drawra", "exposa", "haltr", "lastra", "nextra", "percy", "sessia", "tenora", "trailo", "venux",
+      "calmo", "capra", "corpax", "coverix", "daylo", "deltra", "drawra", "earnex", "exposa", "haltr", "kelvo", "lastra", "nextra", "percy", "premo",
+      "profira", "rescu", "sessia", "settla", "stopra", "strangl", "tenora", "trailo", "trendix", "venux", "volra",
     ]);
-    expect(catalog.definitions.find((hook) => hook.id === "volra")?.availability).toBe("catalog_only");
+    expect(catalog.definitions.filter((hook) => hook.availability === "catalog_only").map((hook) => hook.id).sort()).toEqual([
+      "collara", "gapro", "hedgra", "laddr", "momira", "rangel", "rolla", "skewr", "spreadix", "thetix",
+    ]);
   });
 
   it("builds and validates the exact modeled paper Protective Put composition", () => {
@@ -38,8 +41,8 @@ describe("PM hook catalog and Protective Put recipe", () => {
     const recipe = buildProtectivePutRecipe({ underlyingSymbol: "AAPL", protectedShares: "1", initialCapitalUsd: "5000" });
     expect(validateRecipe({ ...recipe, hookIds: recipe.hookIds.filter((id) => id !== "venux") }).issues)
       .toEqual(expect.arrayContaining([expect.objectContaining({ code: "MISSING_REQUIRED_HOOK", hookId: "venux" })]));
-    expect(validateRecipe({ ...recipe, hookIds: [...recipe.hookIds, "volra"] }).issues)
-      .toEqual(expect.arrayContaining([expect.objectContaining({ code: "UNSUPPORTED_HOOK", hookId: "volra" })]));
+    expect(validateRecipe({ ...recipe, hookIds: [...recipe.hookIds, "gapro"] }).issues)
+      .toEqual(expect.arrayContaining([expect.objectContaining({ code: "UNSUPPORTED_HOOK", hookId: "gapro" })]));
   });
 
   it("rejects short legs and invalid single-leg compositions", () => {

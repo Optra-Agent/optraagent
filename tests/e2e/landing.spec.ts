@@ -15,21 +15,22 @@ test("landing states the product within the first viewport and keeps the paper-f
   await expect(preview.locator(".sidebar-link", { hasText: "Agents" })).toHaveAttribute("aria-current", "page");
   await expect(preview.getByText("Protective Put", { exact: true }).first()).toBeVisible();
   await expect(preview.getByText("Paper ready", { exact: true }).first()).toBeVisible();
-  await expect(preview.getByText("Preview", { exact: true })).toHaveCount(3);
-  await expect(page.getByText("15 of 36 hooks implemented", { exact: true })).toBeVisible();
+  await expect(preview.getByText("Preview", { exact: true })).toHaveCount(0);
+  await expect(page.getByText("26 of 36 hooks implemented", { exact: true })).toBeVisible();
 });
 
 test("landing capability claims match the catalog and roadmap items are not presented as available", async ({ page }) => {
   await page.goto("/");
 
-  await expect(page.getByText("15 of 36 hooks implemented", { exact: true })).toBeVisible();
+  await expect(page.getByText("26 of 36 hooks implemented", { exact: true })).toBeVisible();
   const proof = page.locator("#proof");
   await expect(proof.getByText("Live execution")).toBeVisible();
   await expect(proof.getByText("Disabled", { exact: true })).toBeVisible();
   await expect(proof.getByText("An MCP server and pay-per-call endpoints are planned, not built.", { exact: false })).toBeVisible();
   await expect(proof.locator('.xm-card[data-mode="live"]').getByText("Signing disabled", { exact: true })).toBeVisible();
   await expect(proof.locator('.xm-card[data-mode="live"]').getByText("Planned", { exact: true })).toHaveCount(0);
-  await expect(page.locator("#agents .pn-agents").getByText("Preview", { exact: true })).toHaveCount(3);
+  await expect(page.locator("#agents .pn-agents").getByText("Paper ready", { exact: true })).toHaveCount(4);
+  await expect(page.locator("#agents .pn-agents").getByText("Preview", { exact: true })).toHaveCount(0);
 });
 
 test("every landing navigation anchor resolves to a section that exists", async ({ page }) => {

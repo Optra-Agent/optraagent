@@ -62,7 +62,7 @@ const RING = { rx: 545, ry: 285 };
 
 /** Clockwise from the upper left. Breaker hooks sit on the ring in the gaps between these directions. */
 const STAGE_ANGLE: Record<string, number> = { gate: -126, strike: -54, size: 18, pulse: 90, expiry: 162 };
-const HOOK_SPREAD: Record<number, number[]> = { 1: [0], 2: [-11, 11], 3: [-21, 0, 21] };
+const HOOK_SPREAD: Record<number, number[]> = { 1: [0], 2: [-11, 11], 3: [-21, 0, 21], 4: [-26, -9, 9, 26] };
 /** Where each stage's dashed "locked" satellite sits, relative to the stage: tucked beside it, clear of its hooks. */
 const LOCK_OFFSET: Record<string, { x: number; y: number }> = { gate: { x: -108, y: 64 }, strike: { x: 108, y: 64 }, size: { x: -104, y: 66 }, pulse: { x: 118, y: 36 }, expiry: { x: 104, y: 66 } };
 /** Branch drawing time and the ring's drawing time, in ms. A node blooms when its branch reaches it. */
@@ -112,7 +112,8 @@ export function buildLayout(data: GraphData): Layout {
 
     if (stage.locked.length > 0) {
       // Locked hooks stay one dashed satellite per stage.
-      const off = LOCK_OFFSET[stage.stage] ?? { x: 0, y: 70 };
+      const crowded = stage.stage === "pulse" && stage.hooks.length >= 3;
+      const off = crowded ? { x: 150, y: -2 } : LOCK_OFFSET[stage.stage] ?? { x: 0, y: 70 };
       const lp = { x: round(pos.x + off.x), y: round(pos.y + off.y) };
       nodes.push({ id: `locked:${stage.stage}`, kind: "locked", x: round(lp.x), y: round(lp.y), w: 92, h: 28, phase: 2, from: lp, delay: 420 + BLOOM, stage: stage.stage });
       edges.push({ id: `e:${stage.stage}:locked`, d: branchPath(pos, lp, 0.14), from: `stage:${stage.stage}`, to: `locked:${stage.stage}`, kind: "lock", phase: 2, delay: 420, stage: stage.stage });

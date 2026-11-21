@@ -7,6 +7,12 @@ import {
 } from "../domain/contracts";
 import type { BacktestCoverage, BacktestRun, MarketCandle, MarketSnapshot, RecipeV1 } from "../domain/contracts";
 import { runTick, type PaperAccountState, type PaperOptionPositionState } from "../engine/run-tick";
+import { initialStrategyAccount, runStrategyTick, strategyEquity } from "../engine/strategy/run-strategy-tick";
+import { applyPositionChanges } from "../engine/strategy/portfolio";
+import type { StrategyAccount, StrategyPosition } from "../engine/strategy/types";
+import { isHouseStrategyTemplate } from "../hooks/house-specs";
+import type { HouseStrategyTemplateId } from "../hooks/house-specs";
+import type { EarningsSnapshot } from "../market/earnings";
 import { canonicalRecipeHash, validateRecipe } from "../hooks/recipe-validator";
 
 export const REQUIRED_HOURLY_SAMPLES = 720;
@@ -138,14 +144,224 @@ function formatMetric(value: number): string {
   return value.toFixed(6).replace(/0+$/, "").replace(/\.$/, "");
 }
 
+const STRATEGY_PRICING: Record<HouseStrategyTemplateId, { model: string; description: string }> = {
+  covered_call: { model: "black_scholes_european_call", description: "short weekly call, 5% out of the money by default, against virtual reference shares" },
+  cash_secured_put: { model: "black_scholes_european_put", description: "short weekly put at a 0.25 target delta, secured by virtual USDG equal to strike × quantity" },
+  earnings_straddle: { model: "black_scholes_european_straddle", description: "long at-the-money call and put opened before a company-confirmed earnings report" },
+};
+
+function sha256Json(value: unknown): `sha256:${string}` {
+  return `sha256:${createHash("sha256").update(JSON.stringify(value)).digest("hex")}`;
+}
+
+function runStrategyBacktest(input: {
+  runId: string;
+  recipe: RecipeV1;
+  templateId: HouseStrategyTemplateId;
+  candles: MarketCandle[];
+  corporateActionDates: string[];
+  earnings: EarningsSnapshot | null;
+  now: string;
+  requestedCandles?: number;
+}): BacktestRun {
+  const { recipe, candles, templateId } = input;
+  const recipeHash = canonicalRecipeHash(recipe);
+  const coverage = inspectCandleCoverage({ symbol: recipe.underlyingSymbol, candles, now: input.now });
+  const first = candles[0];
+  const last = candles.at(-1);
+  const earningsEvents = input.earnings?.events ?? [];
+  const provenance: Record<string, unknown> = {
+    provider: "Crius Robinhood Chain OHLCV",
+    endpoint: "GET /v1/robinhood/token/{contractAddress}/candles",
+    interval: "1h",
+    currency: "usd",
+    requestedCandles: input.requestedCandles ?? 1500,
+    returnedCandles: candles.length,
+    fill: false,
+    continuous: false,
+    tokenAddress: first?.tokenAddress ?? null,
+    multiplierSharesPerToken: first?.multiplierSharesPerToken ?? null,
+    multiplierStatus: first?.multiplierStatus ?? "unverified",
+    startAt: first?.startAt ?? null,
+    endAt: last?.endAt ?? null,
+    corporateActionDates: input.corporateActionDates,
+    earnings: input.earnings
+      ? { source: input.earnings.source, fetchedAt: input.earnings.fetchedAt, eventCount: earningsEvents.length, eventsHash: sha256Json(earningsEvents), historicalDatesAsPublishedNow: true }
+      : { source: "unavailable", fetchedAt: null, eventCount: 0, eventsHash: null },
+  };
+  const spec = STRATEGY_PRICING[templateId];
+  const pricingAssumptions: Record<string, unknown> = {
+    model: spec.model,
+    strategy: spec.description,
+    volatility: "annualized sample standard deviation of 720 hourly log returns × 1.1 (RV30 proxy; no option-chain IV)",
+    ivRank: "Volra ranks the latest 168-hour realized volatility within the 30-day window; it is a modeled proxy, not an option-chain IV rank",
+    annualizationHours: 8760,
+    riskFreeRate: 0,
+    dividendYield: 0,
+    tenor: "weekly 16:00 America/New_York expiries chosen by Tenora; positions settle at the modeled intrinsic value (cash settled)",
+    modelUnitShares: 1,
+    strikeIncrementUsd: 0.01,
+    slippageBps: 50,
+    venueFeesIncluded: false,
+    venueOptionQuote: false,
+    earningsIvPremiumModeled: false,
+    benchmarks: {
+      underlying: templateId === "covered_call"
+        ? "hold the same virtual reference shares with the cash buffer idle; price-only, no dividends, fees, or slippage"
+        : "buy initial USD capital at the first decision candle's share-normalized close and hold to the final decision candle close; price-only, no dividends, fees, or slippage",
+      cash: "flat USD-denominated initial capital with zero yield; no USDG/USD market price path is modeled",
+    },
+  };
+  const validation = validateRecipe(recipe);
+  let status: BacktestRun["status"] = "insufficient_data";
+  let reason = coverage.reason;
+  let metrics: BacktestRun["metrics"] = null;
+  let sampleCount = 0;
+  let entryOrderCount = 0;
+  let exitOrderCount = 0;
+
+  if (coverage.ready && validation.valid) {
+    const decisionStart = candles.length - REQUIRED_HOURLY_SAMPLES;
+    const decisionCandles = candles.slice(decisionStart);
+    let account: StrategyAccount | null = initialStrategyAccount(recipe, candles[decisionStart]!.endAt);
+    let positions: StrategyPosition[] = [];
+    const decisionCounts = { open: 0, hold: 0, close: 0, skip: 0 };
+    const equitySeries: number[] = [];
+    let idSequence = 0;
+    for (let index = decisionStart; index < candles.length; index += 1) {
+      const candle = candles[index]!;
+      const result = runStrategyTick({
+        agentId: `backtest:${input.runId}`,
+        tickId: `sample-${index}`,
+        occurredAt: candle.endAt,
+        recipe,
+        recipeHash,
+        snapshot: null,
+        currentCandle: candle,
+        history: candles.slice(0, index),
+        corporateActionDates: input.corporateActionDates,
+        earnings: input.earnings,
+        account,
+        positions,
+        includeMarketContext: false,
+        state: { status: "running" },
+      });
+      decisionCounts[result.decision.action] += 1;
+      account = result.portfolio.account;
+      positions = applyPositionChanges(positions, result.portfolio.changes, (key) => `${input.runId}:${idSequence++}:${key}`);
+      entryOrderCount += result.orderIntents.filter((order) => order.action === "open" && order.purpose === "open").length;
+      exitOrderCount += result.orderIntents.filter((order) => order.action !== "open").length;
+      const equity = strategyEquity(templateId, account, positions, Number(candle.shareCloseUsd));
+      equitySeries.push(equity);
+    }
+    sampleCount = REQUIRED_HOURLY_SAMPLES;
+    const startingSharePrice = Number(decisionCandles[0]!.shareCloseUsd);
+    const endingSharePrice = Number(decisionCandles.at(-1)!.shareCloseUsd);
+    const benchmarkPricesValid = startingSharePrice > 0 && endingSharePrice > 0 && Number.isFinite(startingSharePrice) && Number.isFinite(endingSharePrice);
+    if (entryOrderCount === 0) {
+      status = "failed";
+      reason = "The complete historical window produced no modeled entry fills; no performance metrics are reported and launch remains blocked.";
+    } else if (!benchmarkPricesValid || !account) {
+      status = "failed";
+      reason = "The first or last decision candle has an invalid share-normalized close; no performance metrics are reported and launch remains blocked.";
+    } else {
+      const capital = Number(recipe.parameters.initialCapitalUsd);
+      const shares = templateId === "covered_call" ? Number(recipe.parameters.referenceShares) : 0;
+      // The equity baseline is the account's value before any trade: cash plus (Covered Call) the shares at the first candle.
+      const baseline = capital + shares * startingSharePrice;
+      const endingEquity = equitySeries.at(-1) ?? baseline;
+      let peak = baseline;
+      let maxDrawdownPct = 0;
+      for (const equity of equitySeries) {
+        peak = Math.max(peak, equity);
+        if (peak > 0) maxDrawdownPct = Math.max(maxDrawdownPct, (peak - equity) / peak * 100);
+      }
+      const totalReturnPct = (endingEquity - baseline) / baseline * 100;
+      const holdingEnding = templateId === "covered_call" ? capital + shares * endingSharePrice : capital * endingSharePrice / startingSharePrice;
+      const holdingReturnPct = (holdingEnding - baseline) / baseline * 100;
+      metrics = {
+        totalReturnPct: formatMetric(totalReturnPct),
+        maxDrawdownPct: formatMetric(maxDrawdownPct),
+        endingCashUsd: formatMetric(Number(account.cashUsd)),
+        benchmarks: {
+          window: { startAt: decisionCandles[0]!.endAt, endAt: decisionCandles.at(-1)!.endAt, decisionSamples: decisionCandles.length },
+          underlying: {
+            symbol: recipe.underlyingSymbol,
+            startingValueUsd: formatMetric(baseline),
+            endingValueUsd: formatMetric(holdingEnding),
+            returnPct: formatMetric(holdingReturnPct),
+            method: templateId === "covered_call" ? "hold_reference_shares_cash_idle" : "buy_and_hold_price_only",
+            dividendsIncluded: false,
+            feesIncluded: false,
+          },
+          cash: { startingValueUsd: formatMetric(baseline), endingValueUsd: formatMetric(baseline), returnPct: "0", denomination: "USD", method: "flat_no_yield", usdGPricePath: "not_modeled" },
+          vsHoldingPct: formatMetric(totalReturnPct - holdingReturnPct),
+          vsCashPct: formatMetric(totalReturnPct),
+        },
+        strategy: {
+          entries: account.meta.entries,
+          closes: account.meta.closes,
+          winningCloses: account.meta.winningCloses,
+          rolls: account.meta.rolls,
+          settledItm: account.meta.settledItm,
+          settledOtm: account.meta.settledOtm,
+          premiumCollectedUsd: account.meta.premiumCollectedUsd,
+          premiumPaidUsd: account.meta.premiumPaidUsd,
+          decisionCounts,
+          worstTradeUsd: account.meta.worstTradeUsd,
+        },
+      };
+      status = "complete";
+      reason = `Replayed ${sampleCount} provider candles through the shared strategy engine; ${entryOrderCount} modeled entries and ${exitOrderCount} modeled exits or settlements were applied with disclosed 50 bp slippage and no venue fees.`;
+    }
+  } else if (coverage.ready && !validation.valid) {
+    status = "failed";
+    reason = `Recipe is not executable for paper options: ${validation.issues.map((issue) => issue.message).join(" ")}`;
+  }
+
+  return BacktestRunSchema.parse({
+    id: input.runId,
+    recipeHash,
+    dataSource: first?.source ?? "unavailable",
+    startAt: first?.startAt ?? input.now,
+    endAt: last?.endAt ?? input.now,
+    sampleCount,
+    entryOrderCount,
+    exitOrderCount,
+    hourlyCoverageComplete: coverage.ready,
+    premiumSource: status === "complete" ? "modeled" : "unavailable",
+    pricingMethod: status === "complete" ? "modeled" : "unavailable",
+    status,
+    metrics,
+    historyDataHash: hashMarketCandles(candles),
+    historyProvenance: provenance,
+    pricingAssumptions,
+    reason,
+    createdAt: input.now,
+  });
+}
+
 export function runBacktest(input: {
   runId: string;
   recipe: RecipeV1;
   candles?: MarketCandle[];
   corporateActionDates?: string[];
+  earnings?: EarningsSnapshot | null;
   now: string;
   requestedCandles?: number;
 }): BacktestRun {
+  if (isHouseStrategyTemplate(input.recipe.templateId)) {
+    return runStrategyBacktest({
+      runId: input.runId,
+      recipe: input.recipe,
+      templateId: input.recipe.templateId,
+      candles: input.candles ?? [],
+      corporateActionDates: input.corporateActionDates ?? [],
+      earnings: input.earnings ?? null,
+      now: input.now,
+      ...(input.requestedCandles !== undefined ? { requestedCandles: input.requestedCandles } : {}),
+    });
+  }
   const recipeHash = canonicalRecipeHash(input.recipe);
   const candles = input.candles ?? [];
   const coverage = inspectCandleCoverage({ symbol: input.recipe.underlyingSymbol, candles, now: input.now });

@@ -155,11 +155,12 @@ function hooksExcerpt(): string {
 /** The five public read-only endpoints, with real responses. The caller passes what the public handlers returned. */
 export function getApiDocs(live: { templates: unknown; verify: unknown; agents: unknown; tape: unknown }): ApiDoc[] {
   const pretty = (value: unknown) => JSON.stringify(value, null, 2);
+  const filled = (value: unknown, key: string) => Array.isArray((value as Record<string, unknown> | null)?.[key]) && ((value as Record<string, unknown[]>)[key]?.length ?? 0) > 0;
   return [
     { id: "hooks", path: "/api/public/v1/hooks", title: "Hook catalog", summary: "All 36 hook definitions with their stage, parameters and whether an evaluator exists. This sample shows one of them.", auth: "None. Public, read-only.", status: "Working", response: hooksExcerpt() },
-    { id: "templates", path: "/api/public/v1/templates", title: "House Agent templates", summary: "The four House Agent templates, which one is paper ready, and why the others are not.", auth: "None. Public, read-only.", status: "Working", response: pretty(live.templates) },
+    { id: "templates", path: "/api/public/v1/templates", title: "House Agent templates", summary: "The four House Agent templates and whether each is paper ready.", auth: "None. Public, read-only.", status: "Working", response: pretty(live.templates) },
     { id: "verify", path: "/api/public/v1/verify", title: "Capability claims", summary: "What the server claims about itself, each with the path that proves it.", auth: "None. Public, read-only.", status: "Working", response: pretty(live.verify) },
-    { id: "agents", path: "/api/public/v1/agents", title: "Public agents", summary: "Always empty today: there is no public visibility model, so private agents are never queried.", auth: "None. Public, read-only.", status: "Empty", response: pretty(live.agents) },
-    { id: "tape", path: "/api/public/v1/tape", title: "Public Tape", summary: "Always empty today for the same reason. Each wallet's own Tape is private and needs a session.", auth: "None. Public, read-only.", status: "Empty", response: pretty(live.tape) },
+    { id: "agents", path: "/api/public/v1/agents", title: "Public agents", summary: "OPTRA-owned House Agents only, with their status and paper results. User agents are never listed.", auth: "None. Public, read-only.", status: filled(live.agents, "agents") ? "Working" : "Empty", response: pretty(live.agents) },
+    { id: "tape", path: "/api/public/v1/tape", title: "Public Tape", summary: "Decisions recorded by the House Agents. Each wallet's own Tape stays private and needs a session.", auth: "None. Public, read-only.", status: filled(live.tape, "decisions") ? "Working" : "Empty", response: pretty(live.tape) },
   ];
 }

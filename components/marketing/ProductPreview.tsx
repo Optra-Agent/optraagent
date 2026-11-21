@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { ArrowUpRight, Lock } from "lucide-react";
+import { ArrowUpRight } from "lucide-react";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { TemplateCard } from "../app/agents/TemplateCard";
@@ -24,9 +24,9 @@ const SAMPLE_TRACE = [
 ] as const;
 
 function AgentsScreen({ facts }: { facts: Facts }) {
-  const featured = facts.paperReadyTemplates[0];
+  const featured = facts.paperReadyTemplates.find((template) => template.id === "protective_put") ?? facts.paperReadyTemplates[0];
   const [picked, setPicked] = useState<string>(featured?.id ?? "");
-  const pickedPreview = facts.previewTemplates.find((template) => template.id === picked);
+  const pickedPreview = facts.paperReadyTemplates.find((template) => template.id === picked && template.id !== featured?.id);
   return (
     <div className="preview-grid">
       <div className="preview-left">
@@ -37,7 +37,7 @@ function AgentsScreen({ facts }: { facts: Facts }) {
           </button>
         ) : null}
         <div className="preview-minis">
-          {facts.previewTemplates.map((template) => (
+          {facts.paperReadyTemplates.filter((template) => template.id !== featured?.id).map((template) => (
             <button type="button" key={template.id} className="pv-pick" aria-pressed={picked === template.id} onClick={() => setPicked(template.id)}>
               <TemplateCard template={template} interactive={false} compact headingAs="p" />
             </button>
@@ -46,9 +46,9 @@ function AgentsScreen({ facts }: { facts: Facts }) {
       </div>
       {pickedPreview ? (
         <Panel className="creator preview-creator" key={pickedPreview.id}>
-          <div className="panel-head"><div><p className="eyebrow">HOUSE AGENT</p><p className="preview-sub">{pickedPreview.name}</p></div><Chip>Preview</Chip></div>
+          <div className="panel-head"><div><p className="eyebrow">HOUSE AGENT</p><p className="preview-sub">{pickedPreview.name}</p></div><Chip tone="azure">Paper ready</Chip></div>
           <p className="pv-note">{pickedPreview.reason}</p>
-          <p className="pv-note pv-note-strong"><Lock aria-hidden />Strategy overview. Paper drafts are created for Protective Put only.</p>
+          <Link className={cn(buttonVariants({ size: "lg" }), "w-full")} href={`/agents?template=${pickedPreview.id}#configure`}>Configure in the app<ArrowUpRight aria-hidden /></Link>
         </Panel>
       ) : (
         <Panel className="creator preview-creator" key="ready">
@@ -67,7 +67,9 @@ function AgentsScreen({ facts }: { facts: Facts }) {
 }
 
 function ForgeScreen({ facts }: { facts: Facts }) {
-  const defaults = facts.byStage.flatMap((row) => row.liveNames);
+  // Forge builds the Protective Put composition: its 15 rules are the toggles; every other catalog hook is shown as not part of it.
+  const recipeNames = (stage: string) => facts.recipeStages.find((entry) => entry.stage === stage)?.hooks.map((hook) => hook.name) ?? [];
+  const defaults = facts.byStage.flatMap((row) => recipeNames(row.stage));
   const [on, setOn] = useState<string[]>(defaults);
   const toggle = (name: string) => setOn((current) => (current.includes(name) ? current.filter((item) => item !== name) : [...current, name]));
   return (
@@ -79,8 +81,8 @@ function ForgeScreen({ facts }: { facts: Facts }) {
             <div className="pv-stage" key={row.stage} data-risk={row.stage === "breaker" ? "1" : "0"}>
               <span className="pv-stage-name mono">{row.stage}</span>
               <div className="pv-chips">
-                {row.liveNames.map((name) => <button type="button" key={name} aria-pressed={on.includes(name)} onClick={() => toggle(name)}>{name}</button>)}
-                {row.total - row.live > 0 ? <span className="pv-locked">{row.total - row.live} locked</span> : null}
+                {recipeNames(row.stage).map((name) => <button type="button" key={name} aria-pressed={on.includes(name)} onClick={() => toggle(name)}>{name}</button>)}
+                {row.total - recipeNames(row.stage).length > 0 ? <span className="pv-locked">{row.total - recipeNames(row.stage).length} not in this recipe</span> : null}
               </div>
             </div>
           ))}

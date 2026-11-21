@@ -1,5 +1,4 @@
 import Link from "next/link";
-import { Lock } from "lucide-react";
 import { buttonVariants } from "@/components/ui/button";
 import { AgentCharacter } from "./characters";
 import type { getLandingFacts } from "./data";
@@ -37,7 +36,7 @@ export function AgentPhones({ facts, ticks }: { facts: Facts; ticks: FlowScenari
         <Phone title="Recipe" badge="Validated" label="Recipe screen: the Protective Put rules grouped by stage">
           <div className="ph-pills" aria-hidden="true">
             <span data-on="1">Protective Put</span>
-            <span><Lock />Covered Call</span>
+            <span>Covered Call</span>
           </div>
           <ul className="ph-stages">
             {stages.map((entry) => (

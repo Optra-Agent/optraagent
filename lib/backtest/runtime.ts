@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { lookupWalletSession } from "../auth/session-lookup";
 import { getDatabase } from "../db/client";
-import { getMarketFeed, getMarketHistoryFeed } from "../market/runtime";
+import { getEarningsFeed, getMarketFeed, getMarketHistoryFeed } from "../market/runtime";
 import { DrizzlePaperRepository } from "../paper/drizzle-repository";
 import { createMarketHistoryCollector } from "./collector";
 import { createBacktestHandlers } from "./handlers";
@@ -17,6 +17,7 @@ export async function getBacktestHandlers() {
     readSession: lookupWalletSession,
     listMarkets: () => getMarketFeed().listMarkets(),
     getHistory: (symbol) => getMarketHistoryFeed().getHistory(symbol),
+    getEarnings: (symbol) => getEarningsFeed().getEarnings(symbol),
     newRunId: randomUUID,
   });
 }

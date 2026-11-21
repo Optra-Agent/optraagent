@@ -46,7 +46,7 @@ test("runtime smoke hydrates the app and resolves the wallet session", async ({ 
   expect(scriptResponses.length).toBeGreaterThan(0);
   expect(scriptResponses.filter((response) => response.status >= 400)).toEqual([]);
   const expectedStrictModeCancellations = failedRequests.filter((request) =>
-    /^GET https?:\/\/[^/]+\/api\/agents\/templates: net::ERR_ABORTED$/.test(request),
+    /^GET https?:\/\/[^/]+\/api\/(agents\/templates|public\/v1\/agents): net::ERR_ABORTED$/.test(request),
   );
   expect(failedRequests).toEqual(expectedStrictModeCancellations);
   expect(pageErrors).toEqual([]);

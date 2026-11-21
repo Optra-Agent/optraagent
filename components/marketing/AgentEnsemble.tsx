@@ -37,9 +37,9 @@ export function AgentEnsemble({ stages }: { stages: { id: StageCharacterId; labe
   const cast: Cast[] = [
     { m: [50, 44], id: "protective_put", label: "Protective Put", sub: "Paper ready", line: "Buys a put about 7% out of the money, 30 days out, when volatility is calm.", x: 50, y: 50, s: 21, ring: "center", scatter: [0, -34, 200], drift: [0, -6, 8] },
     ...stages.filter((stage) => stage.id !== "breaker").map((stage, index): Cast => ({ m: COMPACT_POSITION[stage.id], id: stage.id, label: stage.label, sub: "Rule stage", line: stage.line, x: STAGE_POSITION[stage.id][0], y: STAGE_POSITION[stage.id][1], s: 12.5, ring: "stage", scatter: SCATTER[index % SCATTER.length], drift: DRIFT[index % DRIFT.length] })),
-    { m: [0, 0], id: "covered_call", label: "Covered Call", sub: "Strategy overview", line: "A strategy overview. Paper launch is not enabled for this agent.", x: 10, y: 17, s: 9, ring: "outer", scatter: [-20, -20, -80], drift: [-22, -14, -20] },
-    { m: [0, 0], id: "cash_secured_put", label: "Cash-Secured Put", sub: "Strategy overview", line: "A strategy overview. Paper launch is not enabled for this agent.", x: 90, y: 35, s: 9, ring: "outer", scatter: [24, -16, 110], drift: [24, -10, 22] },
-    { m: [0, 0], id: "earnings_straddle", label: "Earnings Straddle", sub: "Strategy overview", line: "A strategy overview. Paper launch is not enabled for this agent.", x: 88, y: 90, s: 9, ring: "outer", scatter: [20, 24, -100], drift: [22, 16, -18] },
+    { m: [0, 0], id: "covered_call", label: "Covered Call", sub: "Paper ready", line: "Sells a weekly call about 5% out of the money against shares you hold.", x: 10, y: 17, s: 9, ring: "outer", scatter: [-20, -20, -80], drift: [-22, -14, -20] },
+    { m: [0, 0], id: "cash_secured_put", label: "Cash-Secured Put", sub: "Paper ready", line: "Sells a weekly put near 0.25 delta, with the strike held back as virtual USDG.", x: 90, y: 35, s: 9, ring: "outer", scatter: [24, -16, 110], drift: [24, -10, 22] },
+    { m: [0, 0], id: "earnings_straddle", label: "Earnings Straddle", sub: "Paper ready", line: "Buys a call and a put before a confirmed earnings report.", x: 88, y: 90, s: 9, ring: "outer", scatter: [20, 24, -100], drift: [22, 16, -18] },
   ];
   const center = cast[0];
   const routes = cast.slice(1);

@@ -10,7 +10,7 @@ const card = (page: Page) => net(page).locator(".pn-float");
 test.describe("Optra Agent Network (desktop)", () => {
   test.use({ viewport: { width: 1440, height: 900 } });
 
-  test("starts with one agent and the other three House Agents in a compact selector", async ({ page }) => {
+  test("starts with one agent and all four House Agents in a compact selector, with no Explore button", async ({ page }) => {
     await page.goto("/");
     await expect(net(page)).toHaveAttribute("data-phase", "0");
     await expect(svg(page).getByRole("button", { name: /^Protective Put\. Agent/ })).toBeAttached();
@@ -18,9 +18,9 @@ test.describe("Optra Agent Network (desktop)", () => {
     await expect(shown(page, "hook")).toHaveCount(0);
     const agents = net(page).locator(".pn-agents");
     await expect(agents.getByRole("button")).toHaveCount(4);
-    await expect(agents.getByText("Paper ready", { exact: true })).toHaveCount(1);
-    await expect(agents.getByText("Preview", { exact: true })).toHaveCount(3);
-    await expect(net(page).getByRole("button", { name: "Explore agent" }).first()).toBeAttached();
+    await expect(agents.getByText("Paper ready", { exact: true })).toHaveCount(4);
+    await expect(agents.getByText("Preview", { exact: true })).toHaveCount(0);
+    await expect(net(page).getByRole("button", { name: "Explore agent" })).toHaveCount(0);
   });
 
   test("grows outward through six states and every branch ends on its node", async ({ page }) => {
@@ -41,7 +41,7 @@ test.describe("Optra Agent Network (desktop)", () => {
     await expect(shown(page, "stage")).toHaveCount(5);
     await state(page, 3).click();
     await expect(shown(page, "hook")).toHaveCount(10);
-    await expect(shown(page, "locked")).toHaveCount(5);
+    await expect(shown(page, "locked")).toHaveCount(4);
     await expect(shown(page, "risk")).toHaveCount(0);
     await state(page, 4).click();
     await expect(svg(page).locator('.pn-ring[data-show="1"]')).toHaveCount(1);
@@ -76,8 +76,8 @@ test.describe("Optra Agent Network (desktop)", () => {
     await page.waitForTimeout(2200);
     const grown = await spread();
     expect(first.count).toBe(1);
-    // Root + five stages + ten implemented hooks + five catalog groups.
-    expect(grown.count).toBe(21);
+    // Root + five stages + ten implemented hooks + four catalog groups.
+    expect(grown.count).toBe(20);
     expect(grown.width).toBeGreaterThan(first.width * 2.5);
   });
 
@@ -97,9 +97,9 @@ test.describe("Optra Agent Network (desktop)", () => {
   test("catalog-only hooks stay locked and are explained, never operational", async ({ page }) => {
     await page.goto("/");
     await state(page, 3).click();
-    await svg(page).getByRole("button", { name: /^7 catalog-only Gate hooks/ }).click();
-    await expect(card(page).getByRole("heading", { name: "7 catalog-only hooks" })).toBeVisible();
-    await expect(card(page).getByText("Volra", { exact: true })).toBeVisible();
+    await svg(page).getByRole("button", { name: /^4 catalog-only Gate hooks/ }).click();
+    await expect(card(page).getByRole("heading", { name: "4 catalog-only hooks" })).toBeVisible();
+    await expect(card(page).getByText("Gapro", { exact: true })).toBeVisible();
     await expect(card(page).getByText("cannot take part in an evaluation")).toBeVisible();
     await expect(svg(page).locator('.pn-n[data-kind="locked"] .pn-dot')).toHaveCount(0);
   });
@@ -118,7 +118,7 @@ test.describe("Optra Agent Network (desktop)", () => {
     await page.goto("/");
     await net(page).scrollIntoViewIfNeeded();
     await expect(net(page)).toBeInViewport({ ratio: 0.12 });
-    await expect(net(page)).toHaveAttribute("data-playing", "1");
+    await expect(net(page)).toHaveAttribute("data-playing", "1", { timeout: 20_000 });
     await state(page, 6).click();
     await expect(net(page)).toHaveAttribute("data-phase", "5");
     await expect(net(page)).toHaveAttribute("data-playing", "0");
@@ -138,13 +138,13 @@ test.describe("Optra Agent Network (desktop)", () => {
     await expect(svg(page).getByText("ILLUSTRATIVE ONLY · NO RECORDED TRADE")).toBeAttached();
   });
 
-  test("the network grows by itself once, Pause stops it, Back to start returns to one agent, Explore agent plays it again", async ({ page }) => {
+  test("the network grows by itself, Pause stops it, Back to start returns to one agent, Play walkthrough plays it again", async ({ page }) => {
     await page.goto("/");
     const controls = net(page).locator(".pn-head .pn-controls");
     await net(page).scrollIntoViewIfNeeded();
     await expect(net(page)).toBeInViewport({ ratio: 0.12 });
     // Scrolling the network into view starts one automatic growth.
-    await expect(net(page)).toHaveAttribute("data-playing", "1");
+    await expect(net(page)).toHaveAttribute("data-playing", "1", { timeout: 20_000 });
     await expect.poll(async () => Number(await net(page).getAttribute("data-phase")), { timeout: 10_000 }).toBeGreaterThanOrEqual(2);
     await controls.getByRole("button", { name: "Pause" }).click();
     await expect(net(page)).toHaveAttribute("data-playing", "0");
@@ -153,28 +153,45 @@ test.describe("Optra Agent Network (desktop)", () => {
     expect(await net(page).getAttribute("data-phase")).toBe(frozen);
     await controls.getByRole("button", { name: "Back to start" }).click();
     await expect(net(page)).toHaveAttribute("data-phase", "0");
-    await controls.getByRole("button", { name: "Explore agent" }).click();
-    await expect(net(page)).toHaveAttribute("data-playing", "1");
+    await controls.getByRole("button", { name: "Play walkthrough" }).click();
+    await expect(net(page)).toHaveAttribute("data-playing", "1", { timeout: 20_000 });
     await expect(shown(page, "stage").first()).toBeAttached();
   });
 
-  test("a Preview agent never grows and never appears paper ready", async ({ page }) => {
-    await page.emulateMedia({ reducedMotion: "reduce" });
+  test("selecting another House Agent switches to it at once and restarts its own walkthrough", async ({ page }) => {
     await page.goto("/");
-    const previewAgent = net(page).locator(".pn-agents").getByRole("button", { name: /Covered Call/ });
-    await previewAgent.evaluate((element) => element.scrollIntoView({ block: "center", behavior: "instant" }));
-    await expect(previewAgent).toBeVisible();
-    await previewAgent.click();
-    await expect(card(page).getByRole("heading", { name: "Covered Call" })).toBeVisible();
-    await expect(card(page).getByText("Strategy overview", { exact: true }).first()).toBeVisible();
-    await expect(card(page).getByText("Paper ready")).toHaveCount(0);
-    await expect(svg(page).getByText("PREVIEW", { exact: true })).toBeAttached();
-    await expect(net(page).locator(".pn-head .pn-controls")).toHaveCount(0);
-    await expect(shown(page, "stage")).toHaveCount(0);
-    const paperAgent = net(page).locator(".pn-agents").getByRole("button", { name: /Protective Put/ });
-    await paperAgent.click();
-    await expect(card(page)).toHaveCount(0);
-    await expect(svg(page).getByText("AGENT", { exact: true })).toBeAttached();
+    await net(page).scrollIntoViewIfNeeded();
+    await expect(net(page)).toHaveAttribute("data-playing", "1", { timeout: 20_000 });
+    const call = net(page).locator(".pn-agents").getByRole("button", { name: /Covered Call/ });
+    await call.click();
+    await expect(call).toHaveAttribute("aria-pressed", "true");
+    await expect(net(page)).toHaveAttribute("data-agent", "covered_call");
+    await expect(net(page)).toHaveAttribute("data-playing", "1", { timeout: 20_000 });
+    // It restarts from one agent and grows by itself into Covered Call's own rules.
+    await expect(shown(page, "stage")).toHaveCount(5, { timeout: 12_000 });
+    await expect(net(page)).toHaveAttribute("data-phase", "2", { timeout: 12_000 });
+    await expect(shown(page, "hook")).toHaveCount(11);
+    await expect(svg(page).getByRole("button", { name: /^Coverix,/ })).toBeAttached();
+    await expect(svg(page).getByRole("button", { name: /^Calmo,/ })).toHaveCount(0);
+    await expect(net(page).getByRole("button", { name: "Explore agent" })).toHaveCount(0);
+  });
+
+  test("the walkthrough spotlights each rule stage in turn with a synchronized card, then loops", async ({ page }) => {
+    test.setTimeout(120_000);
+    await page.goto("/");
+    await net(page).scrollIntoViewIfNeeded();
+    await expect(net(page)).toHaveAttribute("data-playing", "1", { timeout: 20_000 });
+    const spotlighted: string[] = [];
+    await expect.poll(async () => {
+      if ((await net(page).getAttribute("data-tour")) === "1") {
+        const heading = (await card(page).getByRole("heading").first().textContent()) ?? "";
+        if (heading && spotlighted.at(-1) !== heading) spotlighted.push(heading);
+      }
+      return spotlighted.length;
+    }, { timeout: 30_000, intervals: [250] }).toBeGreaterThanOrEqual(6);
+    expect(spotlighted.slice(0, 6)).toEqual(["Gate", "Strike", "Size", "Pulse", "Expiry", "Breaker"]);
+    // After the decision example plays, the walkthrough loops: with the tour still running it moves on to the next agent.
+    await expect(net(page)).not.toHaveAttribute("data-agent", "protective_put", { timeout: 60_000 });
   });
 
   test("the root and every node work from the keyboard", async ({ page }) => {
@@ -209,13 +226,12 @@ test.describe("Optra Agent Network (compact)", () => {
     const pm = net(page).locator(".pm");
     await expect(pm).toBeVisible();
     await expect(pm.getByRole("button", { name: /Protective Put/ })).toBeVisible();
-    await pm.getByRole("button", { name: "Explore agent" }).click();
     await pm.getByRole("button", { name: /^State 4:/ }).click();
     const tree = pm.getByRole("list", { name: "Protective Put hook stages" });
     await expect(tree.locator(".pm-stage[data-show='1']")).toHaveCount(6);
     await tree.getByRole("button", { name: "Calmo" }).click();
     await expect(pm.locator(".pm-card").getByRole("heading", { name: "Calmo" })).toBeVisible();
-    await tree.getByRole("button", { name: /7 locked/ }).click();
+    await tree.getByRole("button", { name: /4 locked/ }).click();
     await expect(pm.locator(".pm-card").getByText("cannot take part in an evaluation")).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBe(0);
   });
@@ -227,7 +243,7 @@ test("with reduced motion the complete network is shown without growth, and noth
   await page.goto("/");
   await expect(net(page)).toHaveAttribute("data-phase", "0");
   const visible = await page.evaluate(() => [...document.querySelectorAll(".pn-svg .pn-n")].filter((el) => getComputedStyle(el).visibility === "visible").length);
-  expect(visible).toBe(1 + 5 + 10 + 5 + 5 + 2);
+  expect(visible).toBe(1 + 5 + 10 + 4 + 5 + 2);
   expect(await page.evaluate(() => [...document.querySelectorAll(".pn .pn-pulse, .pn .pn-ring-scan")].filter((el) => getComputedStyle(el).display !== "none").length)).toBe(0);
   await expect(net(page).getByText("COMPLETE NETWORK").first()).toBeVisible();
   // Selection still works, and the flow shows its result immediately.
@@ -243,8 +259,8 @@ test("network autoplay pauses offscreen and resumes when the story returns", asy
   await page.goto("/");
   await net(page).scrollIntoViewIfNeeded();
   await expect(net(page)).toBeInViewport({ ratio: 0.12 });
-  await expect(net(page)).toHaveAttribute("data-live", "1");
-  await expect(net(page)).toHaveAttribute("data-playing", "1");
+  await expect(net(page)).toHaveAttribute("data-live", "1", { timeout: 20_000 });
+  await expect(net(page)).toHaveAttribute("data-playing", "1", { timeout: 20_000 });
   await expect.poll(async () => Number(await net(page).getAttribute("data-phase"))).toBeGreaterThan(0);
 
   await page.evaluate(() => window.scrollTo({ top: 0, behavior: "instant" }));
@@ -255,11 +271,11 @@ test("network autoplay pauses offscreen and resumes when the story returns", asy
   await expect(net(page)).toHaveAttribute("data-phase", frozen!);
 
   await page.evaluate(() => document.querySelector("#agents .pn")!.scrollIntoView({ block: "start", behavior: "instant" }));
-  await expect(net(page)).toHaveAttribute("data-live", "1");
+  await expect(net(page)).toHaveAttribute("data-live", "1", { timeout: 20_000 });
   await expect.poll(async () => Number(await net(page).getAttribute("data-phase"))).toBeGreaterThan(Number(frozen));
 });
 
-test("Save-Data leaves the network still, while keeping controls available", async ({ page }) => {
+test("Save-Data leaves the network still until the visitor plays it, while keeping controls available", async ({ page }) => {
   await page.addInitScript(() => {
     Object.defineProperty(navigator, "connection", {
       configurable: true,
@@ -272,7 +288,7 @@ test("Save-Data leaves the network still, while keeping controls available", asy
   await page.evaluate(() => document.querySelector("#agents .pn")!.scrollIntoView({ block: "start", behavior: "instant" }));
   await expect(network).toHaveAttribute("data-save-data", "1");
   await expect(network).toHaveAttribute("data-playing", "0");
-  await expect(network.getByRole("button", { name: "Explore agent" }).first()).toBeEnabled();
+  await expect(network.getByRole("button", { name: "Play walkthrough" }).first()).toBeEnabled();
 });
 
 
@@ -281,7 +297,7 @@ test("without JavaScript the full network is in the page", async ({ browser }) =
   const page = await context.newPage();
   await page.goto("/");
   const visible = await page.evaluate(() => [...document.querySelectorAll(".pn-svg .pn-n")].filter((el) => getComputedStyle(el).visibility === "visible").length);
-  expect(visible).toBe(28);
+  expect(visible).toBe(27);
   await expect(svg(page).getByText("Protective Put").first()).toBeVisible();
   await expect(svg(page).getByText("BREAKER · ALWAYS ON")).toBeVisible();
   await context.close();
@@ -337,7 +353,7 @@ test.describe("section visuals", () => {
     await page.goto("/");
     const proof = page.locator("#proof");
     await proof.scrollIntoViewIfNeeded();
-    await expect(proof.getByRole("list", { name: "Claims from the server" }).getByRole("listitem")).toHaveCount(6);
+    await expect(proof.getByRole("list", { name: "Claims from the server" }).getByRole("listitem")).toHaveCount(7);
     await expect(proof.getByRole("link", { name: /Evidence: \/api\/public\/v1\/hooks/ })).toBeVisible();
     await expect(proof.getByText('curl -s "$OPTRA_URL/api/public/v1/hooks"')).toBeVisible();
     await expect(proof.getByText("An MCP server and pay-per-call endpoints are planned, not built.", { exact: false })).toBeVisible();
@@ -355,4 +371,68 @@ test.describe("section visuals", () => {
   });
 
 
+});
+
+test.describe("House Agent walkthrough autoplay", () => {
+  test.use({ viewport: { width: 1440, height: 900 } });
+
+  test("starts by itself on viewport entry, with no button pressed, and advances through every stage", async ({ page }) => {
+    test.setTimeout(90_000);
+    await page.goto("/");
+    await expect(net(page)).toHaveAttribute("data-phase", "0");
+    await expect(net(page)).toHaveAttribute("data-playing", "0");
+    await page.evaluate(() => document.querySelector("#agents .pn")!.scrollIntoView({ block: "center", behavior: "instant" }));
+    await expect(net(page)).toHaveAttribute("data-playing", "1", { timeout: 20_000 });
+    const phases = new Set<number>();
+    await expect.poll(async () => {
+      phases.add(Number(await net(page).getAttribute("data-phase")));
+      return phases.size;
+    }, { timeout: 45_000, intervals: [250] }).toBe(6);
+    await expect(net(page).getByRole("button", { name: "Explore agent" })).toHaveCount(0);
+  });
+
+  test("pauses while the tab is hidden and resumes when it is visible again", async ({ page }) => {
+    await page.goto("/");
+    await page.evaluate(() => document.querySelector("#agents .pn")!.scrollIntoView({ block: "center", behavior: "instant" }));
+    await expect(net(page)).toHaveAttribute("data-playing", "1", { timeout: 20_000 });
+    await page.evaluate(() => {
+      Object.defineProperty(document, "hidden", { configurable: true, get: () => true });
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+    await page.waitForTimeout(400);
+    const frozen = await net(page).evaluate((element) => `${element.getAttribute("data-phase")}:${element.getAttribute("data-agent")}`);
+    await page.waitForTimeout(5000);
+    expect(await net(page).evaluate((element) => `${element.getAttribute("data-phase")}:${element.getAttribute("data-agent")}`)).toBe(frozen);
+    await page.evaluate(() => {
+      Object.defineProperty(document, "hidden", { configurable: true, get: () => false });
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+    await expect.poll(() => net(page).evaluate((element) => `${element.getAttribute("data-phase")}:${element.getAttribute("data-agent")}`), { timeout: 15_000 }).not.toBe(frozen);
+  });
+
+  test("with reduced motion it never starts by itself and shows the complete network", async ({ page }) => {
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await page.goto("/");
+    await page.evaluate(() => document.querySelector("#agents .pn")!.scrollIntoView({ block: "center", behavior: "instant" }));
+    await expect(net(page)).toHaveAttribute("data-live", "1", { timeout: 20_000 });
+    await page.waitForTimeout(3500);
+    await expect(net(page)).toHaveAttribute("data-playing", "0");
+    await expect(net(page)).toHaveAttribute("data-phase", "0");
+    await expect(net(page).getByText("COMPLETE NETWORK").first()).toBeVisible();
+    // Choosing an agent still switches at once, without starting motion.
+    await net(page).locator(".pn-agents").getByRole("button", { name: /Cash-Secured Put/ }).click();
+    await expect(net(page)).toHaveAttribute("data-agent", "cash_secured_put");
+    await expect(net(page)).toHaveAttribute("data-playing", "0");
+  });
+
+  test("manual stage navigation stays available while it plays, and stops the clock", async ({ page }) => {
+    await page.goto("/");
+    await page.evaluate(() => document.querySelector("#agents .pn")!.scrollIntoView({ block: "center", behavior: "instant" }));
+    await expect(net(page)).toHaveAttribute("data-playing", "1", { timeout: 20_000 });
+    await state(page, 3).click();
+    await expect(net(page)).toHaveAttribute("data-phase", "2");
+    await expect(net(page)).toHaveAttribute("data-playing", "0");
+    await page.waitForTimeout(2500);
+    await expect(net(page)).toHaveAttribute("data-phase", "2");
+  });
 });

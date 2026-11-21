@@ -12,6 +12,11 @@ import {
 import type { Agent, AgentDecision, MarketSnapshot, PaperOrder, PaperPosition, RecipeV1 } from "../domain/contracts";
 import type { PaperAccountState, PaperOptionPositionState, PaperPortfolioUpdate, RunTickResult } from "../engine/run-tick";
 import { validateRecipe } from "../hooks/recipe-validator";
+import { isHouseStrategyTemplate } from "../hooks/house-specs";
+import { initialStrategyAccount } from "../engine/strategy/run-strategy-tick";
+import { persistStrategyTick, toStrategyAccount, toStrategyPosition } from "./strategy-persistence";
+import type { PersistStrategyTickInput, PersistStrategyTickResult } from "./strategy-persistence";
+import type { StrategyAccount, StrategyPosition } from "../engine/strategy/types";
 import { agents, marketSnapshots, paperAccounts, paperDecisions, paperOrders, paperPositions } from "../../db/schema";
 
 export type StoredPaperAgent = Agent & { recipe: RecipeV1 };
@@ -87,16 +92,20 @@ function toPosition(row: typeof paperPositions.$inferSelect): PaperPosition {
     peakMarkPriceUsd: row.peakMarkPriceUsd,
     instrumentType: row.instrumentType,
     optionType: row.optionType,
+    side: row.side,
     strikeUsd: row.strikeUsd,
     expiryAt: row.expiryAt.toISOString(),
     impliedVolatility: row.impliedVolatility,
     modelName: row.modelName,
     premiumSource: row.premiumSource,
     modelInputs: row.modelInputs,
+    collateralUsd: row.collateralUsd,
+    structureId: row.structureId,
+    legRole: row.legRole,
     openedAt: row.openedAt.toISOString(),
     closedAt: row.closedAt?.toISOString() ?? null,
     realizedPnlUsd: row.realizedPnlUsd,
-    unrealizedPnlUsd: row.status === "open" ? ((Number(row.markPriceUsd) - Number(row.averageEntryUsd)) * Number(row.quantity)).toFixed(6) : "0",
+    unrealizedPnlUsd: row.status === "open" ? ((row.side === "short" ? -1 : 1) * (Number(row.markPriceUsd) - Number(row.averageEntryUsd)) * Number(row.quantity)).toFixed(6) : "0",
     status: row.status,
     updatedAt: row.updatedAt.toISOString(),
   });
@@ -126,6 +135,8 @@ function toOrder(row: typeof paperOrders.$inferSelect): PaperOrder {
     status: row.status,
     createdAt: row.createdAt.toISOString(),
     executionMode: row.executionMode,
+    purpose: row.purpose,
+    legRole: row.legRole,
   });
 }
 
@@ -170,6 +181,8 @@ export class DrizzlePaperRepository {
     recipe: RecipeV1;
     recipeHash: string;
     createdAt: Date;
+    /** House Agents only: OPTRA-owned agents that run in public. */
+    house?: { houseKey: string };
   }): Promise<StoredPaperAgent> {
     return this.db.transaction(async (tx) => {
       const [row] = await tx.insert(agents).values({
@@ -179,6 +192,7 @@ export class DrizzlePaperRepository {
         status: input.status,
         recipe: input.recipe,
         recipeHash: input.recipeHash,
+        ...(input.house ? { kind: "house", visibility: "public", houseKey: input.house.houseKey } : {}),
         createdAt: input.createdAt,
         updatedAt: input.createdAt,
       }).returning();
@@ -188,7 +202,22 @@ export class DrizzlePaperRepository {
         input.recipe.templateId === "protective_put" ||
         (customValidation?.valid === true && customValidation.recipeHash === input.recipeHash)
       );
-      if (supportsPaperAccount) {
+      if (isHouseStrategyTemplate(input.recipe.templateId) && input.templateId === input.recipe.templateId) {
+        const strategyValidation = validateRecipe(input.recipe);
+        const seeded = strategyValidation.valid && strategyValidation.recipeHash === input.recipeHash ? initialStrategyAccount(input.recipe, input.createdAt.toISOString()) : null;
+        if (!seeded) throw new Error("Strategy paper capital is invalid.");
+        await tx.insert(paperAccounts).values({
+          agentId: row.id,
+          initialCapitalUsd: seeded.initialCapitalUsd,
+          cashUsd: seeded.cashUsd,
+          realizedPnlUsd: seeded.realizedPnlUsd,
+          peakEquityUsd: seeded.peakEquityUsd,
+          dailyStartEquityUsd: seeded.dailyStartEquityUsd,
+          dailyStartDate: seeded.dailyStartDate,
+          meta: seeded.meta as unknown as Record<string, unknown>,
+          updatedAt: input.createdAt,
+        });
+      } else if (supportsPaperAccount) {
         const initialCapital = Number(input.recipe.parameters.initialCapitalUsd);
         if (!Number.isFinite(initialCapital) || initialCapital <= 0) throw new Error("Protective Put paper capital is invalid.");
         const capital = initialCapital.toFixed(2);
@@ -478,6 +507,24 @@ export class DrizzlePaperRepository {
       }
       return { decision: toDecision(insertedDecision), duplicate: false, orderCount: ordersToPersist.length };
     });
+  }
+
+  /** Strategy-engine state (Covered Call, Cash-Secured Put, Earnings Straddle): the account plus every open position. */
+  async getStrategyState(ownerId: string, agentId: string): Promise<{ account: StrategyAccount | null; positions: StrategyPosition[] }> {
+    const [account] = await this.db.select({ account: paperAccounts })
+      .from(paperAccounts)
+      .innerJoin(agents, eq(paperAccounts.agentId, agents.id))
+      .where(and(eq(agents.ownerId, ownerId), eq(agents.id, agentId)))
+      .limit(1);
+    const positions = await this.db.select({ position: paperPositions })
+      .from(paperPositions)
+      .innerJoin(agents, eq(paperPositions.agentId, agents.id))
+      .where(and(eq(agents.ownerId, ownerId), eq(agents.id, agentId), eq(paperPositions.status, "open")));
+    return { account: account ? toStrategyAccount(account.account) : null, positions: positions.map((row) => toStrategyPosition(row.position)) };
+  }
+
+  async persistStrategyTick(input: PersistStrategyTickInput): Promise<PersistStrategyTickResult> {
+    return persistStrategyTick(this.db, input);
   }
 
   async listTape(ownerId: string, agentId: string, limit = 100): Promise<AgentDecision[]> {

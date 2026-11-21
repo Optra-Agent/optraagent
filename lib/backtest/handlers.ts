@@ -13,6 +13,8 @@ import { inspectCandleCoverage, inspectHourlyCoverage, runBacktest } from "./run
 import type { DrizzleBacktestRepository } from "./drizzle-repository";
 import type { DrizzlePaperRepository } from "../paper/drizzle-repository";
 import type { MarketHistoryResult } from "../market/crius-history";
+import type { EarningsSnapshot } from "../market/earnings";
+import { isHouseStrategyTemplate } from "../hooks/house-specs";
 
 type BacktestRepository = Pick<DrizzleBacktestRepository, "listHourlySnapshots" | "createBacktestRun" | "getBacktestRun" | "launchAgent">;
 type AgentRepository = Pick<DrizzlePaperRepository, "findAgent">;
@@ -23,6 +25,7 @@ export type BacktestHandlerOptions = {
   readSession: (request: Request) => Promise<Session | Response>;
   listMarkets: () => Promise<Array<{ symbol: string }>>;
   getHistory?: (symbol: string) => Promise<MarketHistoryResult>;
+  getEarnings?: (symbol: string) => Promise<EarningsSnapshot | null>;
   now?: () => Date;
   newRunId: () => string;
 };
@@ -93,12 +96,16 @@ export function createBacktestHandlers(options: BacktestHandlerOptions) {
           return error("DATA_MISSING", `No active market is available for ${recipe.data.underlyingSymbol}.`, 404);
         }
         const history = options.getHistory ? await options.getHistory(recipe.data.underlyingSymbol) : null;
+        const earnings = options.getEarnings && isHouseStrategyTemplate(recipe.data.templateId)
+          ? await options.getEarnings(recipe.data.underlyingSymbol).catch(() => null)
+          : null;
         const currentTime = now().toISOString();
         const run = runBacktest({
           runId: options.newRunId(),
           recipe: recipe.data,
           candles: history?.candles ?? [],
           corporateActionDates: history?.corporateActionDates ?? [],
+          earnings,
           requestedCandles: history?.coverage.requestedCandles,
           now: currentTime,
         });

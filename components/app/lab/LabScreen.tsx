@@ -18,6 +18,7 @@ import { Chip, JourneyRail, PageHeader, Skeleton, StateBlock, Panel } from "../u
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { BenchmarkComparison } from "./BenchmarkComparison";
+import { modelAssumptions, type HouseTemplateId } from "../agents/house-meta";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 function errorMessage(value: unknown): string {
@@ -110,7 +111,7 @@ export function LabScreen({ initialAgentId = "" }: { initialAgentId?: string }) 
         return AgentListResponseSchema.parse(body);
       })
       .then(({ agents: result }) => {
-        const drafts = result.filter((agent) => agent.status === "draft" && (agent.templateId === "protective_put" || agent.templateId === "custom"));
+        const drafts = result.filter((agent) => agent.status === "draft");
         setAgents(drafts);
         setSelectedAgentId((current) => current && drafts.some((agent) => agent.id === current)
           ? current
@@ -215,11 +216,14 @@ export function LabScreen({ initialAgentId = "" }: { initialAgentId?: string }) 
     }
   }
 
+  const draftTemplate = (selectedAgent?.id === selectedAgentId ? selectedAgent.templateId : agents.find((agent) => agent.id === selectedAgentId)?.templateId) ?? "protective_put";
+  const assumptions = modelAssumptions[(draftTemplate in modelAssumptions ? draftTemplate : "protective_put") as HouseTemplateId];
+  const draftLabel = draftTemplate === "custom" ? "Custom agent" : draftTemplate.replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
   const progress = coverage ? Math.min(100, Math.round((coverage.availableSamples / coverage.requiredSamples) * 100)) : 0;
   const journeyStep = launched ? 5 : run?.status === "complete" ? 4 : 3;
   const runBlockedReason = !coverage?.ready
     ? "Coverage is not ready for this symbol."
-    : !selectedAgent ? "Select a Protective Put draft first."
+    : !selectedAgent ? "Select a paper agent draft first."
     : !agentMatchesCoverage ? "Loading the draft's underlying…" : "";
 
   return (
@@ -275,10 +279,8 @@ export function LabScreen({ initialAgentId = "" }: { initialAgentId?: string }) 
             <div className="assumptions">
               <h3>Model assumptions</h3>
               <ul>
-                <li>European Black–Scholes put, volatility = 30-day realized × 1.1.</li>
-                <li>30 calendar-day tenor, one underlying share per model unit.</li>
-                <li>50 bp slippage. Options venue fees are not modeled.</li>
-                <li>No historical option chain, implied volatility or listed-contract guarantee exists in this data.</li>
+                {assumptions.map((line) => <li key={line}>{line}</li>)}
+                {assumptions === modelAssumptions.protective_put ? null : <li>No historical option chain, implied volatility or listed-contract guarantee exists in this data.</li>}
               </ul>
             </div>
           </Panel>
@@ -298,10 +300,10 @@ export function LabScreen({ initialAgentId = "" }: { initialAgentId?: string }) 
             {status === "signed_in" ? (
               <>
                 <div className="field">
-                  <Label htmlFor="lab-agent">Protective Put draft</Label>
+                  <Label htmlFor="lab-agent">Paper agent draft</Label>
                   <Select value={selectedAgentId} onValueChange={(value) => { setSelectedAgentId(value); setSelectedAgent(null); setRun(null); setWorkflowError(""); }} disabled={agentsLoading || agents.length === 0}>
                     <SelectTrigger id="lab-agent" className="w-full">
-                      <SelectValue placeholder={agentsLoading ? "Loading drafts…" : "No Protective Put drafts"} />
+                      <SelectValue placeholder={agentsLoading ? "Loading drafts…" : "No paper agent drafts"} />
                     </SelectTrigger>
                     <SelectContent>
                       {agents.map((agent) => <SelectItem key={agent.id} value={agent.id}>{agent.name} · {agent.recipeHash.slice(0, 18)}</SelectItem>)}
@@ -309,7 +311,7 @@ export function LabScreen({ initialAgentId = "" }: { initialAgentId?: string }) 
                   </Select>
                 </div>
                 {!agentsLoading && agents.length === 0 && !launched ? (
-                  <p className="form-hint">Backtests run against a saved draft. <Link href="/agents#configure">Create a Protective Put draft</Link> first.</p>
+                  <p className="form-hint">Backtests run against a saved draft. <Link href="/agents#configure">Create a paper agent draft</Link> first.</p>
                 ) : null}
                 <div className="action-row">
                   <Button  type="button" aria-describedby={runBlockedReason ? "run-blocked" : undefined} disabled={busy !== "" || agentsLoading || Boolean(runBlockedReason) || Boolean(launched)} onClick={() => void createBacktest()}>
@@ -334,13 +336,23 @@ export function LabScreen({ initialAgentId = "" }: { initialAgentId?: string }) 
                     <div className="metric"><dt>Ending cash</dt><dd className="mono">{formatUsd(run.metrics.endingCashUsd)}</dd></div>
                   </dl>
                 ) : <p className="form-hint">No performance metrics were produced.</p>}
+                {run.metrics?.strategy ? (
+                  <dl className="kv kv-tight" aria-label="Strategy counters">
+                    <div><dt>Premium collected</dt><dd className="mono">{formatUsd(run.metrics.strategy.premiumCollectedUsd)}</dd></div>
+                    <div><dt>Premium paid</dt><dd className="mono">{formatUsd(run.metrics.strategy.premiumPaidUsd)}</dd></div>
+                    <div><dt>Closes (winning)</dt><dd className="mono">{run.metrics.strategy.closes} ({run.metrics.strategy.winningCloses})</dd></div>
+                    <div><dt>Settled ITM / OTM</dt><dd className="mono">{run.metrics.strategy.settledItm} / {run.metrics.strategy.settledOtm}</dd></div>
+                    <div><dt>Rolls</dt><dd className="mono">{run.metrics.strategy.rolls}</dd></div>
+                    {run.metrics.strategy.worstTradeUsd !== null ? <div><dt>Worst trade</dt><dd className={`mono pnl pnl-${signedTone(run.metrics.strategy.worstTradeUsd)}`}>{formatUsd(run.metrics.strategy.worstTradeUsd)}</dd></div> : null}
+                  </dl>
+                ) : null}
                 <dl className="kv kv-tight">
                   <div><dt>Decisions replayed</dt><dd className="mono">{run.sampleCount}</dd></div>
                   <div><dt>Entries / exits</dt><dd className="mono">{run.entryOrderCount ?? 0} / {run.exitOrderCount ?? 0}</dd></div>
                   <div className="kv-wide"><dt>Window</dt><dd className="mono">{formatUtc(run.startAt)} to {formatUtc(run.endAt)}</dd></div>
                   {run.historyDataHash ? <div><dt>History hash</dt><dd className="mono" title={run.historyDataHash}>{shortHash(run.historyDataHash, 16, 8)}</dd></div> : null}
                 </dl>
-                {run.metrics ? <BenchmarkComparison metrics={run.metrics} /> : <p className="panel-note">No metrics, so no benchmark comparison. Treat any result as a model result, not a forecast.</p>}
+                {run.metrics ? <BenchmarkComparison metrics={run.metrics} strategyLabel={draftLabel} /> : <p className="panel-note">No metrics, so no benchmark comparison. Treat any result as a model result, not a forecast.</p>}
                 {run.status === "complete" && !launched ? (
                   <div className="action-row">
                     <Button  type="button" disabled={busy !== ""} onClick={() => void launchAgent()}>{busy === "launch" ? "Launching…" : "Launch paper agent"}</Button>

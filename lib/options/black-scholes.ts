@@ -67,6 +67,38 @@ export function blackScholesEuropeanPut(input: BlackScholesPutInput): ModeledPut
   };
 }
 
+export type ModeledOptionType = "call" | "put";
+
+export type ModeledOptionValue = {
+  premiumUsd: number;
+  delta: number;
+  volatility: number;
+  model: "black_scholes_european_call" | "black_scholes_european_put";
+};
+
+/**
+ * European Black–Scholes premium and delta for a one-share unit. The put path is identical to
+ * `blackScholesEuropeanPut` (which stays the source of truth for the Protective Put recipe).
+ */
+export function blackScholesEuropeanOption(optionType: ModeledOptionType, input: BlackScholesPutInput): ModeledOptionValue {
+  const { years, rate, yieldRate } = validate(input);
+  const rootTime = Math.sqrt(years);
+  const d1 = (Math.log(input.spotUsd / input.strikeUsd) + (rate - yieldRate + (input.volatility ** 2) / 2) * years) / (input.volatility * rootTime);
+  const d2 = d1 - input.volatility * rootTime;
+  const discountedStrike = input.strikeUsd * Math.exp(-rate * years);
+  const discountedSpot = input.spotUsd * Math.exp(-yieldRate * years);
+  const rawPremium = optionType === "call"
+    ? discountedSpot * normalCdf(d1) - discountedStrike * normalCdf(d2)
+    : discountedStrike * normalCdf(-d2) - discountedSpot * normalCdf(-d1);
+  // The CDF approximation can return a premium a hair below zero for a deep out-of-the-money strike.
+  const premiumUsd = rawPremium < 0 && rawPremium > -1e-7 ? 0 : rawPremium;
+  const delta = optionType === "call"
+    ? Math.exp(-yieldRate * years) * normalCdf(d1)
+    : -Math.exp(-yieldRate * years) * normalCdf(-d1);
+  if (!Number.isFinite(premiumUsd) || premiumUsd < 0 || !Number.isFinite(delta)) throw new RangeError("Black–Scholes returned an invalid option value.");
+  return { premiumUsd, delta, volatility: input.volatility, model: optionType === "call" ? "black_scholes_european_call" : "black_scholes_european_put" };
+}
+
 export function annualizedRealizedVolatility(candles: readonly MarketCandle[], returnHours: number): number | null {
   if (!Number.isInteger(returnHours) || returnHours < 2 || candles.length < returnHours + 1) return null;
   const prices = candles.slice(-(returnHours + 1)).map((candle) => Number(candle.shareCloseUsd));

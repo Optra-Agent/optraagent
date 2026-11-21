@@ -103,3 +103,31 @@ export function isRegularEquitySession(timestamp: string): boolean {
   const closeMinute = isEarlyClose(local) ? 13 * 60 : 16 * 60;
   return minuteOfDay >= 9 * 60 + 30 && minuteOfDay < closeMinute;
 }
+
+export function isUsMarketDay(year: number, month: number, day: number): boolean {
+  const weekday = new Date(Date.UTC(year, month - 1, day)).getUTCDay();
+  return weekday !== 0 && weekday !== 6 && !holidayDates(year).has(key(year, month, day));
+}
+
+/** The UTC instant of a wall-clock time in America/New_York (daylight saving aware). */
+export function easternWallClockToUtcMs(year: number, month: number, day: number, hour: number, minute: number): number {
+  for (const offsetHours of [4, 5]) {
+    const candidate = Date.UTC(year, month - 1, day, hour + offsetHours, minute);
+    const local = newYorkDate(new Date(candidate).toISOString());
+    if (local && local.year === year && local.month === month && local.day === day && local.hour === hour && local.minute === minute) return candidate;
+  }
+  throw new RangeError("The requested America/New_York wall-clock time does not exist.");
+}
+
+/** Regular-session close (16:00 ET, or 13:00 ET on an early-close day) as a UTC instant. */
+export function usMarketCloseUtcMs(year: number, month: number, day: number): number {
+  const early = isEarlyClose({ year, month, day, hour: 0, minute: 0, weekday: new Date(Date.UTC(year, month - 1, day)).getUTCDay() });
+  return easternWallClockToUtcMs(year, month, day, early ? 13 : 16, 0);
+}
+
+/** The America/New_York calendar date (`YYYY-MM-DD`) of an instant. */
+export function easternDateKey(timestampMs: number): string {
+  const local = newYorkDate(new Date(timestampMs).toISOString());
+  if (!local) throw new RangeError("Invalid timestamp.");
+  return key(local.year, local.month, local.day);
+}

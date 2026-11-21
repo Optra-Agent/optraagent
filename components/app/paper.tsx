@@ -12,7 +12,7 @@ export function PositionGrid({ positions }: { positions: PaperPosition[] }) {
       {positions.map((position) => (
         <Card className="position-card" key={position.id}>
           <div className="position-head">
-            <strong>{position.symbol} {position.optionType.toUpperCase()} · {formatUsd(position.strikeUsd)}</strong>
+            <strong>{position.side === "short" ? "SHORT" : "LONG"} {position.symbol} {position.optionType.toUpperCase()} · {formatUsd(position.strikeUsd)}</strong>
             <Chip tone={position.status === "open" ? "azure" : "neutral"}>{position.status}</Chip>
           </div>
           <dl className="kv kv-tight">
@@ -21,9 +21,10 @@ export function PositionGrid({ positions }: { positions: PaperPosition[] }) {
             <div><dt>Mark</dt><dd className="mono">{formatUsd(position.markPriceUsd, 4)}</dd></div>
             <div><dt>Unrealized P/L</dt><dd className={`mono pnl pnl-${signedTone(position.unrealizedPnlUsd)}`}>{formatUsd(position.unrealizedPnlUsd, 4)}</dd></div>
             {position.status === "closed" ? <div><dt>Realized P/L</dt><dd className={`mono pnl pnl-${signedTone(position.realizedPnlUsd)}`}>{formatUsd(position.realizedPnlUsd, 4)}</dd></div> : null}
+            {position.side === "short" && Number(position.collateralUsd ?? 0) > 0 ? <div><dt>Collateral locked</dt><dd className="mono">{formatUsd(String(position.collateralUsd))}</dd></div> : null}
             <div><dt>Expiry</dt><dd className="mono">{formatUtc(position.expiryAt)}</dd></div>
           </dl>
-          <p className="position-foot">Modeled premium · Black–Scholes · IV {position.impliedVolatility}</p>
+          <p className="position-foot">Modeled premium · Black–Scholes · IV {position.impliedVolatility}{position.side === "short" ? " · premium received" : ""}</p>
         </Card>
       ))}
     </div>

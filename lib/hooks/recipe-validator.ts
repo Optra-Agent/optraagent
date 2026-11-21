@@ -1,7 +1,8 @@
 import { createHash } from "node:crypto";
 import { RecipeValidationResultSchema, RecipeV1Schema } from "../domain/contracts";
-import type { RecipeV1 } from "../domain/contracts";
+import type { RecipeV1, RecipeValidationIssue } from "../domain/contracts";
 import { getHookCatalog } from "./catalog";
+import { isHouseStrategyTemplate, validateHouseRecipe } from "./house-specs";
 
 function canonicalize(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(canonicalize);
@@ -30,11 +31,7 @@ export function validateRecipe(input: unknown) {
   }
 
   const recipe = parsed.data;
-  const issues: Array<{
-    code: "HOOK_CATALOG_UNAVAILABLE" | "UNSUPPORTED_HOOK" | "DUPLICATE_HOOK_ID" | "MISSING_REQUIRED_HOOK" | "INVALID_COMPOSITION" | "INVALID_PARAMETER";
-    message: string;
-    hookId?: string;
-  }> = [];
+  const issues: RecipeValidationIssue[] = [];
   const catalog = getHookCatalog();
   const knownHooks = new Map(catalog.definitions.map((definition) => [definition.id, definition]));
 
@@ -72,8 +69,10 @@ export function validateRecipe(input: unknown) {
     issues.push({ code: "INVALID_COMPOSITION", message: "Recipe exceeds a PM stage limit or omits a mandatory Breaker." });
   }
 
-  if (recipe.templateId !== "protective_put" && recipe.templateId !== "custom") {
-    issues.push({ code: "INVALID_COMPOSITION", message: "Only Protective Put and custom Protective Put recipes have a supported paper evaluator in this release." });
+  if (isHouseStrategyTemplate(recipe.templateId)) {
+    issues.push(...validateHouseRecipe(recipe, recipe.templateId));
+  } else if (recipe.templateId !== "protective_put" && recipe.templateId !== "custom") {
+    issues.push({ code: "INVALID_COMPOSITION", message: "This template has no supported paper evaluator." });
   } else {
     const required = ["calmo", "corpax", "sessia", "percy", "tenora", "coverix", "capra", "trailo", "lastra", "nextra", "haltr", "daylo", "drawra", "exposa", "venux"];
     for (const hookId of required) {

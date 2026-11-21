@@ -2,10 +2,14 @@ import { timingSafeEqual } from "node:crypto";
 import { MarketCandleSchema } from "../domain/contracts";
 import type { AgentDecision, MarketCandle } from "../domain/contracts";
 import { runTick } from "../engine/run-tick";
+import { runStrategyTick } from "../engine/strategy/run-strategy-tick";
+import { isHouseStrategyTemplate } from "../hooks/house-specs";
+import type { EarningsSnapshot } from "../market/earnings";
 import { isRegularEquitySession } from "../engine/us-market-session";
 import { canonicalRecipeHash, validateRecipe } from "../hooks/recipe-validator";
 import type { MarketHistoryResult } from "../market/crius-history";
 import { PaperTickStateError } from "./drizzle-repository";
+import { StrategyTickStateError } from "./strategy-persistence";
 import type { DrizzlePaperRepository } from "./drizzle-repository";
 
 const HOUR_MS = 60 * 60 * 1000;
@@ -14,13 +18,15 @@ const MAX_CANDLE_AGE_MS = 2 * HOUR_MS;
 const REQUIRED_PRIOR_CANDLES = 721;
 
 type SchedulerLock = { release: () => Promise<void> };
-type SchedulerRepository = Pick<DrizzlePaperRepository, "listRunningAgents" | "listTape" | "persistTick">;
+type SchedulerRepository = Pick<DrizzlePaperRepository, "listRunningAgents" | "listTape" | "persistTick" | "persistStrategyTick">;
 type SchedulerLog = (entry: Record<string, unknown>) => void;
 
 export type PaperSchedulerOptions = {
   repository: SchedulerRepository;
   secret?: string;
   getHistory: (symbol: string) => Promise<MarketHistoryResult>;
+  /** Earnings calendar for the strategy templates that read it. A rejection or null is recorded as missing data, never guessed. */
+  getEarnings?: (symbol: string) => Promise<EarningsSnapshot | null>;
   acquireLock: () => Promise<SchedulerLock | null>;
   now?: () => Date;
   log?: SchedulerLog;
@@ -120,7 +126,17 @@ export function createPaperScheduler(options: PaperSchedulerOptions) {
       if (!hasValidPaperSchedulerCredential(request, options.secret)) {
         return json({ error: { code: "UNAUTHORIZED", message: "A valid scheduler credential is required.", retryable: false } }, 401);
       }
+      return execute();
+    },
 
+    /** The same evaluation without an HTTP credential, for the in-process scheduler only. It is never reachable over HTTP. */
+    async runInProcess(): Promise<Response> {
+      return execute();
+    },
+  };
+
+  async function execute(): Promise<Response> {
+    {
       let lock: SchedulerLock | null;
       try {
         lock = await options.acquireLock();
@@ -146,6 +162,16 @@ export function createPaperScheduler(options: PaperSchedulerOptions) {
         return pending;
       };
 
+      const earningsCache = new Map<string, Promise<EarningsSnapshot | null>>();
+      const getEarnings = (symbol: string): Promise<EarningsSnapshot | null> => {
+        let pending = earningsCache.get(symbol);
+        if (!pending) {
+          pending = (options.getEarnings?.(symbol) ?? Promise.resolve(null)).catch(() => null);
+          earningsCache.set(symbol, pending);
+        }
+        return pending;
+      };
+
       try {
         const agents = await options.repository.listRunningAgents();
         summary.agentsConsidered = agents.length;
@@ -160,10 +186,13 @@ export function createPaperScheduler(options: PaperSchedulerOptions) {
 
           let history: MarketHistoryResult;
           let latest: AgentDecision[];
+          let earnings: EarningsSnapshot | null = null;
+          const strategyAgent = isHouseStrategyTemplate(agent.templateId);
           try {
-            [history, latest] = await Promise.all([
+            [history, latest, earnings] = await Promise.all([
               getHistory(symbol),
               options.repository.listTape(agent.ownerId, agent.id, 1),
+              strategyAgent ? getEarnings(symbol) : Promise.resolve(null),
             ]);
           } catch (cause) {
             summary.failures += 1;
@@ -218,7 +247,31 @@ export function createPaperScheduler(options: PaperSchedulerOptions) {
 
             const tickId = tickIdFor(candle);
             try {
-              const result = await options.repository.persistTick({
+              const priorCandles = candles.slice(0, index);
+              const result = strategyAgent
+                ? await options.repository.persistStrategyTick({
+                  ownerId: agent.ownerId,
+                  agentId: agent.id,
+                  tickId,
+                  occurredAt: candle.endAt,
+                  snapshot: null,
+                  evaluate: (context) => runStrategyTick({
+                    agentId: context.agent.id,
+                    tickId,
+                    occurredAt: candle.endAt,
+                    recipe: context.agent.recipe,
+                    recipeHash: context.agent.recipeHash,
+                    snapshot: null,
+                    currentCandle: candle,
+                    history: priorCandles,
+                    corporateActionDates: history.corporateActionDates,
+                    earnings,
+                    account: context.account,
+                    positions: context.positions,
+                    state: { status: context.agent.status as "running" },
+                  }),
+                })
+                : await options.repository.persistTick({
                 ownerId: agent.ownerId,
                 agentId: agent.id,
                 tickId,
@@ -257,7 +310,7 @@ export function createPaperScheduler(options: PaperSchedulerOptions) {
                 duplicate: result.duplicate,
               });
             } catch (cause) {
-              if (cause instanceof PaperTickStateError) {
+              if (cause instanceof PaperTickStateError || cause instanceof StrategyTickStateError) {
                 summary.deferred += 1;
                 emit(log, { event: "paper_scheduler.agent_deferred", agentId: agent.id, symbol, candleEndAt: candle.endAt, reason: "agent_lifecycle_changed" });
                 break;
@@ -283,6 +336,6 @@ export function createPaperScheduler(options: PaperSchedulerOptions) {
       summary.status = summary.failures > 0 ? "partial" : "complete";
       emit(log, { event: "paper_scheduler.run_completed", ...summary, durationMs: Math.max(0, now().getTime() - startedAtMs) });
       return json(summary, summary.failures > 0 ? 503 : 200);
-    },
-  };
+    }
+  }
 }

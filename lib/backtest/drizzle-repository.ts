@@ -180,7 +180,7 @@ export class DrizzleBacktestRepository {
       ) return false;
 
       const [updated] = await tx.update(agents)
-        .set({ status: "running", backtestRunId: run.id, updatedAt })
+        .set({ status: "running", backtestRunId: run.id, updatedAt, launchedAt: updatedAt })
         .where(and(
           eq(agents.id, agentId),
           eq(agents.ownerId, ownerId),

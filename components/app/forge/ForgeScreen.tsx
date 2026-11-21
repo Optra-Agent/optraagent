@@ -142,6 +142,11 @@ export function ForgeScreen() {
       setValidationError("Complete the required recipe fields before validation.");
       return;
     }
+    if (templateId === "covered_call" || templateId === "cash_secured_put" || templateId === "earnings_straddle") {
+      // These three are closed House Agent specifications with their own configuration form; Forge composes the Protective Put family.
+      setValidation({ valid: false, recipeHash: null, issues: [{ code: "INVALID_COMPOSITION", message: `${titleCase(templateId)} is a closed House Agent specification. Configure it on the Agents screen, where every input stays inside its validated range. Forge composes Protective Put and custom Protective Put recipes only.` }] });
+      return;
+    }
     setBusy(true);
     setValidationError("");
     try {

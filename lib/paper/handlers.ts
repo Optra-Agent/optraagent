@@ -9,10 +9,15 @@ import {
 import type { MarketCandle, MarketSnapshot, Session } from "../domain/contracts";
 import type { MarketHistoryResult } from "../market/crius-history";
 import { runTick } from "../engine/run-tick";
+import { runStrategyTick } from "../engine/strategy/run-strategy-tick";
+import { isHouseStrategyTemplate } from "../hooks/house-specs";
+import type { EarningsSnapshot } from "../market/earnings";
+import { StrategyTickStateError } from "./strategy-persistence";
 import { PaperTickStateError } from "./drizzle-repository";
 import type { PersistTickResult, DrizzlePaperRepository } from "./drizzle-repository";
 
 type PaperRepository = Pick<DrizzlePaperRepository, "getDecision" | "findAgent" | "persistTick" | "listTape" | "listPositions"> &
+  Partial<Pick<DrizzlePaperRepository, "persistStrategyTick">> &
   Partial<Pick<DrizzlePaperRepository, "getOrderCount" | "listOrders">>;
 type SessionReader = (request: Request) => Promise<Session | Response>;
 type SnapshotReader = (symbol: string) => Promise<MarketSnapshot>;
@@ -22,6 +27,7 @@ export type PaperHandlerOptions = {
   readSession: SessionReader;
   getSnapshot: SnapshotReader;
   getHistory?: (symbol: string) => Promise<MarketHistoryResult>;
+  getEarnings?: (symbol: string) => Promise<EarningsSnapshot | null>;
   now?: () => Date;
 };
 
@@ -90,6 +96,33 @@ export function createPaperHandlers(options: PaperHandlerOptions) {
           if (index < 721) return error("DATA_MISSING", "The requested historical candle is absent or lacks the 721 preceding bars required for RV30.", 409);
           currentCandle = history.candles[index]!;
         }
+        const priorCandles = history?.candles.filter((candle) => new Date(candle.endAt).getTime() <= new Date(occurredAt).getTime() && candle.endAt !== occurredAt);
+        if (isHouseStrategyTemplate(agent.templateId) && options.repository.persistStrategyTick) {
+          const earnings = options.getEarnings ? await options.getEarnings(agent.recipe.underlyingSymbol).catch(() => null) : null;
+          const persistedStrategy = await options.repository.persistStrategyTick({
+            ownerId,
+            agentId: agent.id,
+            tickId,
+            occurredAt,
+            snapshot,
+            evaluate: (context) => runStrategyTick({
+              agentId: context.agent.id,
+              tickId,
+              occurredAt,
+              recipe: context.agent.recipe,
+              recipeHash: context.agent.recipeHash,
+              snapshot,
+              currentCandle,
+              ...(priorCandles ? { history: priorCandles } : {}),
+              ...(history ? { corporateActionDates: history.corporateActionDates } : {}),
+              earnings,
+              account: context.account,
+              positions: context.positions,
+              state: { status: context.agent.status as "running" },
+            }),
+          });
+          return tickResponse(persistedStrategy);
+        }
         const persisted = await options.repository.persistTick({
           ownerId,
           agentId: agent.id,
@@ -104,7 +137,7 @@ export function createPaperHandlers(options: PaperHandlerOptions) {
             recipeHash: context.agent.recipeHash,
             snapshot,
             currentCandle,
-            history: history?.candles.filter((candle) => new Date(candle.endAt).getTime() <= new Date(occurredAt).getTime() && candle.endAt !== occurredAt),
+            history: priorCandles,
             corporateActionDates: history?.corporateActionDates,
             account: context.account,
             position: context.position,
@@ -113,7 +146,7 @@ export function createPaperHandlers(options: PaperHandlerOptions) {
         });
         return tickResponse(persisted);
       } catch (cause) {
-        if (cause instanceof PaperTickStateError) {
+        if (cause instanceof PaperTickStateError || cause instanceof StrategyTickStateError) {
           return error(cause.code, cause.message, cause.code === "NOT_FOUND" ? 404 : 409);
         }
         return error("INTERNAL_ERROR", "Unable to persist this paper tick.", 500);

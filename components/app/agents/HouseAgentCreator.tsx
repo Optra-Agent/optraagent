@@ -5,6 +5,8 @@ import type { FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { AgentDetailSchema, ApiErrorSchema, MarketListSchema } from "../../../lib/domain/contracts";
 import { buildProtectivePutRecipe } from "../../../lib/hooks/catalog";
+import { buildHouseRecipe } from "../../../lib/hooks/house-specs";
+import { isStrategyTemplate, stageSummaries, templateSummaries, tuningDefault, tuningFields, type HouseTemplateId } from "./house-meta";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -18,22 +20,33 @@ function responseError(body: unknown, fallback: string): string {
   return parsed.success ? parsed.data.error.message : fallback;
 }
 
-const stageSummary = [
-  ["Gate", "Calmo, Corpax, Sessia", "Enter only in calm volatility, outside corporate actions, in regular hours."],
-  ["Strike", "Percy, Tenora", "Buy a put 7% out of the money, about 30 calendar days out."],
-  ["Size", "Coverix, Capra", "Cover the reference shares; spend at most 2% of their value on premium."],
-  ["Pulse", "Trailo", "Arm a trailing exit once the modeled put doubles."],
-  ["Expiry", "Lastra, Nextra", "Close 24 hours before expiry, then open the next cycle."],
-  ["Breaker", "Haltr, Daylo, Drawra, Exposa, Venux", "Block new entries on bad data, daily loss, drawdown or exposure."],
-] as const;
+const titles: Record<HouseTemplateId, string> = {
+  protective_put: "Protective Put",
+  covered_call: "Covered Call",
+  cash_secured_put: "Cash-Secured Put",
+  earnings_straddle: "Earnings Straddle",
+};
 
-export function HouseAgentCreator() {
+export function HouseAgentCreator({ templateId = "protective_put" }: { templateId?: HouseTemplateId }) {
   const router = useRouter();
   const [symbols, setSymbols] = useState<string[]>([]);
   const [marketsLoading, setMarketsLoading] = useState(true);
   const [symbol, setSymbol] = useState("AAPL");
   const [shares, setShares] = useState("10");
   const [capital, setCapital] = useState("100000");
+  const [tuning, setTuning] = useState<Record<string, string>>({});
+  const [capitalFor, setCapitalFor] = useState<HouseTemplateId>("protective_put");
+  const strategy = isStrategyTemplate(templateId) ? templateId : null;
+  const fields = strategy ? tuningFields[strategy] : [];
+  const usesShares = templateId === "protective_put" || templateId === "covered_call";
+
+  // Each strategy starts from its own paper capital so switching templates never carries a mismatched amount over.
+  if (capitalFor !== templateId) {
+    setCapitalFor(templateId);
+    setCapital(templateId === "protective_put" ? "100000" : templateId === "covered_call" ? "2000" : "10000");
+    setShares(templateId === "covered_call" ? "10" : "10");
+    setTuning({});
+  }
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
@@ -63,9 +76,16 @@ export function HouseAgentCreator() {
     return () => controller.abort();
   }, []);
 
-  const sharesValid = Number.isFinite(Number(shares)) && Number(shares) >= 1;
-  const capitalValid = Number.isFinite(Number(capital)) && Number(capital) >= 100;
-  const formValid = sharesValid && capitalValid;
+  const minCapital = templateId === "protective_put" || templateId === "covered_call" ? 100 : 1000;
+  const sharesValid = !usesShares || (Number.isInteger(Number(shares)) && Number(shares) >= 1);
+  const capitalValid = Number.isFinite(Number(capital)) && Number(capital) >= minCapital;
+  const tuningValue = (field: (typeof fields)[number]) => tuning[field.id] ?? String(strategy ? tuningDefault(strategy, field) : "");
+  const tuningValid = (field: (typeof fields)[number]) => {
+    const raw = tuningValue(field);
+    const value = Number(raw);
+    return raw.trim() !== "" && Number.isFinite(value) && value >= field.min && value <= field.max && (!field.integer || Number.isInteger(value));
+  };
+  const formValid = sharesValid && capitalValid && fields.every(tuningValid);
 
   async function createDraft(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -73,7 +93,17 @@ export function HouseAgentCreator() {
     setBusy(true);
     setError("");
     try {
-      const recipe = buildProtectivePutRecipe({ underlyingSymbol: symbol, protectedShares: shares, initialCapitalUsd: capital });
+      let recipe;
+      if (strategy) {
+        const overrides: Record<string, Record<string, unknown>> = {};
+        for (const field of fields) {
+          const defaults = buildHouseRecipe(strategy, { underlyingSymbol: symbol }).parameters[field.hook] as Record<string, unknown>;
+          overrides[field.hook] = { ...(overrides[field.hook] ?? defaults), [field.key]: Number(tuningValue(field)) };
+        }
+        recipe = buildHouseRecipe(strategy, { underlyingSymbol: symbol, initialCapitalUsd: capital, referenceShares: shares, overrides });
+      } else {
+        recipe = buildProtectivePutRecipe({ underlyingSymbol: symbol, protectedShares: shares, initialCapitalUsd: capital });
+      }
       const response = await fetch("/api/agents", {
         method: "POST",
         credentials: "include",
@@ -91,12 +121,13 @@ export function HouseAgentCreator() {
   }
 
   return (
-    <Panel className="creator" id="configure" aria-label="Create Protective Put House Agent">
+    <Panel className="creator" id="configure" aria-label={`Create ${titles[templateId]} House Agent`}>
       <div className="panel-head">
-        <div><p className="eyebrow">STEP 2 · CONFIGURE</p><h2>Protective Put draft</h2></div>
+        <div><p className="eyebrow">STEP 2 · CONFIGURE</p><h2>{titles[templateId]} draft</h2></div>
         <Chip tone="azure">Paper ready</Chip>
       </div>
-      <p className="panel-lede">Creates one deterministic recipe. Reference shares and capital are virtual simulation inputs: nothing is read from, or locked in, your wallet.</p>
+      <p className="panel-lede">{templateSummaries[templateId]}</p>
+      <p className="panel-lede">Creates one deterministic recipe. Reference shares, collateral and capital are virtual simulation inputs: nothing is read from, or locked in, your wallet.</p>
       <form className="creator-form" onSubmit={(event) => void createDraft(event)} noValidate={false}>
         <div className="field">
           <Label htmlFor="house-agent-symbol">Underlying</Label>
@@ -109,20 +140,48 @@ export function HouseAgentCreator() {
             </SelectContent>
           </Select>
         </div>
+        {usesShares ? (
         <div className="field">
           <Label htmlFor="house-agent-shares">Virtual reference shares</Label>
           <Input id="house-agent-shares" type="number" min="1" step="1" inputMode="numeric" value={shares} onChange={(event) => setShares(event.target.value)} aria-invalid={!sharesValid} aria-describedby="shares-note" required />
-          <span className={sharesValid ? "field-hint" : "field-hint field-hint-error"} id="shares-note">{sharesValid ? "Shares the put is sized to protect." : "Enter at least 1 share."}</span>
+          <span className={sharesValid ? "field-hint" : "field-hint field-hint-error"} id="shares-note">{sharesValid ? (templateId === "covered_call" ? "Whole shares the calls can be written against." : "Shares the put is sized to protect.") : "Enter a whole number of at least 1."}</span>
         </div>
+        ) : null}
         <div className="field">
           <Label htmlFor="house-agent-capital">Paper capital (USD)</Label>
-          <Input id="house-agent-capital" type="number" min="100" step="100" inputMode="numeric" value={capital} onChange={(event) => setCapital(event.target.value)} aria-invalid={!capitalValid} aria-describedby="capital-note" required />
-          <span className={capitalValid ? "field-hint" : "field-hint field-hint-error"} id="capital-note">{capitalValid ? "Virtual cash that pays premiums." : "Enter at least 100 USD."}</span>
+          <Input id="house-agent-capital" type="number" min={minCapital} step="100" inputMode="numeric" value={capital} onChange={(event) => setCapital(event.target.value)} aria-invalid={!capitalValid} aria-describedby="capital-note" required />
+          <span className={capitalValid ? "field-hint" : "field-hint field-hint-error"} id="capital-note">{capitalValid ? (templateId === "cash_secured_put" ? "Virtual USDG that secures each put." : "Virtual cash for premiums and collateral.") : `Enter at least ${minCapital} USD.`}</span>
         </div>
+        {fields.map((field) => (
+          <div className="field" key={field.id}>
+            <Label htmlFor={`house-${field.id}`}>{field.label}</Label>
+            <Input id={`house-${field.id}`} type="number" min={field.min} max={field.max} step={field.step} inputMode="decimal" value={tuningValue(field)} onChange={(event) => setTuning((current) => ({ ...current, [field.id]: event.target.value }))} aria-invalid={!tuningValid(field)} aria-describedby={`house-${field.id}-note`} required />
+            <span className={tuningValid(field) ? "field-hint" : "field-hint field-hint-error"} id={`house-${field.id}-note`}>{tuningValid(field) ? field.hint : `Enter ${field.integer ? "a whole number " : ""}from ${field.min} to ${field.max}.`}</span>
+          </div>
+        ))}
         <div className="strategy-summary" aria-live="polite">
           <p className="eyebrow">YOUR STRATEGY</p>
-          <p className="strategy-line">Protect <b className="mono">{sharesValid ? shares : "?"} {symbol || "shares"}</b> with a put <b>7% out of the money</b>, about 30 days out.</p>
-          <p className="strategy-sub">Premium capped at 2% of the holding per entry, paid from <span className="mono">${capitalValid ? Number(capital).toLocaleString("en-US") : "?"}</span> of virtual capital. Simulated execution: premiums are modeled and no real funds or onchain orders are involved.</p>
+          {templateId === "protective_put" ? (
+            <>
+              <p className="strategy-line">Protect <b className="mono">{sharesValid ? shares : "?"} {symbol || "shares"}</b> with a put <b>7% out of the money</b>, about 30 days out.</p>
+              <p className="strategy-sub">Premium capped at 2% of the holding per entry, paid from <span className="mono">${capitalValid ? Number(capital).toLocaleString("en-US") : "?"}</span> of virtual capital. Simulated execution: premiums are modeled and no real funds or onchain orders are involved.</p>
+            </>
+          ) : templateId === "covered_call" ? (
+            <>
+              <p className="strategy-line">Sell weekly calls <b>{tuningValue(fields[0]!)}% out of the money</b> against <b className="mono">{sharesValid ? shares : "?"} {symbol || "shares"}</b> you hold on paper.</p>
+              <p className="strategy-sub">Never more calls than whole uncommitted shares. Upside above the strike is given up. Premiums are modeled and no real funds or onchain orders are involved.</p>
+            </>
+          ) : templateId === "cash_secured_put" ? (
+            <>
+              <p className="strategy-line">Sell weekly <b className="mono">{symbol || "stock"}</b> puts near <b>{tuningValue(fields[0]!)} delta</b> in an uptrend, with the full strike reserved from <span className="mono">${capitalValid ? Number(capital).toLocaleString("en-US") : "?"}</span> of virtual USDG.</p>
+              <p className="strategy-sub">At most two positions and half of equity each. A drop below the strike is a paper loss. Premiums are modeled and no real funds or onchain orders are involved.</p>
+            </>
+          ) : (
+            <>
+              <p className="strategy-line">Buy a <b className="mono">{symbol || "stock"}</b> at-the-money call and put before a confirmed earnings report, using up to <b>{tuningValue(fields[1]!)}%</b> of capital.</p>
+              <p className="strategy-sub">It loses the premium if the stock does not move enough. Only a company-confirmed earnings date can open a trade. Premiums are modeled and no real funds or onchain orders are involved.</p>
+            </>
+          )}
         </div>
         <Button type="submit" size="lg" className="w-full" disabled={busy || marketsLoading || symbols.length === 0 || !formValid}>{busy ? "Creating…" : "Create paper draft"}</Button>
       </form>
@@ -132,7 +191,7 @@ export function HouseAgentCreator() {
       <details className="recipe-outline">
         <summary><ShieldCheck aria-hidden />What this recipe will run</summary>
         <ol>
-          {stageSummary.map(([stage, hooks, text]) => (
+          {stageSummaries[templateId].map(([stage, hooks, text]) => (
             <li key={stage}>
               <span className="recipe-stage">{stage}</span>
               <span className="recipe-body"><span className="recipe-hooks">{hooks}</span>{text}</span>

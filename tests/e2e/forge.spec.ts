@@ -17,7 +17,7 @@ test("Forge reads the PM catalog and blocks unsupported generic recipes without 
   const validate = page.getByRole("button", { name: "Validate recipe", exact: true });
   await validate.click();
   await expect(page.locator(".forge-validation")).toContainText("Recipe blocked");
-  await expect(page.locator(".forge-validation")).toContainText("Only Protective Put and custom Protective Put recipes have a supported paper evaluator");
+  await expect(page.locator(".forge-validation")).toContainText("Covered Call is a closed House Agent specification");
   await expect(page.getByRole("button", { name: "Save draft", exact: true })).toBeDisabled();
   await expect(page.getByRole("button", { name: /compose|generate with ai/i })).toHaveCount(0);
 });

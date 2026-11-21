@@ -50,6 +50,13 @@
       "when": 1795244210540,
       "tag": "0006_live_agent_store",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1795277803491,
+      "tag": "0007_house_strategy_agents",
+      "breakpoints": true
     }
   ]
 }

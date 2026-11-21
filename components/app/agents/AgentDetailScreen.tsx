@@ -147,7 +147,7 @@ export function AgentDetailScreen({ agentId }: { agentId: string }) {
 
   const agent = data?.agent;
   const journeyStep = !agent ? 3 : agent.status === "draft" ? 3 : (data?.decisions.length ?? 0) > 0 ? 6 : 5;
-  const holdings = agent ? recipeParam(agent, "protectedShares") : null;
+  const holdings = agent ? recipeParam(agent, "protectedShares") ?? recipeParam(agent, "referenceShares") : null;
   const capital = agent ? recipeParam(agent, "initialCapitalUsd") : null;
 
   return (

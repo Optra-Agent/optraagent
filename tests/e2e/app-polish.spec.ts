@@ -15,14 +15,15 @@ test("the app sidebar groups navigation with an icon per destination and no stat
   await expect(banner.getByRole("note")).toHaveCount(0);
 });
 
-test("Agents leads with a connect card, a featured Protective Put and locked previews", async ({ page }) => {
+test("Agents leads with a connect card and four paper-ready House Agents", async ({ page }) => {
   await page.route("**/api/me", (route) => route.fulfill({ status: 401, json: { error: { code: "UNAUTHORIZED", message: "Sign in required.", retryable: false } } }));
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto("/agents");
   await expect(page.getByRole("region", { name: "Wallet session" }).getByRole("button", { name: "Choose a wallet" })).toBeVisible();
   const templates = page.getByRole("region", { name: "House Agent templates" });
-  await expect(templates.getByRole("link", { name: /Configure this agent below/ })).toHaveAttribute("href", "#configure");
-  await expect(templates.getByRole("link", { name: /Review the rules/ })).toHaveCount(3);
+  await expect(templates.getByRole("link", { name: /Configuring below/ })).toHaveAttribute("href", "#configure");
+  await expect(templates.getByRole("link", { name: /Configure this agent/ })).toHaveCount(3);
+  await expect(templates.getByRole("link", { name: /Review the rules/ })).toHaveCount(0);
   await expect(templates.getByText("15", { exact: true })).toBeVisible();
   await expect(templates.getByText("7% OTM")).toBeVisible();
 });
@@ -38,7 +39,7 @@ test("the configure form validates its inputs and summarizes the strategy", asyn
   const submit = form.getByRole("button", { name: "Create paper draft" });
   await expect(submit).toBeEnabled();
   await form.getByLabel("Virtual reference shares").fill("0");
-  await expect(form.getByText("Enter at least 1 share.")).toBeVisible();
+  await expect(form.getByText("Enter a whole number of at least 1.")).toBeVisible();
   await expect(submit).toBeDisabled();
   await form.getByLabel("Virtual reference shares").fill("25");
   await expect(form.getByText(/Protect\s+25 AAPL/)).toBeVisible();

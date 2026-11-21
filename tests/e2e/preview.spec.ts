@@ -20,9 +20,9 @@ test("the hero preview is an interactive, read-only miniature of the real app", 
   await expect(shell.getByRole("banner").or(shell.locator(".topbar")).getByText("Agents", { exact: true })).toBeVisible();
   const navigation = shell.getByRole("navigation", { name: "Main navigation" });
 
-  // Agents: picking a Preview agent explains why it is unavailable and never shows a create action.
+  // Agents: picking another paper-ready agent links to its own configuration in the real app.
   await shell.getByRole("button", { name: /Covered Call/ }).click();
-  await expect(shell.getByText("Strategy overview. Paper drafts are created for Protective Put only.")).toBeVisible();
+  await expect(shell.getByRole("link", { name: /Configure in the app/ })).toHaveAttribute("href", "/agents?template=covered_call#configure");
   await shell.getByRole("button", { name: /Protective Put/ }).click();
   await expect(shell.getByRole("link", { name: /Configure in the app/ })).toHaveAttribute("href", "/agents#configure");
 

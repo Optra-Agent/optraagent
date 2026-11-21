@@ -11,7 +11,8 @@ describe("hook and recipe API handlers", () => {
       coverage: { sourceStatus: "available", expectedCount: 36, registeredCount: 36 },
       definitions: expect.arrayContaining([
         expect.objectContaining({ id: "calmo", availability: "implemented" }),
-        expect.objectContaining({ id: "volra", availability: "catalog_only" }),
+        expect.objectContaining({ id: "volra", availability: "implemented" }),
+        expect.objectContaining({ id: "gapro", availability: "catalog_only" }),
       ]),
     });
   });

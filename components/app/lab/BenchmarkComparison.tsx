@@ -9,7 +9,7 @@ const points = (value: string) => formatPoints(value);
  * Strategy against its two same-window benchmarks, drawn only from the server's `metrics.benchmarks`.
  * Nothing is computed or reconstructed here. Older runs without the field show an unavailable state.
  */
-export function BenchmarkComparison({ metrics }: { metrics: BacktestMetrics }) {
+export function BenchmarkComparison({ metrics, strategyLabel = "Protective Put" }: { metrics: BacktestMetrics; strategyLabel?: string }) {
   const bench = metrics.benchmarks;
   if (!bench) {
     return (
@@ -21,7 +21,7 @@ export function BenchmarkComparison({ metrics }: { metrics: BacktestMetrics }) {
   }
 
   const rows = [
-    { key: "strategy", label: "Protective Put (modeled)", value: metrics.totalReturnPct, note: "Modeled option premiums" },
+    { key: "strategy", label: `${strategyLabel} (modeled)`, value: metrics.totalReturnPct, note: "Modeled option premiums" },
     { key: "holding", label: `Buy and hold ${bench.underlying.symbol}`, value: bench.underlying.returnPct, note: "Price only" },
     { key: "cash", label: "Flat USD cash", value: bench.cash.returnPct, note: "No yield" },
   ];

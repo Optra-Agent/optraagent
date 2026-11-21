@@ -187,6 +187,7 @@ describe("scheduled Protective Put paper evaluation", () => {
         listRunningAgents: async () => { agentReads += 1; return []; },
         listTape: async () => [],
         persistTick: async () => { throw new Error("no agents should be ticked"); },
+        persistStrategyTick: async () => { throw new Error("no agents should be ticked"); },
       },
       secret: CRON_SECRET,
       getHistory: async () => { historyReads += 1; throw new Error("no feed reads should occur"); },

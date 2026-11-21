@@ -8,6 +8,8 @@ import { errorText } from "../format";
 import { JourneyRail, PageHeader, StateBlock, Panel } from "../ui";
 import { AgentGallery } from "./AgentGallery";
 import { HouseAgentCreator } from "./HouseAgentCreator";
+import { LiveHouseAgents } from "./LiveHouseAgents";
+import type { HouseTemplateId } from "./house-meta";
 import { Button } from "@/components/ui/button";
 import { Wallet } from "lucide-react";
 
@@ -21,10 +23,12 @@ async function responseMessage(response: Response): Promise<string> {
   }
 }
 
-export function AgentListScreen() {
+export function AgentListScreen({ initialTemplate = "protective_put" }: { initialTemplate?: HouseTemplateId }) {
   const { session, status, setWalletMenuOpen } = useAuthSession();
   const [result, setResult] = useState<{ key: string; status: "ready" | "error"; agents: Agent[]; error: string }>({ key: "", status: "ready", agents: [], error: "" });
   const [reload, setReload] = useState(0);
+  const [template, setTemplate] = useState<HouseTemplateId>(initialTemplate);
+
   const requestKey = `${session?.user.id ?? ""}:${reload}`;
   const loadStatus = result.key === requestKey ? result.status : "loading";
   const agents = result.key === requestKey ? result.agents : [];
@@ -72,14 +76,16 @@ export function AgentListScreen() {
         </div>
       ) : null}
 
-      <AgentGallery owned={agents} ownedStatus={status === "signed_in" ? loadStatus : "ready"} ownedError={error} signedIn={status === "signed_in"} onRetry={() => setReload((value) => value + 1)} />
+      <LiveHouseAgents />
+
+      <AgentGallery selected={template} onSelect={setTemplate} owned={agents} ownedStatus={status === "signed_in" ? loadStatus : "ready"} ownedError={error} signedIn={status === "signed_in"} onRetry={() => setReload((value) => value + 1)} />
 
       <div className="ag-configure">
         <JourneyRail step={journeyStep} />
-        {status === "signed_in" ? <HouseAgentCreator /> : (
-          <Panel className="creator creator-locked" id="configure" aria-label="Configure Protective Put draft">
-            <div className="panel-head"><div><p className="eyebrow">STEP 2 · CONFIGURE</p><h2>Protective Put draft</h2></div></div>
-            <p className="panel-lede">Sign in with a wallet to set the underlying, virtual reference shares and paper capital. Your draft is saved to your account only.</p>
+        {status === "signed_in" ? <HouseAgentCreator templateId={template} /> : (
+          <Panel className="creator creator-locked" id="configure" aria-label="Configure a House Agent draft">
+            <div className="panel-head"><div><p className="eyebrow">STEP 2 · CONFIGURE</p><h2>House Agent draft</h2></div></div>
+            <p className="panel-lede">Sign in with a wallet to set the underlying, virtual shares or collateral and paper capital. Your draft is saved to your account only.</p>
           </Panel>
         )}
       </div>

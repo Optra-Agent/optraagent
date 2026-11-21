@@ -240,13 +240,20 @@ export const PaperPositionSchema = z.object({
   markPriceUsd: DecimalStringSchema,
   peakMarkPriceUsd: DecimalStringSchema,
   instrumentType: z.literal("modeled_option"),
-  optionType: z.literal("put"),
+  optionType: z.enum(["call", "put"]),
+  /** `long` pays a modeled premium; `short` receives one and carries a settlement liability. Absent rows are long puts. */
+  side: z.enum(["long", "short"]).default("long"),
   strikeUsd: DecimalStringSchema,
   expiryAt: IsoDateTimeSchema,
   impliedVolatility: DecimalStringSchema,
-  modelName: z.literal("black_scholes_european_put"),
+  modelName: z.enum(["black_scholes_european_put", "black_scholes_european_call"]),
   premiumSource: z.literal("modeled"),
   modelInputs: z.record(z.string(), z.unknown()),
+  /** Virtual USDG reserved against a short put (strike × quantity). Zero for every other position. */
+  collateralUsd: DecimalStringSchema.default("0"),
+  /** Legs opened together (an earnings straddle) share one structure id and are only ever closed together. */
+  structureId: z.string().nullable().default(null),
+  legRole: z.string().nullable().default(null),
   openedAt: IsoDateTimeSchema,
   closedAt: IsoDateTimeSchema.nullable(),
   realizedPnlUsd: z.string().regex(/^-?\d+(?:\.\d+)?$/),
@@ -262,12 +269,12 @@ export const PaperOrderSchema = z.object({
   tickId: z.string().min(1),
   symbol: z.string().min(1),
   instrumentType: z.literal("modeled_option"),
-  optionType: z.literal("put"),
+  optionType: z.enum(["call", "put"]),
   strikeUsd: DecimalStringSchema,
   expiryAt: IsoDateTimeSchema,
   impliedVolatility: DecimalStringSchema,
   modelPremiumUsd: DecimalStringSchema,
-  modelName: z.literal("black_scholes_european_put"),
+  modelName: z.enum(["black_scholes_european_put", "black_scholes_european_call"]),
   premiumSource: z.literal("modeled"),
   modelInputs: z.record(z.string(), z.unknown()),
   side: z.enum(["buy", "sell"]),
@@ -278,6 +285,9 @@ export const PaperOrderSchema = z.object({
   status: z.enum(["filled", "cancelled", "rejected"]),
   createdAt: IsoDateTimeSchema,
   executionMode: z.literal("PAPER"),
+  /** Why the modeled fill happened: open, take_profit, stop_loss, trailing_stop, pre_expiry_close, rescue_roll_close, expiry_settlement. */
+  purpose: z.string().nullable().default(null),
+  legRole: z.string().nullable().default(null),
 }).strict();
 
 export const PaperTickResponseSchema = z.object({
@@ -298,8 +308,56 @@ export const PaperPositionsResponseSchema = z.object({
   executionMode: z.literal("PAPER"),
 }).strict();
 
-export const PublicAgentsResponseSchema = z.object({ agents: z.array(AgentSchema) }).strict();
-export const PublicTapeResponseSchema = z.object({ decisions: z.array(AgentDecisionSchema), orders: z.array(PaperOrderSchema).default([]), executionMode: z.literal("PAPER") }).strict();
+export const PublicHouseAgentSchema = z.object({
+  id: z.string().min(1),
+  name: z.string().min(1),
+  templateId: HouseAgentTemplateIdSchema,
+  underlyingSymbol: z.string().regex(/^[A-Z0-9.]{1,16}$/),
+  status: z.enum(["draft", "running", "paused", "stopped"]),
+  recipeHash: z.string().regex(/^sha256:[a-f0-9]{64}$/),
+  /** Always "Optra": OPTRA-owned House Agents are never counted as community adoption. */
+  by: z.literal("Optra"),
+  executionMode: z.literal("PAPER"),
+  launchedAt: IsoDateTimeSchema.nullable(),
+  latestDecision: z.object({ id: z.string(), action: z.enum(["open", "hold", "close", "skip"]), reason: z.string(), createdAt: IsoDateTimeSchema }).strict().nullable(),
+  decisionCount: z.number().int().nonnegative(),
+  openPositions: z.number().int().nonnegative(),
+  account: z.object({
+    initialCapitalUsd: DecimalStringSchema,
+    cashUsd: DecimalStringSchema,
+    realizedPnlUsd: z.string().regex(/^-?\d+(?:\.\d+)?$/),
+    equityUsd: z.string().regex(/^-?\d+(?:\.\d+)?$/).nullable(),
+    lockedCollateralUsd: DecimalStringSchema,
+  }).strict().nullable(),
+  backtest: z.object({ id: z.string(), totalReturnPct: z.string(), vsHoldingPct: z.string().nullable(), vsCashPct: z.string().nullable(), maxDrawdownPct: z.string(), premiumSource: z.string(), startAt: IsoDateTimeSchema, endAt: IsoDateTimeSchema }).strict().nullable(),
+}).strict();
+export const PublicHouseAgentDetailSchema = PublicHouseAgentSchema.extend({
+  recipe: RecipeV1Schema,
+  positions: z.array(PaperPositionSchema),
+  orders: z.array(PaperOrderSchema),
+  decisions: z.array(AgentDecisionSchema),
+  /** Counters recorded by the strategy engine; null for Protective Put, which has no strategy counters. */
+  strategy: z.object({
+    entries: z.number().int().nonnegative(),
+    closes: z.number().int().nonnegative(),
+    winningCloses: z.number().int().nonnegative(),
+    rolls: z.number().int().nonnegative(),
+    settledItm: z.number().int().nonnegative(),
+    settledOtm: z.number().int().nonnegative(),
+    premiumCollectedUsd: z.string().regex(/^-?\d+(?:\.\d+)?$/),
+    premiumPaidUsd: z.string().regex(/^-?\d+(?:\.\d+)?$/),
+    worstTradeUsd: z.string().regex(/^-?\d+(?:\.\d+)?$/).nullable(),
+    referenceShares: z.number().nonnegative(),
+    tradedEarnings: z.array(z.string()),
+  }).strict().nullable(),
+  backtestRun: z.record(z.string(), z.unknown()).nullable(),
+}).strict();
+export const PublicAgentsResponseSchema = z.object({ agents: z.array(PublicHouseAgentSchema), executionMode: z.literal("PAPER") }).strict();
+export const PublicTapeResponseSchema = z.object({
+  decisions: z.array(AgentDecisionSchema.extend({ agentName: z.string().optional(), underlyingSymbol: z.string().optional(), templateId: HouseAgentTemplateIdSchema.optional() }).strict()),
+  orders: z.array(PaperOrderSchema).default([]),
+  executionMode: z.literal("PAPER"),
+}).strict();
 export const PublicClaimSchema = z.object({
   id: z.string().min(1),
   status: z.enum(["verified", "limited", "preview", "unavailable", "disabled"]),
@@ -325,7 +383,7 @@ export const BacktestBenchmarksSchema = z.object({
     startingValueUsd: DecimalStringSchema,
     endingValueUsd: DecimalStringSchema,
     returnPct: SignedPercentageSchema,
-    method: z.literal("buy_and_hold_price_only"),
+    method: z.enum(["buy_and_hold_price_only", "hold_reference_shares_cash_idle"]),
     dividendsIncluded: z.literal(false),
     feesIncluded: z.literal(false),
   }).strict(),
@@ -341,11 +399,25 @@ export const BacktestBenchmarksSchema = z.object({
   vsCashPct: SignedPercentageSchema,
 }).strict();
 
+export const StrategyStatsSchema = z.object({
+  entries: z.number().int().nonnegative(),
+  closes: z.number().int().nonnegative(),
+  winningCloses: z.number().int().nonnegative(),
+  rolls: z.number().int().nonnegative(),
+  settledItm: z.number().int().nonnegative(),
+  settledOtm: z.number().int().nonnegative(),
+  premiumCollectedUsd: z.string().regex(/^-?\d+(?:\.\d+)?$/),
+  premiumPaidUsd: z.string().regex(/^-?\d+(?:\.\d+)?$/),
+  decisionCounts: z.object({ open: z.number().int().nonnegative(), hold: z.number().int().nonnegative(), close: z.number().int().nonnegative(), skip: z.number().int().nonnegative() }).strict(),
+  worstTradeUsd: z.string().regex(/^-?\d+(?:\.\d+)?$/).nullable(),
+}).strict();
+
 export const BacktestMetricsSchema = z.object({
   totalReturnPct: z.string().regex(/^-?\d+(?:\.\d+)?$/),
   maxDrawdownPct: z.string().regex(/^\d+(?:\.\d+)?$/),
   endingCashUsd: DecimalStringSchema,
   benchmarks: BacktestBenchmarksSchema.optional(),
+  strategy: StrategyStatsSchema.optional(),
 }).strict();
 
 export const BacktestRunSchema = z.object({
@@ -419,6 +491,9 @@ export type PaperTickResponse = z.infer<typeof PaperTickResponseSchema>;
 export type TapeResponse = z.infer<typeof TapeResponseSchema>;
 export type PaperPositionsResponse = z.infer<typeof PaperPositionsResponseSchema>;
 export type PublicAgentsResponse = z.infer<typeof PublicAgentsResponseSchema>;
+export type PublicHouseAgent = z.infer<typeof PublicHouseAgentSchema>;
+export type PublicHouseAgentDetail = z.infer<typeof PublicHouseAgentDetailSchema>;
+export type StrategyStats = z.infer<typeof StrategyStatsSchema>;
 export type PublicTapeResponse = z.infer<typeof PublicTapeResponseSchema>;
 export type PublicClaim = z.infer<typeof PublicClaimSchema>;
 export type PublicVerification = z.infer<typeof PublicVerificationSchema>;

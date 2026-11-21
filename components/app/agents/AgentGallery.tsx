@@ -11,9 +11,10 @@ import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
 import { formatUtc, shortHash, titleCase } from "../format";
 import { Skeleton, StateBlock } from "../ui";
-import { featuredFacts, templateSummaries } from "./TemplateCard";
+import { strategyLine, templateFacts, templateSummaries, type HouseTemplateId } from "./house-meta";
 import { AgentCharacter, CHARACTERS, type CharacterId } from "../../marketing/characters";
 
+const TEMPLATE_ORDER = ["protective_put", "covered_call", "cash_secured_put", "earnings_straddle"];
 type Filter = "all" | "ready" | "preview" | "yours";
 type Load = "loading" | "ready" | "error";
 
@@ -24,18 +25,11 @@ const nextAction: Record<Agent["status"], string> = {
   stopped: "Stopped. Fork it to start a new draft.",
 };
 
-const strategyLine: Record<HouseAgentTemplate["id"], string> = {
-  protective_put: "Long put · protects shares you hold",
-  covered_call: "Short call · against shares you hold",
-  cash_secured_put: "Short put · backed by cash",
-  earnings_straddle: "Long call and put · around earnings",
-};
-
 /**
  * The agent gallery: House Agents and the agents you saved, as one grid of cards.
  * A card never shows a return or a decision that was not recorded. Until an agent has run, it says what it needs next.
  */
-export function AgentGallery({ owned, ownedStatus, ownedError, signedIn, onRetry }: { owned: Agent[]; ownedStatus: Load; ownedError: string; signedIn: boolean; onRetry: () => void }) {
+export function AgentGallery({ owned, ownedStatus, ownedError, signedIn, onRetry, selected, onSelect }: { owned: Agent[]; ownedStatus: Load; ownedError: string; signedIn: boolean; onRetry: () => void; selected: HouseTemplateId; onSelect: (id: HouseTemplateId) => void }) {
   const [templates, setTemplates] = useState<HouseAgentTemplate[]>([]);
   const [status, setStatus] = useState<Load>("loading");
   const [filter, setFilter] = useState<Filter>("all");
@@ -49,7 +43,7 @@ export function AgentGallery({ owned, ownedStatus, ownedError, signedIn, onRetry
         return HouseAgentTemplateCatalogResponseSchema.parse(await response.json());
       })
       .then((result) => {
-        setTemplates([...result.templates].sort((a, b) => Number(b.availability === "paper_ready") - Number(a.availability === "paper_ready")));
+        setTemplates([...result.templates].sort((a, b) => Number(b.availability === "paper_ready") - Number(a.availability === "paper_ready") || TEMPLATE_ORDER.indexOf(a.id) - TEMPLATE_ORDER.indexOf(b.id)));
         setStatus("ready");
       })
       .catch(() => {
@@ -99,7 +93,7 @@ export function AgentGallery({ owned, ownedStatus, ownedError, signedIn, onRetry
       {signedIn && ownedStatus === "error" ? <StateBlock kind="error" title="Agents could not be loaded" action={<button type="button" className={buttonVariants({ variant: "outline" })} onClick={onRetry}>Retry</button>}>{ownedError}</StateBlock> : null}
 
       {status === "ready" && filter === "all" && !needle && signedIn && ownedStatus === "ready" && owned.length === 0 ? (
-        <StateBlock kind="empty" title="No saved agents">Configure the paper-ready Protective Put below, then run its verified backtest in Lab before launch.</StateBlock>
+        <StateBlock kind="empty" title="No saved agents">Pick a House Agent, configure it below, then run its verified backtest in Lab before launch.</StateBlock>
       ) : null}
 
       {status === "ready" ? (
@@ -131,7 +125,7 @@ export function AgentGallery({ owned, ownedStatus, ownedError, signedIn, onRetry
           {shownTemplates.map((template) => {
             const ready = template.availability === "paper_ready";
             return (
-              <article className="ag-card" key={template.id} data-ready={ready ? "1" : "0"} data-kind="house">
+              <article className="ag-card" key={template.id} data-ready={ready ? "1" : "0"} data-kind="house" data-selected={selected === template.id ? "1" : "0"}>
                 <header className="ag-head">
                   <div>
                     <h3>{template.name}</h3>
@@ -146,7 +140,7 @@ export function AgentGallery({ owned, ownedStatus, ownedError, signedIn, onRetry
                 </div>
                 {ready ? (
                   <dl className="ag-metrics ag-metrics-3">
-                    {featuredFacts().map((fact) => <div key={fact.label}><dt>{fact.label}</dt><dd className="mono">{fact.value}</dd></div>)}
+                    {templateFacts(template.id).map((fact) => <div key={fact.label}><dt>{fact.label}</dt><dd className="mono">{fact.value}</dd></div>)}
                   </dl>
                 ) : null}
                 <p className="ag-decision">
@@ -155,7 +149,7 @@ export function AgentGallery({ owned, ownedStatus, ownedError, signedIn, onRetry
                 </p>
                 <footer className="ag-foot">
                   {ready
-                    ? <a className={cn(buttonVariants(), "ag-pill")} href="#configure">Configure this agent below<ArrowRight aria-hidden /></a>
+                    ? <a className={cn(buttonVariants({ variant: selected === template.id ? "default" : "outline" }), "ag-pill")} href="#configure" aria-current={selected === template.id ? "true" : undefined} onClick={() => onSelect(template.id)}>{selected === template.id ? "Configuring below" : "Configure this agent"}<ArrowRight aria-hidden /></a>
                     : <Link className={cn(buttonVariants({ variant: "outline" }), "ag-pill")} href="/#agents">Review the rules<ArrowRight aria-hidden /></Link>}
                 </footer>
               </article>
@@ -166,7 +160,7 @@ export function AgentGallery({ owned, ownedStatus, ownedError, signedIn, onRetry
 
       {status === "ready" && shownTemplates.length === 0 && shownOwned.length === 0 ? (
         <StateBlock kind="empty" title={filter === "yours" && ownedStatus === "ready" && owned.length === 0 ? "No saved agents" : "No agents match"}>
-          {filter === "yours" && owned.length === 0 ? "Configure the paper-ready Protective Put below, then run its verified backtest in Lab before launch." : "Try another search or filter."}
+          {filter === "yours" && owned.length === 0 ? "Pick a House Agent, configure it below, then run its verified backtest in Lab before launch." : "Try another search or filter."}
         </StateBlock>
       ) : null}
     </section>

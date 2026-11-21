@@ -7,10 +7,10 @@ describe("Protective Put Forge walkthrough source", () => {
   const implemented = new Set(hooks.filter(({ live }) => live).map(({ id }) => id));
 
   it("uses the supported template and exposes only implemented hook choices as runnable", () => {
-    expect(data.agents.filter(({ ready }) => ready).map(({ id }) => id)).toEqual(["protective_put"]);
+    expect(data.agents.filter(({ ready }) => ready).map(({ id }) => id)).toEqual(["protective_put", "covered_call", "cash_secured_put", "earnings_straddle"]);
     expect(data.stages.map(({ stage }) => stage)).toEqual(["gate", "strike", "size", "pulse", "expiry", "breaker"]);
-    expect(implemented.size).toBe(15);
-    expect(hooks.filter(({ live }) => !live)).toHaveLength(21);
+    expect(implemented.size).toBe(26);
+    expect(hooks.filter(({ live }) => !live)).toHaveLength(10);
     expect(data.required).toHaveLength(15);
     expect(data.required.every((id) => implemented.has(id))).toBe(true);
   });

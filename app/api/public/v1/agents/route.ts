@@ -1,7 +1,12 @@
-import { createPublicHandlers } from "../../../../../lib/public/handlers";
+import { getPublicHandlers, publicUnavailableResponse } from "../../../../../lib/public/runtime";
 
+export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET(): Promise<Response> {
-  return createPublicHandlers().agents();
+  try {
+    return await (await getPublicHandlers()).agents();
+  } catch {
+    return publicUnavailableResponse();
+  }
 }

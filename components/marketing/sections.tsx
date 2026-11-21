@@ -84,17 +84,17 @@ export function HeroPreview({ facts }: { facts: Facts }) {
 
 /* ───────────────────────── House Agents: the Intelligence Graph ───────────────────────── */
 
-export function HouseAgents({ facts, graph, recorded }: { facts: Facts; graph: GraphData; recorded: FlowScenario | null }) {
+export function HouseAgents({ facts, graph, recorded }: { facts: Facts; graph: GraphData; recorded: Partial<Record<GraphData["agents"][number]["id"], FlowScenario | null>> }) {
   return (
     <section className="m-section" id="agents" aria-labelledby="agents-title">
       <div className="m-wrap">
-        <SectionHead titleId="agents-title" eyebrow="HOUSE AGENTS" title="One House Agent is ready today. Three are next.">
-          <p>An Optra Agent is a recipe of rules, not a chatbot. Select Protective Put to see its six hook stages, read each rule, and replay how one tick becomes a decision. The other three stay in Preview until their venue and data requirements are verified.</p>
+        <SectionHead titleId="agents-title" eyebrow="HOUSE AGENTS" title="Four House Agents. Watch one work.">
+          <p>An Optra Agent is a recipe of rules, not a chatbot. The walkthrough below starts on its own: it grows one agent into its six hook stages and plays how a tick becomes a decision, then moves to the next. Select any agent to watch it, or any stage or hook to read the rule. Every agent runs on paper with modeled premiums.</p>
         </SectionHead>
         <AgentGraph data={graph} recorded={recorded} />
-        <p className="graph-foot">{facts.hookLive} of {facts.hookTotal} hooks have evaluators, all used by Protective Put. Hook text and recipe values are read from the same catalog the public API serves.</p>
+        <p className="graph-foot">{facts.hookLive} of {facts.hookTotal} hooks have evaluators, and the four House Agents use them. Hook text and recipe values are read from the same catalog the public API serves. The walkthrough is a presentation: it never signs, trades or activates anything.</p>
         <div className="m-actions">
-          <Link className={buttonVariants()} href="/agents#configure">Create a Protective Put draft</Link>
+          <Link className={buttonVariants()} href="/agents#configure">Create a paper agent</Link>
         </div>
       </div>
     </section>

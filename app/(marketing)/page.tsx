@@ -26,8 +26,10 @@ export default async function LandingPage() {
   const graph = getGraphData();
   // When the public Tape has a record, the graph can replay it. Today the public Tape is empty, so only the labeled illustrative examples show.
   const tape = PublicTapeResponseSchema.parse(await createPublicHandlers().tape().then((response) => response.json()));
-  const latest = tape.decisions[0];
-  const recorded = latest ? scenarioFromDecision(latest) : null;
+  const recorded: Partial<Record<(typeof graph.agents)[number]["id"], ReturnType<typeof scenarioFromDecision>>> = {};
+  for (const decision of tape.decisions) {
+    if (decision.templateId && decision.templateId !== "custom" && !recorded[decision.templateId]) recorded[decision.templateId] = scenarioFromDecision(decision);
+  }
   return (
     <>
       <SignatureStage />

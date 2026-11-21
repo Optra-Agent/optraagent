@@ -6,10 +6,10 @@ describe("agent network layout", () => {
   const layout = buildLayout(getGraphData());
   const byId = new Map(layout.nodes.map((node) => [node.id, node]));
 
-  it("has one root, five stages, fifteen hooks, five locked satellites, a decision and the Tape", () => {
+  it("has one root, five stages, fifteen hooks, four locked satellites, a decision and the Tape", () => {
     const count = (kind: string) => layout.nodes.filter((node) => node.kind === kind).length;
     expect(layout.nodes.filter((node) => node.phase === 0).map((node) => node.id)).toEqual(["root"]);
-    expect([count("stage"), count("hook") + count("risk"), count("risk"), count("locked"), count("decision"), count("tape")]).toEqual([5, 15, 5, 5, 1, 1]);
+    expect([count("stage"), count("hook") + count("risk"), count("risk"), count("locked"), count("decision"), count("tape")]).toEqual([5, 15, 5, 4, 1, 1]);
   });
 
   it("grows through six distinct states: stages, hooks, Breaker, decision, and Tape", () => {
@@ -49,4 +49,28 @@ describe("agent network layout", () => {
     expect(scales).toEqual([...scales].sort((a, b) => b - a));
     expect(scales[0]).toBeGreaterThan(scales[4]! * 1.4);
   });
+});
+
+describe("every House Agent's network layout", () => {
+  const data = getGraphData();
+  for (const id of ["covered_call", "cash_secured_put", "earnings_straddle"] as const) {
+    it(`${id} fits the canvas without overlapping nodes`, () => {
+      const view = data.byAgent[id];
+      const layout = buildLayout({ ...data, stages: view.stages, breaker: view.breaker });
+      for (const node of layout.nodes) {
+        expect(node.x - node.w / 2).toBeGreaterThanOrEqual(0);
+        expect(node.x + node.w / 2).toBeLessThanOrEqual(VIEW.w);
+        expect(node.y - node.h / 2).toBeGreaterThanOrEqual(0);
+        expect(node.y + node.h / 2).toBeLessThanOrEqual(VIEW.h);
+      }
+      for (const [i, a] of layout.nodes.entries()) {
+        for (const b of layout.nodes.slice(i + 1)) {
+          const overlap = Math.abs(a.x - b.x) < (a.w + b.w) / 2 + 4 && Math.abs(a.y - b.y) < (a.h + b.h) / 2 + 4;
+          expect(overlap, `${id}: ${a.id} overlaps ${b.id}`).toBe(false);
+        }
+      }
+      expect(layout.nodes.filter((node) => node.kind === "stage")).toHaveLength(5);
+      expect(layout.nodes.filter((node) => node.kind === "hook" || node.kind === "risk")).toHaveLength(view.hookCount);
+    });
+  }
 });

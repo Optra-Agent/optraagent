@@ -10,7 +10,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { cn } from "@/lib/utils";
 import { Chip } from "../app/ui";
 import type { Tone } from "../app/ui";
-import { FLOW_STEPS, STEP_LABEL } from "./graph-flow";
+import { FLOW_STEPS } from "./graph-flow";
 import type { FlowScenario, FlowStep, Verdict } from "./graph-flow";
 import type { GraphAgent, GraphData, GraphHook, GraphStage } from "./graph-data";
 import { buildLayout, PHASE_COPY, PHASES, VIEW } from "./network-layout";
@@ -27,6 +27,11 @@ type AgentId = GraphAgent["id"];
 /** Hold time before the next phase while auto-playing, in milliseconds. */
 const PHASE_HOLD: Record<Phase, number> = { 0: 1800, 1: 2600, 2: 3600, 3: 3000, 4: 2200, 5: 1800 };
 const FLOW_HOLD = 1000;
+/** While the hook stage is on screen, each rule stage is spotlighted in turn. */
+const TOUR_HOLD = 1500;
+const TOUR_STAGES = ["gate", "strike", "size", "pulse", "expiry"] as const;
+/** How long a finished decision stays readable before the walkthrough loops. */
+const FLOW_END_HOLD = 3400;
 
 const reduced = () => typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 function ToolButton({ icon, label, hint, onClick, primary, pressed, disabled }: { icon: ReactNode; label: string; hint: string; onClick: () => void; primary?: boolean; pressed?: boolean; disabled?: boolean }) {
@@ -154,7 +159,7 @@ function Card({ c }: { c: Ctl }) {
         <div className="pn-card" key={sel}>
           <p className="pn-kicker">{hook.stage} hook</p>
           <h3>{hook.name}</h3>
-          <div className="pn-chips"><Chip tone="azure">Implemented</Chip><Chip>Protective Put recipe</Chip></div>
+          <div className="pn-chips"><Chip tone="azure">Implemented</Chip><Chip>{agent.name} recipe</Chip></div>
           <p className="pn-lead">{hook.summary}</p>
           {hook.params.length ? (
             <dl className="pn-params" aria-label={`${hook.name} parameters in this recipe`}>
@@ -222,16 +227,20 @@ function Card({ c }: { c: Ctl }) {
         <div><dt>Stages</dt><dd className="pn-mono">6</dd></div>
       </dl>
       <div className="pn-actions">
-        {c.phase === 0 ? <button type="button" className={buttonVariants({ size: "sm" })} onClick={c.explore}>Explore agent</button> : null}
-        <button type="button" className={buttonVariants({ variant: c.phase === 0 ? "outline" : "default", size: "sm" })} onClick={() => c.startFlow(c.scenarios[0]!)}>View decision flow</button>
-        <Link className={buttonVariants({ variant: "outline", size: "sm" })} href="/agents#configure">Configure this agent</Link>
+        <Link className={buttonVariants({ size: "sm" })} href={`/agents?template=${agent.id}#configure`}>Configure</Link>
+        <Link className={buttonVariants({ variant: "outline", size: "sm" })} href="/lab">Backtest in Lab</Link>
+        <button type="button" className={buttonVariants({ variant: "outline", size: "sm" })} onClick={() => c.startFlow(c.scenarios[0]!)}>View decision flow</button>
       </div>
+      <p className="pn-note">Configuration, validation, backtest and paper launch are all simulated: no wallet, no signing and no real order.</p>
     </div>
   );
 }
 
 const STAGE_NAME: Record<FlowStep, string> = { gate: "Gate", strike: "Strike", size: "Size", pulse: "Pulse", expiry: "Expiry", breaker: "Breaker", decision: "Paper decision", tape: "Optra Tape" };
 const STAGE_ASK: Record<FlowStep, string> = { gate: "May the agent enter?", strike: "Which put?", size: "How many units?", pulse: "Manage an open position", expiry: "Close before expiry", breaker: "Risk check on every tick", decision: "The verdicts become one action", tape: "Written down for later" };
+const STRIKE_ASK: Record<AgentId, string> = { protective_put: "Which put?", covered_call: "Which call?", cash_secured_put: "Which put?", earnings_straddle: "Which strike and expiry?" };
+const EXPIRY_ASK: Record<AgentId, string> = { protective_put: "Close before expiry", covered_call: "Hold to settlement, or roll", cash_secured_put: "Hold to settlement, or roll", earnings_straddle: "Close both legs before expiry" };
+const askFor = (agent: AgentId, step: FlowStep): string => (step === "strike" ? STRIKE_ASK[agent] : step === "expiry" ? EXPIRY_ASK[agent] : STAGE_ASK[step]);
 
 /** The decision timeline: a result summary first, then one row per stage that opens into hook verdicts on demand. */
 function FlowCard({ c, scenario }: { c: Ctl; scenario: FlowScenario }) {
@@ -276,7 +285,7 @@ function FlowCard({ c, scenario }: { c: Ctl; scenario: FlowScenario }) {
             <li key={name} data-state={step === index ? "active" : reached ? "done" : "pending"} data-block={reached && blocks > 0 ? "1" : "0"}>
               <button type="button" className="pn-rail-head" aria-expanded={hasBody ? open : undefined} disabled={!hasBody} onClick={() => { c.setFocus(stage ? name : null); setFlipped((current) => (current.includes(name) ? current.filter((item) => item !== name) : [...current, name])); }}>
                 <span className="pn-rail-name">{STAGE_NAME[name]}</span>
-                <span className="pn-rail-ask">{STAGE_ASK[name]}</span>
+                <span className="pn-rail-ask">{askFor(c.agent.id, name)}</span>
                 {reached && verdicts.length > 0 ? (
                   <span className="pn-rail-tally mono">
                     {passes > 0 ? <span data-v="pass">{passes} pass</span> : null}
@@ -319,17 +328,23 @@ function FlowCard({ c, scenario }: { c: Ctl; scenario: FlowScenario }) {
 
 /* ───────────── Main ───────────── */
 
-export type GraphProps = { data: GraphData; recorded?: FlowScenario | null };
+export type GraphProps = { data: GraphData; recorded?: Partial<Record<AgentId, FlowScenario | null>> };
 
-export function AgentGraph({ data, recorded = null }: GraphProps) {
+export function AgentGraph({ data: source, recorded }: GraphProps) {
+  const [agentId, setAgentId] = useState<AgentId>("protective_put");
+  const agent = source.agents.find((row) => row.id === agentId) ?? source.agents[0]!;
+  const view = source.byAgent[agentId];
+  const data = useMemo<GraphData>(() => ({ ...source, stages: view.stages, breaker: view.breaker, scenarios: view.scenarios, ticks: view.ticks }), [source, view]);
   const layout = useMemo(() => buildLayout(data), [data]);
-  const scenarios = useMemo(() => (recorded ? [...data.scenarios, recorded] : data.scenarios), [data, recorded]);
+  const recordedForAgent = recorded?.[agentId] ?? null;
+  const scenarios = useMemo(() => (recordedForAgent ? [...view.scenarios, recordedForAgent] : view.scenarios), [view, recordedForAgent]);
   const allHooks = useMemo(() => [...data.stages.flatMap((stage) => stage.hooks), ...data.breaker.hooks], [data]);
 
-  const [agentId, setAgentId] = useState<AgentId>("protective_put");
   const [phase, setPhase] = useState<Phase>(0);
+  const [sub, setSub] = useState(0);
   const [playing, setPlaying] = useState(false);
   const [inView, setInView] = useState(false);
+  const [pageVisible, setPageVisible] = useState(true);
   const [saveData, setSaveData] = useState(false);
   const [sel, setSel] = useState<string | null>(null);
   const [collapsed, setCollapsed] = useState<string[]>([]);
@@ -338,8 +353,8 @@ export function AgentGraph({ data, recorded = null }: GraphProps) {
   const [flowFocus, setFlowFocus] = useState<string | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
   const autoStarted = useRef(false);
-
-  const agent = data.agents.find((row) => row.id === agentId) ?? data.agents[0]!;
+  /** True while the walkthrough is touring every agent in turn; picking an agent ends the tour and loops that agent. */
+  const touring = useRef(true);
 
   useEffect(() => {
     const connection = (navigator as Navigator & { connection?: EventTarget & { saveData?: boolean } }).connection;
@@ -349,22 +364,44 @@ export function AgentGraph({ data, recorded = null }: GraphProps) {
     return () => connection?.removeEventListener("change", update);
   }, []);
 
-  // Auto-play advances phases, then the illustrative flow. Its clock only runs while the network is in view.
+  // Background tabs do no work: the walkthrough clock stops until the tab is visible again.
   useEffect(() => {
-    if (!playing || !inView) return;
-    const delay = phase < 5 ? PHASE_HOLD[phase] : flow ? FLOW_HOLD : PHASE_HOLD[5];
+    const update = () => setPageVisible(!document.hidden);
+    update();
+    document.addEventListener("visibilitychange", update);
+    return () => document.removeEventListener("visibilitychange", update);
+  }, []);
+
+  const running = playing && inView && pageVisible;
+  const lastStep = FLOW_STEPS.length - 1;
+
+  // The walkthrough clock: stages grow, each rule stage is spotlighted, the Breaker closes, one decision plays through
+  // every illustrative (and recorded) example, then the walkthrough loops. It only runs while the section is on screen.
+  useEffect(() => {
+    if (!running) return;
+    const delay = phase === 2 ? TOUR_HOLD : phase < 5 ? PHASE_HOLD[phase] : !flow ? PHASE_HOLD[5] : step < lastStep ? FLOW_HOLD : FLOW_END_HOLD;
     const timer = window.setTimeout(() => {
-      if (phase < 5) setPhase((phase + 1) as Phase);
-      else if (!flow) {
-        setFlow(scenarios[0] ?? null);
-        setStep(0);
-      } else if (step < FLOW_STEPS.length - 1) setStep(step + 1);
-      else setPlaying(false);
+      if (phase === 2) {
+        if (sub < TOUR_STAGES.length - 1) setSub(sub + 1);
+        else { setSub(0); setPhase(3); }
+        return;
+      }
+      if (phase < 5) { setPhase((phase + 1) as Phase); return; }
+      if (!flow) { setFlow(scenarios[0] ?? null); setStep(0); return; }
+      if (step < lastStep) { setStep(step + 1); return; }
+      const index = scenarios.findIndex((row) => row.id === flow.id);
+      if (index >= 0 && index < scenarios.length - 1) { setFlow(scenarios[index + 1]!); setStep(0); return; }
+      // Loop: the next agent while touring, the same agent once the visitor has chosen one.
+      setSel(null); setFlow(null); setStep(-1); setCollapsed([]); setFlowFocus(null); setSub(0); setPhase(0);
+      if (touring.current) {
+        const ids = source.agents.filter((row) => row.ready).map((row) => row.id);
+        setAgentId(ids[(ids.indexOf(agentId) + 1) % ids.length] ?? agentId);
+      }
     }, delay);
     return () => window.clearTimeout(timer);
-  }, [playing, inView, phase, flow, step, scenarios]);
+  }, [running, phase, sub, flow, step, scenarios, lastStep, source.agents, agentId]);
 
-  // The first time the network is mostly on screen it grows once by itself. Pausing stops it; reduced motion never starts it.
+  // The walkthrough starts by itself the first time the section is mostly on screen. Reduced motion and data saver never autostart.
   useEffect(() => {
     const root = rootRef.current;
     if (!root || typeof IntersectionObserver === "undefined") return;
@@ -388,10 +425,15 @@ export function AgentGraph({ data, recorded = null }: GraphProps) {
     if (id.startsWith("hook:")) return allHooks.find((hook) => `hook:${hook.id}` === id)?.stage === "breaker" ? 3 : 2;
     return id === "stage:breaker" ? 3 : id.startsWith("stage:") ? 1 : 0;
   };
-  const reset = () => { setSel(null); setFlow(null); setStep(-1); setCollapsed([]); setFlowFocus(null); };
+  const reset = () => { setSel(null); setFlow(null); setStep(-1); setCollapsed([]); setFlowFocus(null); setSub(0); };
+
+  const flowOnNow = flow !== null && phase === 5 && step >= 0;
+  /** The rule stage the walkthrough is describing right now. A visitor's own selection always wins. */
+  const tourSel = playing && sel === null && !flowOnNow ? (phase === 2 ? `stage:${TOUR_STAGES[sub] ?? "gate"}` : phase === 3 ? "stage:breaker" : null) : null;
+  const activeSel = sel ?? tourSel;
 
   const c: Ctl = {
-    data, agent, phase, sel, collapsed, flow, step, scenarios,
+    data, agent, phase, sel: activeSel, collapsed, flow, step, scenarios,
     select(id) {
       interacted();
       setPlaying(false);
@@ -412,13 +454,21 @@ export function AgentGraph({ data, recorded = null }: GraphProps) {
     closeFlow() { setFlow(null); setStep(-1); setPlaying(false); setFlowFocus(null); },
     focus: flowFocus,
     setFocus: setFlowFocus,
-    explore() { interacted(); setSel(null); setPhase(1); setPlaying(true); },
+    explore() { interacted(); setSel(null); setSub(0); setPhase(1); setPlaying(true); },
   };
 
-  const goTo = (target: Phase) => { interacted(); setPlaying(false); setFlow(null); setStep(-1); setSel(null); setPhase(target); };
+  const goTo = (target: Phase) => { interacted(); setPlaying(false); setFlow(null); setStep(-1); setSel(null); setSub(0); setPhase(target); };
   const replay = () => { interacted(); reset(); setPhase(0); setPlaying(true); };
   const start = () => { interacted(); setPlaying(false); reset(); setPhase(0); };
-  const pickAgent = (id: AgentId) => { interacted(); setAgentId(id); setPhase(0); setPlaying(false); reset(); };
+  // Choosing an agent switches to it at once and restarts its walkthrough. Reduced motion shows it complete instead.
+  const pickAgent = (id: AgentId) => {
+    interacted();
+    touring.current = false;
+    setAgentId(id);
+    reset();
+    setPhase(0);
+    setPlaying(!reduced());
+  };
 
   const onKey = (event: KeyboardEvent<HTMLDivElement>) => {
     if (event.key !== "Escape") return;
@@ -432,15 +482,15 @@ export function AgentGraph({ data, recorded = null }: GraphProps) {
     if (id.startsWith("hook:")) return allHooks.find((hook) => `hook:${hook.id}` === id)?.stage ?? null;
     return null;
   };
-  const selStage = stageOf(sel);
+  const selStage = stageOf(activeSel);
   const flowOn = ready && flow !== null && phase === 5 && step >= 0;
   const stepOf = (stage: string) => FLOW_STEPS.indexOf(stage as FlowStep);
   const reached = (stage: string | undefined) => flowOn && stage !== undefined && step >= stepOf(stage);
   const verdictOf = (node: LayoutNode): Verdict | undefined => (flowOn && reached(node.stage) ? flow?.verdicts[node.id.replace("hook:", "")]?.status : undefined);
-  const selNode = layout.nodes.find((node) => node.id === sel);
+  const selNode = layout.nodes.find((node) => node.id === activeSel);
   const side = selNode && selNode.x > 600 ? "left" : "right";
 
-  const showCard = !ready || sel !== null || flowOn;
+  const showCard = !ready || activeSel !== null || flowOn;
   // When a card is open the network slides and shrinks into the free side, so the card never covers what it describes.
   const camera = (() => {
     let cam = layout.camera[phase];
@@ -464,21 +514,21 @@ export function AgentGraph({ data, recorded = null }: GraphProps) {
   const statusText = !ready
     ? `${agent.name}, strategy overview. Paper launch is not enabled.`
     : flowOn
-      ? `Decision flow, step ${step + 1} of ${FLOW_STEPS.length}: ${STEP_LABEL[FLOW_STEPS[step] ?? "gate"]}.${step >= FLOW_STEPS.length - 1 ? ` Illustrative result: ${flow?.action}. ${flow?.reason}` : ""}`
-      : sel
-        ? `${sel.replace(":", " ")} selected.`
+      ? `Decision flow, step ${step + 1} of ${FLOW_STEPS.length}: ${STAGE_NAME[FLOW_STEPS[step] ?? "gate"]}, ${askFor(agent.id, FLOW_STEPS[step] ?? "gate")}.${step >= FLOW_STEPS.length - 1 ? ` Illustrative result: ${flow?.action}. ${flow?.reason}` : ""}`
+      : activeSel
+        ? `${activeSel.replace(":", " ")} ${sel ? "selected" : "shown by the walkthrough"}.`
         : `State ${phase + 1} of 6: ${PHASE_COPY[phase].title}.`;
 
-  const idle = phase === 0 && !playing;
+  const idle = phase === 0 && !playing && !flow;
 
   const firstHookIds = new Set(data.stages.map((stage) => stage.hooks[0]?.id).filter((id): id is string => Boolean(id)));
   const controls = (
     <div className="pn-controls" role="toolbar" aria-label="Network playback">
       {idle ? (
-        <ToolButton primary icon={<Play aria-hidden />} label="Explore agent" hint="Grow the agent into its stages, hooks and decision" onClick={c.explore} disabled={!ready} />
+        <ToolButton primary icon={<Play aria-hidden />} label="Play walkthrough" hint="Watch the agent grow into its stages, hooks and decision" onClick={c.explore} disabled={!ready} />
       ) : (
         <>
-          <ToolButton icon={playing && inView ? <Pause aria-hidden /> : <Play aria-hidden />} label={playing && inView ? "Pause" : "Play"} hint={playing ? "Pause the growth" : "Continue the growth"} pressed={playing && inView} onClick={() => { interacted(); setPlaying((value) => !value); }} />
+          <ToolButton icon={playing && inView ? <Pause aria-hidden /> : <Play aria-hidden />} label={playing && inView ? "Pause" : "Play"} hint={playing ? "Pause the walkthrough" : "Continue the walkthrough"} pressed={playing && inView} onClick={() => { interacted(); setPlaying((value) => !value); }} />
           <ToolButton icon={<RotateCcw aria-hidden />} label="Replay" hint="Replay the growth from one agent" onClick={replay} />
           {phase === 5 && !flow ? <ToolButton icon={<ListTree aria-hidden />} label="View decision flow" hint="Step through how one tick becomes a decision (illustrative)" onClick={() => c.startFlow(scenarios[0]!)} /> : null}
           <ToolButton icon={<SkipBack aria-hidden />} label="Back to start" hint="Return to the single agent" onClick={start} />
@@ -501,7 +551,7 @@ export function AgentGraph({ data, recorded = null }: GraphProps) {
         <span className="pn-mono pn-state-live">STATE {phase + 1} / 6</span>
         <span className="pn-mono pn-state-static">COMPLETE NETWORK</span>
         <span className="pn-state-live pn-title">{ready ? PHASE_COPY[phase].title : "Preview agent"}</span>
-        <span className="pn-state-static pn-title">{ready ? "Protective Put" : "Preview agent"}</span>
+        <span className="pn-state-static pn-title">{ready ? agent.name : "Preview agent"}</span>
       </p>
       <p className="pn-state-line pn-state-live">{ready ? PHASE_COPY[phase].line : "No recipe exists yet, so nothing grows from this agent."}</p>
       <p className="pn-state-line pn-state-static">{ready ? `The agent, ${data.stages.length} rule stages, ${allHooks.length} implemented hooks, the Breaker guard, a paper decision and Optra Tape.` : "No recipe exists yet, so nothing grows from this agent."}</p>
@@ -513,7 +563,7 @@ export function AgentGraph({ data, recorded = null }: GraphProps) {
 
   return (
     <TooltipProvider delayDuration={150}>
-    <div ref={rootRef} className="pn" data-phase={phase} data-agent={agent.id} data-ready={ready ? "1" : "0"} data-playing={playing && inView ? "1" : "0"} data-flow={flowOn ? "1" : "0"} data-live={inView ? "1" : "0"} data-save-data={saveData ? "1" : "0"} onKeyDown={onKey}>
+    <div ref={rootRef} className="pn" data-phase={phase} data-agent={agent.id} data-tour={tourSel ? "1" : "0"} data-ready={ready ? "1" : "0"} data-playing={playing && inView ? "1" : "0"} data-flow={flowOn ? "1" : "0"} data-live={inView ? "1" : "0"} data-save-data={saveData ? "1" : "0"} onKeyDown={onKey}>
       <p className="sr-only" role="status">{statusText}</p>
 
       <div className="pn-head">
@@ -534,7 +584,7 @@ export function AgentGraph({ data, recorded = null }: GraphProps) {
       <div className="pn-stage">
         {caption}
 
-        <svg className="pn-svg" viewBox={`0 0 ${VIEW.w} ${VIEW.h}`} role="group" aria-label="Optra Agent network. Protective Put grows into six hook stages, the Breaker guard, a paper decision and Optra Tape." preserveAspectRatio="xMidYMid meet">
+        <svg className="pn-svg" viewBox={`0 0 ${VIEW.w} ${VIEW.h}`} role="group" aria-label={`Optra Agent network. ${agent.name} grows into six hook stages, the Breaker guard, a paper decision and Optra Tape.`} preserveAspectRatio="xMidYMid meet">
           <defs>
             <linearGradient id="pn-root-fill" x1="0" y1="0" x2="0" y2="1">
               <stop offset="0%" stopColor="#14263b" />
@@ -603,7 +653,7 @@ export function AgentGraph({ data, recorded = null }: GraphProps) {
               <text className="pn-root-name" y="118" textAnchor="middle">{agent.name}</text>
               <g className="pn-root-more" data-compact={phase >= 2 ? "1" : "0"}>
                 <text className="pn-root-tag pn-mono" y="140" textAnchor="middle" data-ready={ready ? "1" : "0"}>{ready ? "AGENT" : "PREVIEW"}</text>
-                <text className="pn-root-sub" y="160" textAnchor="middle">{ready ? "15 hooks · modeled premiums" : "Strategy overview · research preview"}</text>
+                <text className="pn-root-sub" y="160" textAnchor="middle">{ready ? `${view.hookCount} hooks · modeled premiums` : "Strategy overview · research preview"}</text>
               </g>
             </Node>
 
@@ -660,10 +710,10 @@ export function AgentGraph({ data, recorded = null }: GraphProps) {
           </g>
         </svg>
 
-        {idle && ready ? (
+        {idle && ready && saveData ? (
           <div className="pn-cta">
-            <button type="button" className={cn(buttonVariants({ size: "lg" }), "pn-cta-btn")} onClick={c.explore}>Explore agent</button>
-            <p>Watch Protective Put grow into its rules, or select the agent.</p>
+            <button type="button" className={cn(buttonVariants({ size: "lg" }), "pn-cta-btn")} onClick={c.explore}>Play walkthrough</button>
+            <p>Data saver is on, so the walkthrough waits for you. Select any agent, stage or hook to read it.</p>
           </div>
         ) : null}
 
@@ -677,16 +727,16 @@ export function AgentGraph({ data, recorded = null }: GraphProps) {
         <button type="button" className="pm-root" onClick={() => (ready && idle && !reduced() ? c.explore() : c.select("root"))} aria-pressed={sel === "root"} data-ready={ready ? "1" : "0"}>
           <AgentCharacter id={agent.id} size={40} />
           <span className="pm-root-name">{agent.name}</span>
-          <small>{ready ? "AGENT · 15 hooks" : "PREVIEW · Strategy overview"}</small>
+          <small>{ready ? `AGENT · ${view.hookCount} hooks` : "PREVIEW · Strategy overview"}</small>
         </button>
         {ready ? (
-          <ol className="pm-tree" style={{ "--grow": phase / 5 } as CSSProperties} aria-label="Protective Put hook stages">
+          <ol className="pm-tree" style={{ "--grow": phase / 5 } as CSSProperties} aria-label={`${agent.name} hook stages`}>
             {[...data.stages, data.breaker].map((stage) => {
               const stagePhase = stage.stage === "breaker" ? 3 : 1;
               const hooksOpen = phase >= (stage.stage === "breaker" ? 3 : 2) && !collapsed.includes(stage.stage);
               return (
                 <li key={stage.stage} className={cn("pm-stage", stage.stage === "breaker" && "is-risk")} data-show={phase >= stagePhase ? "1" : "0"} data-dim={dimmed(stage.stage) ? "1" : "0"}>
-                  <button type="button" className="pm-stage-btn" aria-pressed={sel === `stage:${stage.stage}`} onClick={() => c.select(`stage:${stage.stage}`)}>
+                  <button type="button" className="pm-stage-btn" aria-pressed={activeSel === `stage:${stage.stage}`} onClick={() => c.select(`stage:${stage.stage}`)}>
                     <span className="pn-mono">{stage.label.toUpperCase()}</span>
                     <small className="pn-mono">{stage.live} of {stage.total}{stage.stage === "breaker" ? " · always on" : ""}</small>
                   </button>
