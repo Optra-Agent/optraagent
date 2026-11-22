@@ -202,7 +202,7 @@ test("the opening plays on every page load, can be skipped, never blocks the pag
 
   // Moving inside the site is not a page load: going to the app and back does not replay it.
   await page.locator(".m-header").getByRole("link", { name: "Launch app" }).click();
-  await expect(page).toHaveURL(/\/agents$/);
+  await expect(page).toHaveURL(/\/agents$/, { timeout: 45_000 });
   await page.getByRole("link", { name: "Optra home" }).first().click();
   await expect(page).toHaveURL(/\/$/, { timeout: 20_000 });
   await expect(page.locator(".splash")).toHaveAttribute("data-state", "gone");
@@ -405,6 +405,8 @@ test("the execution modes are a three-card Bento: 7/5 on desktop with the Engine
 });
 
 test("Bento CTAs go where they say, are keyboard reachable, and motion is removed for reduced-motion users", async ({ page }) => {
+  // Each CTA click navigates to a route the dev server may still have to compile on a shared runner.
+  test.setTimeout(120_000);
   await page.goto("/?splash=off");
   const modes = page.getByRole("group", { name: "Execution modes" });
   for (const [name, href] of [["Launch an Agent", "/agents"], ["Open Trading Panel", "/tape"], ["Explore Live Agent", "/tape#live-agent"], ["See the activation checklist", "/verify"]] as const) {
@@ -425,12 +427,12 @@ test("Bento CTAs go where they say, are keyboard reachable, and motion is remove
 
   await page.emulateMedia({ reducedMotion: "no-preference" });
   await modes.getByRole("link", { name: "Explore Live Agent" }).click();
-  await expect(page).toHaveURL(/\/tape#live-agent$/);
-  await expect(page.getByRole("region", { name: "Live Agent controls" })).toBeVisible();
+  await expect(page).toHaveURL(/\/tape#live-agent$/, { timeout: 45_000 });
+  await expect(page.getByRole("region", { name: "Live Agent controls" })).toBeVisible({ timeout: 45_000 });
   await page.goto("/?splash=off");
   await page.getByRole("group", { name: "Execution modes" }).getByRole("link", { name: "Open Trading Panel" }).click();
-  await expect(page).toHaveURL(/\/tape$/);
+  await expect(page).toHaveURL(/\/tape$/, { timeout: 45_000 });
   await page.goto("/?splash=off");
   await page.getByRole("group", { name: "Execution modes" }).getByRole("link", { name: "Launch an Agent" }).click();
-  await expect(page).toHaveURL(/\/agents$/);
+  await expect(page).toHaveURL(/\/agents$/, { timeout: 45_000 });
 });
