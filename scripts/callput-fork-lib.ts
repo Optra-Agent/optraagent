@@ -178,24 +178,26 @@ export async function refreshSpotFeed(timestamp: number) {
     if (price > 0n) { tokens.push(token); prices.push(price); }
   }
   if (!tokens.length) throw new Error("No spot prices found to refresh on the fork.");
-  const at = timestamp - 1;
-  if ((await latestTimestamp()) >= at) throw new Error(`Cannot refresh the spot feed at ${at}: the fork clock is already at ${await latestTimestamp()}.`);
+  // Anvil stamps un-pinned blocks (including the extra one sendAs may mine) from the wall clock, so by the time this runs
+  // the chain can already be past the requested time. `timestamp` is therefore a floor, never an assumption.
+  const at = Math.max(timestamp - 1, (await latestTimestamp()) + 1);
   await setNextBlockTimestamp(at);
-  const receipt = await sendAs(REAL_KEEPER, C.spotPriceFeed as Address, encodeFunctionData({ abi: SPOT_FEED_ABI, functionName: "feedSpotPrices", args: [tokens, prices, BigInt(at + 3600)] }));
-  return receipt;
+  await sendAs(REAL_KEEPER, C.spotPriceFeed as Address, encodeFunctionData({ abi: SPOT_FEED_ABI, functionName: "feedSpotPrices", args: [tokens, prices, BigInt(at + 3600)] }));
+  // The timestamp the keeper step must use: strictly after every block mined so far.
+  return Math.max(timestamp, (await latestTimestamp()) + 1);
 }
 
 /** One keeper pass at `timestamp`: sets mark price and risk premium for the listed requests, then executes the queue. */
 export async function keeperPass(requests: KeeperRequest[], timestamp: number) {
   const pm = C.positionManager as Address;
   const lens = await publicClient.readContract({ address: pm, abi: KEEPER_ABI, functionName: "getRequestQueueLengths" });
+  const at = await refreshSpotFeed(timestamp);
   const data = encodeFunctionData({
     abi: FAST_FEED_ABI,
     functionName: "setPricesAndRiskPremiumsWithBitsAndExecute",
-    args: [pm, packKeeperBits(requests.map((r) => r.markPriceUsd)), packKeeperBits(requests.map((r) => r.riskPremiumUsd)), requests.map((r) => r.optionTokenId), requests.map((r) => r.requestIndex), BigInt(timestamp), lens[1], 12n],
+    args: [pm, packKeeperBits(requests.map((r) => r.markPriceUsd)), packKeeperBits(requests.map((r) => r.riskPremiumUsd)), requests.map((r) => r.optionTokenId), requests.map((r) => r.requestIndex), BigInt(at), lens[1], 12n],
   });
-  await refreshSpotFeed(timestamp);
-  await setNextBlockTimestamp(timestamp);
+  await setNextBlockTimestamp(at);
   return sendAs(REAL_KEEPER, C.fastPriceFeed as Address, data);
 }
 
@@ -203,8 +205,8 @@ export async function keeperPass(requests: KeeperRequest[], timestamp: number) {
 export async function staleKeeperPass(timestamp: number) {
   const pm = C.positionManager as Address;
   const lens = await publicClient.readContract({ address: pm, abi: KEEPER_ABI, functionName: "getRequestQueueLengths" });
-  await refreshSpotFeed(timestamp);
-  await setNextBlockTimestamp(timestamp);
+  const at = await refreshSpotFeed(timestamp);
+  await setNextBlockTimestamp(at);
   return sendAs(C.fastPriceFeed as Address, pm, encodeFunctionData({ abi: KEEPER_ABI, functionName: "executePositions", args: [lens[1], "0x000000000000000000000000000000000000dEaD"] }));
 }
 
@@ -227,12 +229,12 @@ const PRICE_ONLY_ABI = parseAbi([
 
 /** Publishes keeper prices without executing the queue, so the execution step can be simulated and debugged. */
 export async function keeperPricesOnly(requests: KeeperRequest[], timestamp: number) {
+  const at = await refreshSpotFeed(timestamp);
   const data = encodeFunctionData({
     abi: PRICE_ONLY_ABI,
     functionName: "setPricesAndRiskPremiumsWithBits",
-    args: [packKeeperBits(requests.map((r) => r.markPriceUsd)), packKeeperBits(requests.map((r) => r.riskPremiumUsd)), requests.map((r) => r.optionTokenId), requests.map((r) => r.requestIndex), BigInt(timestamp)],
+    args: [packKeeperBits(requests.map((r) => r.markPriceUsd)), packKeeperBits(requests.map((r) => r.riskPremiumUsd)), requests.map((r) => r.optionTokenId), requests.map((r) => r.requestIndex), BigInt(at)],
   });
-  await refreshSpotFeed(timestamp);
-  await setNextBlockTimestamp(timestamp);
+  await setNextBlockTimestamp(at);
   return sendAs(REAL_KEEPER, C.fastPriceFeed as Address, data);
 }

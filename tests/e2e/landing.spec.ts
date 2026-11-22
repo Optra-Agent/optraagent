@@ -329,7 +329,7 @@ test("Paper, manual CallPut, and autonomous execution are represented truthfully
   await expect(restricted.getByText(/agents do not submit CallPut requests/i)).toBeVisible();
   await expect(restricted.getByText("Live Trading", { exact: true })).toHaveCount(0);
   await expect(restricted.getByText("Planned", { exact: true })).toHaveCount(0);
-  await expect(restricted.getByText("Written venue permission and an owner-specific grant", { exact: true })).toBeVisible();
+  await expect(restricted.getByText("Owner account grant and confirmed signer model", { exact: true })).toBeVisible();
   await expect(restricted.getByRole("button")).toHaveCount(0);
   await expect(restricted.getByRole("link", { name: /What autonomous trading still needs/ })).toHaveAttribute("href", "/verify");
 });

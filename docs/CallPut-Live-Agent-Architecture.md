@@ -1,6 +1,6 @@
 # CallPut Live Agent — Execution Architecture and Authorization Boundary
 
-Status: pure safety guard, request classifiers and a durable store (grants, stop, lease, request ledger) implemented and tested; autonomous submission DISABLED. Current CallPut MCP confirms a supported Account/session route, but OPTRA has no owner-specific CallPut Account, session grant, persistent monitor, or integrated execution worker.
+Status: pure safety guard, request classifiers, durable store, worker, scheduler, owner controls, a signer submitter and a grant-bounded plan source are implemented and tested, and the whole engine passed a 25-assertion acceptance run against the real CallPut contracts on a mainnet fork. Autonomous submission is DISABLED in production, which wires no signer and holds no key. The owner-confirmed path (wallet-signed open, close and settle on Tape) is the working real-money path.
 
 ## What the venue supports (verified)
 
@@ -42,8 +42,8 @@ Status: pure safety guard, request classifiers and a durable store (grants, stop
 
 ## Not implemented, by design
 
-- No key custody, signing, session-key issuance, or submission path: `submitter` is intentionally unimplemented because CallPut has not confirmed a delegation model for OPTRA agents. Production keeps `LIVE_TRADING_ENABLED=false`, so every authorization fails closed there. Standalone Protective Put execution stays disabled.
-- No CallPut Account workflow client. The grant's `route` field records the owner's choice (`direct-wallet` or `callput-account`); the venue-side account, device signer and session terms remain unverified until the owner and CallPut supply them.
+- No key custody, session-key issuance or production signer. `createSignerSubmitter` exists and is tested, but production never constructs one: it needs an injected signer, and no signer is provisioned. Production keeps `LIVE_TRADING_ENABLED=false`, so every authorization fails closed there. Standalone Protective Put execution stays disabled.
+- No CallPut Account workflow client (no calls to `callput_workflow_start`, `callput_wallet_connect` or the action tools). The grant's `route` field records the owner's choice (`direct-wallet` or `callput-account`); the venue-side account, device signer and session terms remain unverified until the owner and CallPut supply them.
 
 ## Gates before enabling (owner/venue actions)
 
@@ -52,3 +52,27 @@ Status: pure safety guard, request classifiers and a durable store (grants, stop
 3. Independently review/audit the account/session contracts and obtain owner approval of the exact permissions, spend caps, expiry and revocation. Rehearse revocation before enabling.
 4. Complete one owner-authorized order from the selected trading-account type and reconcile its open, close and settlement lifecycle and position ownership. The 2026-11-20 AAPL 350/345 put-spread scan estimated USDG 2.345 per underlying unit (about USDG 0.2345 for size 0.1); this is not an executable quote. The supplied deployment EOA's 0.45027 USDG would cover that estimate if and only if the owner designates it as the trading wallet, but no such designation or fresh order-specific quote exists. Do not move funds before exact packet review and approval.
 5. The database-backed lease, stop and ledger exist. Build the submission worker, API routes and scheduler only after the account and authorization model above is accepted, and keep `LIVE_TRADING_ENABLED=false` until then.
+
+
+## Execution engine and fork acceptance (2026-11-22)
+
+New in this revision, all in `lib/venue` and covered by `tests/options/callput-live-agent-submitter.test.ts` (14 tests) plus the existing store, worker and control tests:
+
+- `createSignerSubmitter` (`callput-live-agent-submitter.ts`): sends a plan's approval and open transactions through an injected signer, simulating each immediately before it is sent, and returns the request key read from the receipt. It holds no key. Its error contract with the worker: a failed simulation, a wallet rejection, a failed or reverted approval or a reverted open is `NotBroadcastError` (the order provably was not created: reservation cancelled, agent keeps running); any other error after the open is sent is an unknown outcome (request marked unknown, agent stopped); an unseen open receipt returns the hash without a key and is left to reconciliation.
+- `prepareGrantBoundedPlan` (`callput-live-agent-plan.ts`): structure selection only (nearest eligible expiry, the two available strikes closest to spot, buy put or call spreads). It is not a trading signal, and no mapping from a Paper House Agent decision to an order is approved, so the scheduler does not use it.
+
+Acceptance: `scripts/callput-live-agent-fork-acceptance.ts`, log `docs/evidence/callput/live-agent-fork-acceptance-20261122.log`, 25/25. It runs the real scheduler, worker, store, guard, plan source and submitter against the real contracts with throwaway signers and an in-process database, and shows: nothing happens while `LIVE_TRADING_ENABLED` is unset; a scheduled pass signs and submits exactly one order, whose request key is on the ledger and agrees with the chain, and whose collateral matches; replaying the same decision sends nothing; a second order while one is pending is blocked; after a keeper fill the next tick reconciles to executed and the option-token balance confirms it; a declined signature cancels the reservation without stopping the agent; the daily order cap and the emergency stop block orders; a revoked grant sends nothing and cannot be resumed; a request pending past the venue window goes stale, halts the agent and blocks resume until the chain shows it cancelled; an error after broadcast marks the request unknown and stops the agent, and the order really did land on chain, which is why a blind retry would be wrong.
+
+What this does not show: that CallPut accepts an OPTRA-operated key, any behaviour of the venue's off-chain account relay or sponsor (not reproducible on a fork), or the live keeper's behaviour for an OPTRA order.
+
+## Venue permission, re-read 2026-11-22
+
+CallPut's public Terms of Use prohibit scraping and interfering with its systems and say nothing about automated trading or written permission. Its AI-agents documentation (agent quickstart, trading loop and recovery, CallPut MCP) describes the sanctioned model: the agent prepares unsigned payloads and an independent, user-approved wallet signs; the MCP never holds keys or signs. That is the model OPTRA ships for open, close and settle. The Account workflow is venue-published: one underlying and one strategy per grant, a deposit and total trade-collateral cap, a distinct device signer that must differ from the owner, session expiry, owner revoke and proof-based recover. An earlier version of this repository described the Terms as requiring written permission; that was not supported by the text and is corrected.
+
+## Exact blockers to autonomous real-money execution
+
+1. Owner action: create the CallPut Account, sign the grant (login, create, deposit, register) and fund it. These move real funds and only the owner can do them.
+2. Key custody: the venue requires a separate local device signer. Running it on a server means OPTRA holds a session key. Whether that is acceptable, and whether CallPut supports an operator-held signer for OPTRA, are decisions for the owner and a question for CallPut.
+3. On-chain limits not verified: the venue describes spend caps, expiry and revocation for a grant and reports "chain counters", but the account and session contracts have not been independently audited and their enforcement has not been verified here.
+4. Decision source: no mapping from a Paper House Agent decision to a real order is approved. Without a decision source an engine that works has nothing to execute.
+5. Not testable on a fork: the account relay and sponsor are off-chain venue services, so an end-to-end account-route trial needs real funds.

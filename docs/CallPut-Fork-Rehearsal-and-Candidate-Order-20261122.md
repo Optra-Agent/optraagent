@@ -54,7 +54,7 @@ What the venue supports: TradingAccount contracts with session-key execution (a 
 Why OPTRA cannot enable it:
 
 1. Using it needs a server-held session or device signer key. The brief forbids unrestricted server-held keys, and no OPTRA-specific on-chain scope, spend cap or revocation has been verified for a delegated session.
-2. CallPut's Terms of Use prohibit scraping and automated access; written permission for programmatic or agent-operated orders has not been obtained.
+2. Venue permission for an operator-held session key is unresolved. Not established either way. CallPut's public Terms of Use (re-read 2026-11-22) prohibit scraping and interfering with its systems and say nothing about automated trading. Its AI-agents docs describe agents that prepare unsigned payloads for an independently approved wallet signer. Nothing public says an operator-held session key is supported or forbidden, and OPTRA has no agreement with CallPut. This is a question for the venue, not a stated prohibition.
 3. The account/session contracts have had no independent audit and no order-to-settlement trial for an account route.
 
 Preserved and working: the monitoring worker, durable grant, request and stop ledger, owner API, Tape controls, and Paper automation. `LIVE_TRADING_ENABLED` stays false, so every live-agent reservation fails closed. Real-money automation remains off.

@@ -29,6 +29,27 @@ describe("Live Agent controls", () => {
     expect((screen.getByRole("button", { name: "Emergency stop" }) as HTMLButtonElement).disabled).toBe(true);
   });
 
+  it("says autonomy is unavailable and lists what CallPut itself enforces, without implying an OPTRA permission", async () => {
+    const findings = [
+      { id: "account-route", ok: true, detail: "execution route callput_account on robinhood, configured=true." },
+      { id: "distinct-device-signer", ok: true, detail: "the session signer must differ from the owner." },
+    ];
+    fetchMock.mockResolvedValue(Response.json(status({ venueDelegation: { status: "ok", fetchedAt: "2026-11-22T06:00:00.000Z", findings } })));
+    render(createElement(LiveAgentControls));
+    expect(await screen.findByText(/Autonomous execution is not available/)).toBeTruthy();
+    expect(screen.getByText(/What CallPut says it enforces for delegated sessions/)).toBeTruthy();
+    expect(screen.getByText(/execution route callput_account on robinhood/)).toBeTruthy();
+    expect(screen.getByText(/not an OPTRA permission/)).toBeTruthy();
+    expect(screen.queryByText("Armed")).toBeNull();
+  });
+
+  it("shows a neutral note, not an error, when CallPut's session details cannot be read", async () => {
+    fetchMock.mockResolvedValue(Response.json(status({ venueDelegation: { status: "unavailable" } })));
+    render(createElement(LiveAgentControls));
+    expect(await screen.findByText(/session details could not be read/)).toBeTruthy();
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
   it("stops and revokes through the owner endpoints and refreshes", async () => {
     const running = status({ control: { stopped: false, reason: null }, grants: [{ ...GRANT, status: "active", missingEvidence: [] }] });
     fetchMock.mockImplementation(async (url: string, init?: RequestInit) => {

@@ -107,7 +107,7 @@ export type AutonomyEvidence = {
 /** Autonomous submission stays blocked until every item is evidenced. Nothing here can be satisfied by code alone. */
 export function autonomyBlockers(evidence: AutonomyEvidence): AutonomyBlocker[] {
   const blockers: AutonomyBlocker[] = [];
-  if (!evidence.venueDelegationConfirmedRef) blockers.push({ id: "venue-delegation", detail: "CallPut has not confirmed a supported delegation/automation model in writing." });
+  if (!evidence.venueDelegationConfirmedRef) blockers.push({ id: "venue-delegation", detail: "No agreement with CallPut confirms that an operator-held device signer for an Account session grant is supported for OPTRA; its public terms are silent on automated trading." });
   if (!evidence.onchainGrantRef) blockers.push({ id: "onchain-grant", detail: "No owner-signed on-chain grant limits the agent's key; software limits alone are insufficient." });
   if (!evidence.auditRef) blockers.push({ id: "audit", detail: "Independent audit of the account/session contracts is missing." });
   if (!evidence.ownerApprovalRef) blockers.push({ id: "owner-approval", detail: "Owner has not approved autonomous trading for this exact policy." });

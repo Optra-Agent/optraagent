@@ -62,7 +62,7 @@ Commit only the files listed above, by explicit path. Do not `git add -A`.
 | Who signs | The owner, in their own wallet, once per transaction | Nobody. No key, session key or relayer exists. |
 | Trigger | The owner clicks, ticks the review box and approves in the wallet | None. No OPTRA agent, cron or Paper decision can reach this code. |
 | Venue route | CallPut direct wallet | CallPut Account relay and sessions: not implemented |
-| Permission | The owner's own action on a public protocol | Blocked on CallPut's written permission for programmatic or agent-operated orders |
+| Permission | The owner's own action on a public protocol | Autonomous operator-held signing is blocked on owner actions, key custody and an unaudited session contract (see the Live Agent architecture doc); a written-permission requirement is not stated in CallPut's public terms |
 | Paper agents | Unchanged and separate. Venue data never creates or implies a Paper fill. | Unchanged |
 
 ## 4. Owner acceptance procedure: one minimal manually approved spread
@@ -131,7 +131,7 @@ Stop and do not sign if any `to`, `value`, spender, chain ID or amount differs f
 
 ## 5. Open dependencies
 
-1. CallPut written permission for automated or agent-operated orders (blocks section 3, right column).
+1. Ask CallPut whether an operator-held device signer for an Account session grant is supported for OPTRA (its public terms are silent; blocks section 3, right column only if the answer is no).
 2. Source verification of the deployed contracts (explorer API returned 403 earlier).
 3. Whether unused `amountIn` is refunded. The first real order answers this.
 4. Real-extension check of MetaMask and Phantom. It happens when the owner signs the first transaction.

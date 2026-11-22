@@ -37,7 +37,7 @@ A receipt or tx hash is never an order. A request moves through `awaiting-reques
 |---|---|
 | Naked single-leg open (a protective put on its own) | `createOpenPosition` accepts `_length = 1`, but the venue's tooling and supported strategies list only the four spreads. Support is not documented, so it is not exported. A protective put is not available as a direct-wallet order today. |
 | CallPut Account route (sponsored relay, session grant, delegated agent orders) | Venue workflow support is now confirmed by the live MCP; OPTRA does not implement the account workflow, does not hold/authorize a device signer, and has no owner grant or independent account/session audit. Not enabled. |
-| Automated or agent-initiated orders | CallPut Terms of Use prohibit scraping, and written permission for programmatic or automated trading has not been obtained. |
+| Automated or agent-initiated orders | Not established either way. CallPut's public Terms of Use (re-read 2026-11-22) prohibit scraping and interfering with its systems and say nothing about automated trading. Its AI-agents docs describe agents that prepare unsigned payloads for an independently approved wallet signer. Nothing public says an operator-held session key is supported or forbidden, and OPTRA has no agreement with CallPut. The venue's documented agent model is owner-approved signing, which OPTRA ships (open, close and settle, each wallet-confirmed). |
 | Live Trading toggle | `LIVE_TRADING_ENABLED` is unchanged. |
 
 ## External dependencies still open

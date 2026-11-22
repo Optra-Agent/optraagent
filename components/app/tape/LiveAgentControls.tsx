@@ -9,6 +9,7 @@ type LiveAgentStatus = {
   liveTradingEnabled: boolean;
   submissionRoute: string;
   control: { stopped: boolean; reason: string | null };
+  venueDelegation?: { status: "ok"; fetchedAt: string; findings: Array<{ id: string; ok: boolean; detail: string }> } | { status: "unavailable" } | { status: "not-configured" };
   grants: Array<{ id: string; agentId: string; tradingAddress: string; route: string; status: "proposed" | "active" | "revoked"; expiresAt: string; missingEvidence: string[] }>;
   requests: Array<{ id: string; state: string; collateralRaw: string; transactionHash: string | null; requestKey: string | null; createdAt: string }>;
 };
@@ -74,6 +75,20 @@ export function LiveAgentControls() {
             <div className="metric"><dt>Submission route</dt><dd>{data.submissionRoute === "not-configured" ? "Not configured" : data.submissionRoute}</dd></div>
             <div className="metric"><dt>State</dt><dd>{data.control.stopped ? `Stopped${data.control.reason ? `: ${data.control.reason}` : ""}` : "Running"}</dd></div>
           </dl>
+          <p className="panel-note">Autonomous execution is not available. Every real order is approved by you in your own wallet, one transaction at a time (open, close and settle on this page).</p>
+          {data.venueDelegation?.status === "ok" ? (
+            <details>
+              <summary className="panel-note">What CallPut says it enforces for delegated sessions (read from CallPut {data.venueDelegation.fetchedAt.slice(0, 16).replace("T", " ")} UTC)</summary>
+              <ul className="picker-list" aria-label="CallPut session properties">
+                {data.venueDelegation.findings.map((finding) => (
+                  <li key={finding.id}><span className="picker-name">{finding.ok ? "Yes" : "No"}</span><span className="picker-meta">{finding.detail}</span></li>
+                ))}
+              </ul>
+              <p className="panel-note">This describes CallPut&apos;s own service, not an OPTRA permission. OPTRA holds no session key and has no grant.</p>
+            </details>
+          ) : data.venueDelegation?.status === "unavailable" ? (
+            <p className="panel-note">CallPut&apos;s session details could not be read right now.</p>
+          ) : null}
           {data.grants.length === 0 ? <p className="empty-line">No grants. A grant is proposed first and cannot trade until its venue, on-chain, audit and owner evidence is recorded.</p> : (
             <ul className="picker-list" aria-label="Agent grants">
               {data.grants.map((grant) => (
