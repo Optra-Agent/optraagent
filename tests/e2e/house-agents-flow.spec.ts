@@ -200,6 +200,12 @@ test("OPTRA's four House Agents are provisioned, public, read-only and separate 
   expect(listed.agents.map((agent) => agent.templateId).sort()).toEqual(["cash_secured_put", "covered_call", "earnings_straddle", "protective_put"]);
   expect(listed.agents.every((agent) => agent.by === "Optra" && agent.status === "running" && agent.backtest !== null)).toBe(true);
 
+  // The landing ledger and Verify must report the same running count as the public API (4), not the repository-less 0.
+  await page.goto("/?splash=off");
+  await expect(page.locator("#proof").getByText("4 OPTRA House Agents are running", { exact: false })).toBeVisible();
+  await page.goto("/verify");
+  await expect(page.getByText("4 OPTRA House Agents are running", { exact: false })).toBeVisible();
+
   const pageErrors: string[] = [];
   page.on("pageerror", (error) => pageErrors.push(error.message));
   await page.goto("/agents");

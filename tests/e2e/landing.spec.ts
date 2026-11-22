@@ -33,6 +33,13 @@ test("landing capability claims match the catalog and roadmap items are not pres
   await expect(page.locator("#agents .pn-agents").getByText("Preview", { exact: true })).toHaveCount(0);
 });
 
+test("the landing page reports the same running House Agent count as the public agents API", async ({ page, request }) => {
+  const api = await request.get("/api/public/v1/agents");
+  const running = ((await api.json()) as { agents: Array<{ status: string }> }).agents.filter((agent) => agent.status === "running").length;
+  await page.goto("/?splash=off");
+  await expect(page.locator("#proof").getByText(`${running} OPTRA House Agent${running === 1 ? " is" : "s are"} running`, { exact: false })).toBeVisible();
+});
+
 test("every landing navigation anchor resolves to a section that exists", async ({ page }) => {
   await page.goto("/");
   const hrefs = await page.locator(".m-nav a").evaluateAll((links) => links.map((link) => link.getAttribute("href")));

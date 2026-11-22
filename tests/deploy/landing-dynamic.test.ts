@@ -11,6 +11,16 @@ describe("landing page freshness", () => {
   });
 });
 
+describe("landing data source", () => {
+  it("reads the database-backed public handlers, not the repository-less test constructor", () => {
+    // A bare createPublicHandlers() reports 0 running House Agents and an empty Tape; only the routes passed a repository.
+    const source = readFileSync("app/(marketing)/page.tsx", "utf8");
+    expect(source).toContain("getPublicHandlers");
+    expect(source).not.toMatch(/createPublicHandlers\(\)\s*\.(verify|tape|agents)\(/);
+    expect(source).not.toMatch(/const publicHandlers = createPublicHandlers\(\)/);
+  });
+});
+
 describe("autonomous engine messaging", () => {
   it("presents the built engine as built and never as live, active or operational", () => {
     expect(LIVE_ENGINE_STATUS).toBe("Engine built · Live activation required");
