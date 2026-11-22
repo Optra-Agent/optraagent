@@ -12,7 +12,7 @@ export const VENUE_CHECKLIST_CHECKED_AT = "2026-11-22";
 
 export const CALLPUT_VENUE_CHECKLIST: readonly VenueCheck[] = [
   { id: "V1", item: "Mainnet addresses, ABI and verified source", status: "partial", evidence: "docs/evidence/callput/trading-account-onchain-probe-20261122.json",
-    finding: "Order, position and settle contracts are called on Mainnet and by ABI. The TradingAccount implementation has no verified source on Blockscout, so its session enforcement is inferred from its ABI and one real transaction." },
+    finding: "The five order, position, settle, authority and controller proxies are fully source-verified on Blockscout. The current account factory proxy (0x23DB9f5fDde30853EC8eBd75E0492c09505a6D1d) and the TradingAccount implementation have no verified source, so session enforcement is inferred from their ABI and one real transaction." },
   { id: "V2", item: "Underlyings and their Robinhood stock-token mapping", status: "verified", evidence: "lib/venue/callput-robinhood-readonly.ts",
     finding: "Underlyings and asset indices are read from the venue and mapped to the configured set." },
   { id: "V3", item: "Supported sides (buy-to-open only, or also write)", status: "partial", evidence: "lib/venue/callput-robinhood-write.ts",
@@ -30,9 +30,9 @@ export const CALLPUT_VENUE_CHECKLIST: readonly VenueCheck[] = [
   { id: "V9", item: "Programmatic access: terms, rate limits, API or contract", status: "open", evidence: "docs/CallPut-Robinhood-Live-Options-Integration.md",
     finding: "CallPut's public terms are silent on automated trading and prohibit scraping and interference. Its AI-agent docs describe unsigned payloads approved by an owner wallet. No agreement covers an OPTRA-operated signer." },
   { id: "V10", item: "Historical premium and IV data", status: "open", evidence: "(none recorded)",
-    finding: "No historical premium or IV source for CallPut has been recorded. Paper uses a modeled Black-Scholes premium." },
-  { id: "V11", item: "Positions owned by the user's wallet; callable from a smart account or session key", status: "blocked", evidence: "docs/evidence/callput/trading-account-onchain-probe-20261122.json",
-    finding: "Options are ERC-1155 tokens held by the wallet that opened them. Delegated sessions run through a TradingAccount. Its factory (verified source) has safeMode=true, which blocks funding, registration and opens, and openToAll=false, so an Account also needs CallPut's admin to allowlist it. Creating an Account is permissionless. Both switches belong to the factory admin (0x23DB9f5fDde30853EC8eBd75E0492c09505a6D1d). The account implementation itself has no verified source." },
+    finding: "CallPut's MCP tool list (read 2026-11-22) exposes live option chains, spread scans, positions and settled P&L, and no historical premium or IV series. Paper uses a modeled Black-Scholes premium, and backtests label it as modeled." },
+  { id: "V11", item: "Positions owned by the user's wallet; callable from a smart account or session key", status: "partial", evidence: "docs/evidence/callput/trading-account-onchain-probe-20261122.json",
+    finding: "Options are ERC-1155 tokens held by the wallet that opened them (direct-wallet route, used by OPTRA today). CallPut's current factory (0x23DB9f5fDde30853EC8eBd75E0492c09505a6D1d) is open to all with safe mode off, and a real session-signed close exists on chain, so the Account route is available to any owner who creates and funds an Account. OPTRA has not run an Account open, a delegated open, or a revocation. The factory proxy and the Account implementation have no verified source, and neither is audited." },
   { id: "V12", item: "Small Mainnet end-to-end: open, close, settle", status: "open", evidence: "(none: needs the owner's wallet)",
     finding: "No OPTRA-prepared order has been signed on Mainnet. The fork lifecycle (23 of 23) is not a substitute." },
 ];

@@ -20,7 +20,10 @@ export const CALLPUT_ROBINHOOD_CONTRACTS = {
   weth: "0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73",
   btcOptionsToken: "0x080084D6A1e9b6657EDc8DBa071BAa9D15Fcc500",
   ethOptionsToken: "0x84D4ef4062E00F78B0Ea5aaC06D7D08Ab1258B02",
-  tradingAccountFactory: "0xbcaC622Bb396B2f868b37D7C41F34695c9be1862",
+  /** CURRENT venue factory (TransparentUpgradeableProxy, implementation 0x828eFE90b0E48cCEd8a3F7FA9b75EC5dBE19C9ee), as resolved by CallPut's own callput_account_resolve on 2026-11-22. Its source is not verified on Blockscout. */
+  tradingAccountFactory: "0x23DB9f5fDde30853EC8eBd75E0492c09505a6D1d",
+  /** Superseded factory. Its source is verified; it is still on safe mode. Kept only so evidence can show why it is not used. */
+  legacyTradingAccountFactory: "0xbcaC622Bb396B2f868b37D7C41F34695c9be1862",
   tradingAccountBeacon: "0x5685d4DD5114c74C805322d4612CA5D73EAcdc62",
   sVault: "0x21bA39e9394657A6196f6948C2701D9fD9612289",
 } as const;

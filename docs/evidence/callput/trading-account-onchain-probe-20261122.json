@@ -1,37 +1,65 @@
 {
-  "generatedAt": "2026-11-22T12:49:02.029Z",
+  "generatedAt": "2026-11-22T13:49:56.701Z",
   "chainId": 4663,
   "note": "Read-only. Account implementation is not source-verified on Blockscout; behavior is inferred from the ABI surface, live state and one real transaction.",
+  "legacyFactory": {
+    "address": "0xbcaC622Bb396B2f868b37D7C41F34695c9be1862",
+    "openToAll": false,
+    "safeMode": true,
+    "accountCount": "5",
+    "note": "Superseded. Source verified on Blockscout. Not the factory CallPut's resolver reports."
+  },
+  "venueResolver": {
+    "owner": "0xaa8fdf2f96afc037d50659cfd09fdf3fac060bbf",
+    "account": "0xc1b9970a69ec2d630997a29fd54dd8e28c4daa5c",
+    "subIndex": "0",
+    "created": false,
+    "balance": "0",
+    "epoch": "0",
+    "sessions": [],
+    "blockNumber": "120670889",
+    "blockHash": "0xacaf4ea021e1cacc69298e5b82628630edbcd31d94a0b9f6b05093dbe4ce9670",
+    "blockTimestamp": "1795355371",
+    "factory": "0x23db9f5fdde30853ec8ebd75e0492c09505a6d1d",
+    "accountOrigin": "0x23db9f5fdde30853ec8ebd75e0492c09505a6d1d",
+    "implementation": "0xab002e1b4ce8c3b5905b26f31bf374d32aca2fcd",
+    "implementationHash": "0xa511788fc23f5c997fa3fa868ad25282ae395a47d94ef1952969478adcce8532",
+    "policyVersion": "2026-11-08.1"
+  },
   "contracts": {
-    "factory": "0xbcaC622Bb396B2f868b37D7C41F34695c9be1862",
+    "factory": "0x23DB9f5fDde30853EC8eBd75E0492c09505a6D1d",
     "beacon": "0x5685d4DD5114c74C805322d4612CA5D73EAcdc62",
     "accountImplementation": "0xaB002E1B4cE8c3B5905b26f31bF374d32ACa2fcd",
     "sampleAccount": "0x9d2bDa3470C69681B212FFF7C02143D8afA2157e",
     "sampleAccountOwner": "0x95Fb77ba09e48b914FE7B93989d05431EA1B0F99"
   },
   "factoryGates": {
-    "openToAll": false,
-    "safeMode": true,
-    "guardian": "0x0000000000000000000000000000000000000000",
-    "admin": "0x23DB9f5fDde30853EC8eBd75E0492c09505a6D1d",
-    "accountCount": "5",
+    "openToAll": true,
+    "safeMode": false,
+    "guardian": {
+      "error": "The contract function \"guardian\" reverted."
+    },
+    "admin": {
+      "error": "The contract function \"admin\" reverted."
+    },
+    "accountCount": "8",
     "maxSubAccounts": "10"
   },
   "ownerWallet": {
     "address": "0xAa8fDF2f96aFC037D50659CFd09fDF3Fac060bBf",
     "registeredAccounts": [],
-    "predictedAccount0": "0x6b565373726fAA9217B07E067A28Ca81952fB9b3",
+    "predictedAccount0": "0xC1B9970A69Ec2d630997A29fD54dD8E28C4dAA5c",
     "predictedAccount0Created": false,
     "predictedAccount0Registered": false,
-    "predictedAccount0OpenAllowed": false,
+    "predictedAccount0OpenAllowed": true,
     "predictedAccount0CanOpen": false,
     "note": "canOpen and isOpenAllowed take an ACCOUNT address. The owner wallet itself is never asked."
   },
   "sampleAccountGate": {
     "account": "0x9d2bDa3470C69681B212FFF7C02143D8afA2157e",
     "registered": true,
-    "openAllowed": false,
-    "canOpen": false
+    "openAllowed": true,
+    "canOpen": true
   },
   "accountConstants": {
     "SESSION_STRATEGIES": "480",

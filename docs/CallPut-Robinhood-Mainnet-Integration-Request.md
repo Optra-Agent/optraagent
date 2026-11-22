@@ -12,7 +12,7 @@ Please confirm the current chain ID, proxy addresses, proxy type, implementation
 - PositionManager: `0x426a6b482893557E58cF38de635fEbB30Fd6a3C3`
 - OptionsMarket: `0x3271d35afAc70C0D4989F984Abb2d918bf672C7e`
 - Controller: `0x0D240c1EbEeE7F74B40d6611326f5df98AB00e1B`
-- TradingAccountFactory: `0xbcaC622Bb396B2f868b37D7C41F34695c9be1862`
+- TradingAccountFactory (current, per CallPut's resolver; proxy): `0x23DB9f5fDde30853EC8eBd75E0492c09505a6D1d`. The earlier `0xbcaC622Bb396B2f868b37D7C41F34695c9be1862` is the superseded factory.
 - TradingAccount beacon: `0x5685d4DD5114c74C805322d4612CA5D73EAcdc62`
 - SettleManager: `0xd328D581f3Fb1Ca86D28D573bA1f17409e5112EF`
 

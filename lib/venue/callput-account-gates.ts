@@ -1,14 +1,17 @@
 /**
- * Live, read-only reads of the CallPut TradingAccountFactory gates that decide whether an Account can open on Robinhood
- * Mainnet. The factory source is verified on Blockscout, and its meaning is (read from that source, 2026-11-22):
+ * Live, read-only reads of the CURRENT CallPut TradingAccountFactory (0x23DB9f5fDde30853EC8eBd75E0492c09505a6D1d, the
+ * factory CallPut's own callput_account_resolve reports). It is a proxy whose implementation is not source-verified on
+ * Blockscout, so the meaning below comes from the SUPERSEDED factory's verified source (0xbcaC62...1862) and from the
+ * current factory answering the same ABI:
  *
  *   canOpen(account)    = !safeMode && isAccount[account] && (openToAll || allowlisted[account])
- *   createAccount(...)  = permissionless, works while safeMode is on, but does NOT register the account
+ *   createAccount(...)  = permissionless, works in safe mode, but does NOT register the account
  *   registration        = happens on the owner's funding or first deposit, and reverts while safeMode is on
- *   safeMode/openToAll/allowlist = set by the factory admin only (a guardian may switch safe mode ON, never off)
+ *   safeMode/openToAll/allowlist = set by the factory admin only
  *
- * `canOpen` and `isOpenAllowed` take an ACCOUNT address, never the owner's wallet. The account implementation behind the
- * beacon has no verified source, so whether it consults `canOpen` on every open is not proven here.
+ * `canOpen` and `isOpenAllowed` take an ACCOUNT address, never the owner's wallet. On 2026-11-22 the current factory
+ * reports openToAll=true and safeMode=false; the superseded one still has safeMode=true. The account implementation
+ * behind the beacon has no verified source, so whether it consults `canOpen` on every open is not proven here.
  */
 import { parseAbi, type Address, type PublicClient } from "viem";
 import type { AccountGateFacts } from "./callput-account-gates-text";

@@ -84,11 +84,11 @@ function evaluateG2(input: GateInput): GateResult {
   const facts = gates ? [`CallPut account factory (verified source, read from the chain): ${describeAccountGates(gates)}.`] : [];
   const reason = gates ? accountBlockReason(gates) : null;
   const venueBlock = reason ? ` CallPut's factory would refuse an open today: ${reason}.` : "";
-  if (!activeGrant || !evidence) return result("G2", "Custody ready", false, `No active scoped grant. OPTRA holds no signer and no session key.${venueBlock}`, "Create and fund a CallPut Account, sign a scoped session grant on-chain, and record the venue, on-chain, audit, owner and revocation evidence. CallPut must first take the factory out of safe mode and allowlist the Account (see V11).", facts);
+  if (!activeGrant || !evidence) return result("G2", "Custody ready", false, `No active scoped grant. OPTRA holds no signer and no session key.${venueBlock}`, "Create and fund your CallPut Account (owner actions; CallPut's current factory is open to everyone), sign a scoped session grant on-chain, and record the venue agreement, on-chain grant, audit, owner approval and revocation test. The account implementation has no verified source and no audit yet.", facts);
   if (route !== "callput-account") return result("G2", "Custody ready", false, `Grant route is ${route ?? "unknown"}; scoped delegated custody needs the callput-account route.`, "Use a CallPut Account session grant. A direct-wallet route can only be used with per-transaction owner signing.", facts);
   const missing = autonomyBlockers(evidence);
   if (missing.length > 0) return result("G2", "Custody ready", false, `Missing evidence: ${missing.map((blocker) => blocker.id).join(", ")}.${venueBlock}`, missing.map((blocker) => blocker.detail).join(" "), facts);
-  if (gates && reason) return result("G2", "Custody ready", false, `Evidence is recorded.${venueBlock}`, "CallPut must take the factory out of safe mode and allowlist the Account.", facts);
+  if (gates && reason) return result("G2", "Custody ready", false, `Evidence is recorded.${venueBlock}`, "Resolve the factory refusal above, then re-check.", facts);
   return result("G2", "Custody ready", true, "Active callput-account grant with venue, on-chain, audit, owner and revocation evidence recorded.", null, facts);
 }
 

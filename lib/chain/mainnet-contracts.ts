@@ -66,7 +66,7 @@ export const MAINNET_EXTERNAL_CONTRACTS: readonly ExternalMainnetContract[] = [
   { name: "SettleManager", role: "Expiry settlement", address: "0xd328D581f3Fb1Ca86D28D573bA1f17409e5112EF", implementation: "0x81de0057Bc0E0dA66011e42DD58aaD3b0858c444" },
   { name: "OptionsAuthority", role: "Venue access control", address: "0x85e00a193d5E340339484336dd9EA09f942A0b7B", implementation: "0x4175CA920Bf9935376Ab45Cd96E60C9348E8f093" },
   { name: "Controller", role: "USDG approval spender and order router", address: "0x0D240c1EbEeE7F74B40d6611326f5df98AB00e1B", implementation: "0xd13176DBf89b1AdC43fcede4642336103a16E003" },
-  { name: "TradingAccountFactory", role: "Venue trading accounts and sessions (not used by OPTRA)", address: "0xbcaC622Bb396B2f868b37D7C41F34695c9be1862", implementation: null },
+  { name: "TradingAccountFactory", role: "Current venue factory for CallPut Accounts and sessions (proxy; its source is not verified on Blockscout; the superseded factory 0xbcaC622Bb396B2f868b37D7C41F34695c9be1862 is verified and still on safe mode). Not used by OPTRA yet", address: "0x23DB9f5fDde30853EC8eBd75E0492c09505a6D1d", implementation: "0x828eFE90b0E48cCEd8a3F7FA9b75EC5dBE19C9ee" },
 ];
 
 export const explorerAddressUrl = (address: string) => `${MAINNET_EXPLORER}/address/${address}`;

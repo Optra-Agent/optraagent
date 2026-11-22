@@ -41,6 +41,7 @@ describe("CallPut account factory gates", () => {
   it("names the first reason the factory refuses, in the order the factory checks", async () => {
     const facts = (over: object) => ({ openToAll: false, safeMode: false, account: PREDICTED, accountCreated: true, accountRegistered: true, accountAllowed: true, accountCanOpen: false, ownerAccountCount: 1, accountUsable: false, ...over });
     expect(accountBlockReason(facts({ safeMode: true, accountRegistered: false, accountAllowed: false }))).toContain("safe mode");
+    expect(accountBlockReason(facts({ accountCreated: false, accountRegistered: false, accountAllowed: true }))).toContain("does not exist yet");
     expect(accountBlockReason(facts({ accountRegistered: false, accountAllowed: false }))).toContain("not registered");
     expect(accountBlockReason(facts({ accountAllowed: false }))).toContain("allowlist");
     expect(accountBlockReason(facts({}))).toContain("refuses");

@@ -32,11 +32,11 @@ describe("PM live gates G1–G7", () => {
     expect(failedIds({ ...green(), venue: { rows: [...allVerified.slice(0, 11), { ...allVerified[11]!, status: "partial" }], ownerSignoffRef: "x" } })).toEqual(["G1"]);
   });
 
-  it("records today's shipped checklist as NOT verified, with V11 blocked and V12 open", () => {
+  it("records today's shipped checklist as NOT verified, with V11 partial and V12 open", () => {
     const summary = summarizeVenueChecklist();
     expect(summary.total).toBe(12);
     expect(summary.verified).toBeLessThan(12);
-    expect(CALLPUT_VENUE_CHECKLIST.find((row) => row.id === "V11")?.status).toBe("blocked");
+    expect(CALLPUT_VENUE_CHECKLIST.find((row) => row.id === "V11")?.status).toBe("partial");
     expect(CALLPUT_VENUE_CHECKLIST.find((row) => row.id === "V12")?.status).toBe("open");
     expect(evaluateLiveGates({ ...green(), venue: undefined }).gates[0]!.pass).toBe(false);
   });

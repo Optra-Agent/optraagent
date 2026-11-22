@@ -50,6 +50,14 @@ test("G7: the shadcn checkboxes, clickable labels, persisted acknowledgement and
   await expect(g7).toContainText("Not met");
   await expect(panel.getByText(/of 7 gates pass/)).toBeVisible();
 
+  // The readiness panel shows the FULL connected address (the test wallet, not the deployment signer) and reads real Mainnet state.
+  const readiness = page.locator('[aria-label="Wallet readiness"]');
+  await expect(readiness.getByTestId("connected-address")).toHaveText(account.address);
+  await expect(readiness.getByText(/Account address for THIS wallet: 0x[0-9a-fA-F]{40}/)).toBeVisible({ timeout: 45_000 });
+  await expect(readiness.getByText("Not ready")).toBeVisible(); // a freshly generated key holds no ETH or USDG
+  await expect(readiness.getByText(/Direct wallet \(used by the order panel below\)/)).toBeVisible();
+  expect(account.address.toLowerCase()).not.toBe("0xaa8fdf2f96afc037d50659cfd09fdf3fac060bbf");
+
   const boxes = panel.getByRole("checkbox");
   await expect(boxes).toHaveCount(3);
   for (let index = 0; index < 3; index += 1) await expect(boxes.nth(index)).toHaveAttribute("aria-checked", "false");

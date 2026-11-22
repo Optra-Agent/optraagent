@@ -3,8 +3,9 @@
  * no key: it reads constants and gates, runs eth_call probes from an arbitrary address, and decodes a real on-chain
  * `closeWithSession` call to show the shape and values of a real session grant.
  *
- * Source status on Blockscout (read in a browser 2026-11-22): TradingAccountFactory is fully verified (its source defines
- * every factory gate used below); the TradingAccount implementation behind the beacon is NOT verified, so its session
+ * Source status on Blockscout (read in a browser 2026-11-22): the SUPERSEDED factory 0xbcaC...1862 is fully verified and
+ * defines every gate used below; the CURRENT factory (proxy 0x23DB...6D1d, implementation 0x828e...C9ee, the one CallPut's own
+ * callput_account_resolve reports) is NOT verified, and neither is the TradingAccount implementation, so their session
  * enforcement is read only from its ABI surface, live state and one real transaction. Field NAMES in the decoded grant are
  * inferred from their types and values, and the enforcement behind each field is inferred, not proven.
  *
@@ -20,7 +21,8 @@ import { robinhoodMainnet } from "../lib/chain/robinhood";
 import { CALLPUT_ROBINHOOD_CONTRACTS as C } from "../lib/venue/callput-robinhood-readonly";
 
 const client = createPublicClient({ chain: robinhoodMainnet, transport: http() });
-const FACTORY = C.tradingAccountFactory as Address;
+const FACTORY = C.tradingAccountFactory as Address; // CURRENT factory (proxy)
+const LEGACY_FACTORY = C.legacyTradingAccountFactory as Address;
 const OWNER_EOA = (process.env.OWNER ?? "0xAa8fDF2f96aFC037D50659CFd09fDF3Fac060bBf") as Address;
 const PROBE = "0x1111111111111111111111111111111111111111" as Address;
 const REAL_CLOSE_TX = "0xa509d69fe40222efc08c47e2d3afbdc3816ebdfcde3f904611ea95c32fd3c97d" as Hex;
@@ -66,10 +68,26 @@ const predicted = (await client.readContract({ address: FACTORY, abi: factoryAbi
 const accountOwner = (await read(() => client.readContract({ address: account, abi: accountAbi, functionName: "owner" }))) as Address;
 const encode = (abi: typeof accountAbi, functionName: "settleExpired" | "withdraw" | "revokeSession", args: readonly unknown[]) => encodeFunctionData({ abi, functionName, args } as never) as Hex;
 
+const legacy = {
+  address: LEGACY_FACTORY,
+  openToAll: await read(() => client.readContract({ address: LEGACY_FACTORY, abi: factoryAbi, functionName: "openToAll" })),
+  safeMode: await read(() => client.readContract({ address: LEGACY_FACTORY, abi: factoryAbi, functionName: "safeMode" })),
+  accountCount: String(await read(() => client.readContract({ address: LEGACY_FACTORY, abi: factoryAbi, functionName: "accountCount" }))),
+  note: "Superseded. Source verified on Blockscout. Not the factory CallPut's resolver reports.",
+};
+const venueResolver = await read(async () => {
+  const response = await fetch("https://mcp.callput.app/api/mcp?network=robinhood", { method: "POST", headers: { "content-type": "application/json", accept: "application/json, text/event-stream" }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "callput_account_resolve", arguments: { owner: OWNER_EOA, sub_index: "0" } } }) });
+  const text = await response.text();
+  const parsed = JSON.parse(/\{.*\}/s.exec(text)![0]) as { result?: { content?: Array<{ text?: string }> } };
+  return JSON.parse(parsed.result!.content![0]!.text!) as Record<string, unknown>;
+});
+
 const result = {
   generatedAt: new Date().toISOString(),
   chainId: 4663,
   note: "Read-only. Account implementation is not source-verified on Blockscout; behavior is inferred from the ABI surface, live state and one real transaction.",
+  legacyFactory: legacy,
+  venueResolver,
   contracts: { factory: FACTORY, beacon: C.tradingAccountBeacon, accountImplementation: impl, sampleAccount: account, sampleAccountOwner: accountOwner },
   factoryGates: {
     openToAll: await read(() => client.readContract({ address: FACTORY, abi: factoryAbi, functionName: "openToAll" })),

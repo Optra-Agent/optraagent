@@ -15,7 +15,8 @@ export type AccountGateFacts = {
 export function accountBlockReason(facts: AccountGateFacts): string | null {
   if (facts.accountCanOpen) return null;
   if (facts.safeMode) return "CallPut's factory is in safe mode, which blocks funding, registration and opens until CallPut's admin turns it off";
-  if (!facts.accountRegistered) return "the Account is not registered with the factory yet (it registers when the owner funds it)";
+  if (!facts.accountCreated) return "the Account does not exist yet; creating it is permissionless and funding it registers it, both owner actions that need no CallPut approval";
+  if (!facts.accountRegistered) return "the Account exists but is not registered (funded) yet; the owner's first deposit registers it";
   if (!facts.accountAllowed) return "the Account is not on CallPut's open allowlist and open-to-all is off, so CallPut's admin must allowlist it";
   return "the factory refuses opens for this Account";
 }
