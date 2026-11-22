@@ -305,3 +305,13 @@ export const hourlyMarketSamplesRelations = relations(hourlyMarketSamples, ({ on
 }));
 
 export const schema = { users, authChallenges, sessions, backtestRuns, agents, marketSnapshots, hourlyMarketSamples, paperDecisions, paperOrders, paperPositions, paperAccounts, callputOrders, callputOrderEvents, liveAgentControls, liveAgentGrants, liveAgentRequests, liveAgentLeases };
+
+/** G7: the owner's explicit options-risk acknowledgement. One row per owner, replaced when the wording version changes. */
+export const liveRiskAcknowledgements = pgTable("live_risk_acknowledgements", {
+  ownerId: uuid("owner_id").primaryKey().references(() => users.id, { onDelete: "cascade" }),
+  version: varchar("version", { length: 32 }).notNull(),
+  statementIds: jsonb("statement_ids").$type<string[]>().notNull(),
+  /** Country the edge reported when the owner acknowledged, or null when it could not be determined. */
+  country: varchar("country", { length: 2 }),
+  acceptedAt: timestamp("accepted_at", { withTimezone: true }).notNull().defaultNow(),
+});

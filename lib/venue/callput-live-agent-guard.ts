@@ -32,6 +32,9 @@ export type LiveAgentPolicy = {
   grantExpiresAtMs: number;
 };
 
+/** PM 16.2: at most three open positions per live agent. */
+export const LIVE_BETA_MAX_OPEN_POSITIONS = 3;
+
 export type LiveAgentState = {
   nowMs: number;
   openCollateralRaw: bigint;
@@ -39,6 +42,8 @@ export type LiveAgentState = {
   dailyCollateralRaw: bigint;
   ordersToday: number;
   pendingRequests: number;
+  /** Requests the chain confirmed as filled and not yet closed. */
+  openPositions: number;
   /** Process-level stop (env or admin). Either this or `policy.enabled === false` blocks. */
   globalKillSwitch: boolean;
 };
@@ -82,6 +87,7 @@ export function evaluateLiveAgentOrder(policy: LiveAgentPolicy, plan: CallPutOpe
     { id: "open-exposure", ok: state.openCollateralRaw + collateral <= policy.maxOpenCollateralRaw, detail: `Open exposure after this order must stay within ${policy.maxOpenCollateralRaw} raw.` },
     { id: "daily-budget", ok: state.dailyCollateralRaw + collateral <= policy.maxDailyCollateralRaw, detail: `Daily commitment after this order must stay within ${policy.maxDailyCollateralRaw} raw.` },
     { id: "order-count", ok: state.ordersToday < policy.maxOrdersPerDay, detail: `At most ${policy.maxOrdersPerDay} orders per UTC day.` },
+    { id: "open-positions", ok: state.openPositions < LIVE_BETA_MAX_OPEN_POSITIONS, detail: `At most ${LIVE_BETA_MAX_OPEN_POSITIONS} open positions per live agent.` },
     { id: "pending-requests", ok: state.pendingRequests < policy.maxPendingRequests, detail: `At most ${policy.maxPendingRequests} unresolved request(s); reconcile before submitting more.` },
     { id: "execution-fee", ok: feeWei >= 0n && feeWei <= policy.maxExecutionFeeWei, detail: `Execution fee must be within ${policy.maxExecutionFeeWei} wei.` },
     { id: "expiry-window", ok: expiryDays >= policy.minExpiryDays && expiryDays <= policy.maxExpiryDays, detail: `Expiry must be ${policy.minExpiryDays}–${policy.maxExpiryDays} days out.` },

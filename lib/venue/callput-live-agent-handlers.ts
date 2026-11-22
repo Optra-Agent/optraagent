@@ -19,6 +19,7 @@ import {
 } from "./callput-live-agent-store";
 import { autonomyBlockers } from "./callput-live-agent-guard";
 import type { DelegationFinding } from "./callput-account-capability";
+import type { CallPutAccountGates } from "./callput-account-gates";
 import { liveAgentGrants } from "../../db/schema";
 import { desc, eq } from "drizzle-orm";
 
@@ -29,6 +30,8 @@ export type LiveAgentHandlerOptions = {
   env?: Record<string, string | undefined>;
   /** Read-only venue evidence about delegated sessions. Failure must never break the status page. */
   readVenueDelegation?: () => Promise<{ fetchedAt: string; findings: DelegationFinding[] }>;
+  /** Live read of the CallPut account factory gates for the signed-in owner. Failure must never break the status page. */
+  readAccountGates?: (owner: string) => Promise<CallPutAccountGates>;
 };
 
 const json = (body: unknown, status = 200): Response => Response.json(body, { status, headers: { "cache-control": "no-store" } });
@@ -90,8 +93,17 @@ export function createLiveAgentHandlers(options: LiveAgentHandlerOptions) {
             venueDelegation = { status: "unavailable" };
           }
         }
+        let accountGates: ({ status: "ok" } & CallPutAccountGates) | { status: "unavailable" } | { status: "not-configured" } = { status: "not-configured" };
+        if (options.readAccountGates) {
+          try {
+            accountGates = { status: "ok", ...(await options.readAccountGates(who.address)) };
+          } catch {
+            accountGates = { status: "unavailable" };
+          }
+        }
         return json({
           liveTradingEnabled: env.LIVE_TRADING_ENABLED === "true",
+          accountGates,
           submissionRoute: "not-configured",
           venueDelegation,
           control,

@@ -12,6 +12,7 @@ import { CallPutOrderPanel } from "./CallPutOrderPanel";
 import { CallPutPositionActions } from "./CallPutPositionActions";
 import { CallPutRequestTracker } from "./CallPutRequestTracker";
 import { LiveAgentControls } from "./LiveAgentControls";
+import { LiveGatesPanel } from "./LiveGatesPanel";
 import { PublicHouseTape } from "./PublicHouseTape";
 import { Chip, JourneyRail, PageHeader, Skeleton, StateBlock, Panel, decisionOutcome } from "../ui";
 import type { DecisionOutcome } from "../ui";
@@ -151,6 +152,7 @@ export function TapeScreen({ agentId }: { agentId: string }) {
       <CallPutPositionActions />
       <CallPutOrderHistory />
       <CallPutRequestTracker />
+      <LiveGatesPanel />
       <LiveAgentControls />
       {state === "loading" ? <div className="state-panel" role="status"><Skeleton lines={4} /><span className="sr-only">Loading persisted paper history…</span></div> : null}
       {state === "error" ? (

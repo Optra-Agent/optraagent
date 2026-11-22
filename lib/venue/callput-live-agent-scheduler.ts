@@ -9,6 +9,8 @@ import { createPublicClient, http, type Hex } from "viem";
 import { liveAgentGrants } from "../../db/schema";
 import { robinhoodMainnet } from "../chain/robinhood";
 import type { AppDatabase } from "../db/client";
+import type { GateReport } from "../live/gates";
+import { loadAcknowledgedCountry, loadLiveGateReport } from "../live/gate-loader";
 import { readCallPutRobinhoodRequest, type CallPutRobinhoodRequestSnapshot } from "./callput-robinhood-requests";
 import { runLiveAgentTick, type LiveAgentSubmitter, type LiveAgentTickResult } from "./callput-live-agent-worker";
 import type { CallPutOpenSpreadPlan } from "./callput-robinhood-write";
@@ -20,6 +22,8 @@ export type LiveAgentScheduleOptions = {
   readSnapshots?: (keys: Hex[]) => Promise<CallPutRobinhoodRequestSnapshot[]>;
   preparePlan?: (grant: { ownerId: string; agentId: string; grantId: string }) => Promise<CallPutOpenSpreadPlan | null>;
   submitter?: LiveAgentSubmitter;
+  /** Test seam only. Production leaves this unset and gets the database-backed G1–G7 evaluation. */
+  gates?: (grant: { ownerId: string; agentId: string; grantId: string }) => Promise<GateReport>;
   runId?: string;
 };
 
@@ -42,6 +46,8 @@ export async function runLiveAgentSchedule(options: LiveAgentScheduleOptions): P
       db: options.db, ownerId: grant.ownerId, grantId: grant.id, agentId: grant.agentId, tickId: hourBucket, holder: runId, now, env,
       preparePlan: () => (options.preparePlan ? options.preparePlan({ ownerId: grant.ownerId, agentId: grant.agentId, grantId: grant.id }) : Promise.resolve(null)),
       readSnapshots,
+      // No request exists here, so the country is the one recorded with the owner's acknowledgement (null fails G5).
+      gates: options.gates ? () => options.gates!({ ownerId: grant.ownerId, agentId: grant.agentId, grantId: grant.id }) : async () => loadLiveGateReport({ db: options.db, ownerId: grant.ownerId, walletAddress: null, country: await loadAcknowledgedCountry(options.db, grant.ownerId), now, env, grantId: grant.id, agentRef: grant.agentId }),
       ...(options.submitter ? { submitter: options.submitter } : {}),
     });
     results.push({ grantId: grant.id, ...result });

@@ -95,8 +95,10 @@ describe("CallPut Live Agent worker, scheduler and owner controls", () => {
     return grant;
   }
 
+  const GATES_PASS = { allPass: true, gates: [], evaluatedAt: NOW.toISOString() };
+
   const tick = (db: DatabaseConnection["db"], ownerId: string, grantId: string, extra: Partial<Parameters<typeof runLiveAgentTick>[0]> = {}) =>
-    runLiveAgentTick({ db, ownerId, grantId, agentId: "agent-1", tickId: "tick-1", holder: "worker-1", now: NOW, env: ENV, preparePlan: async () => plan(), readSnapshots: async () => [], ...extra });
+    runLiveAgentTick({ db, ownerId, grantId, agentId: "agent-1", tickId: "tick-1", holder: "worker-1", now: NOW, env: ENV, preparePlan: async () => plan(), readSnapshots: async () => [], gates: async () => GATES_PASS, ...extra });
 
   const countingSubmitter = (behavior: () => Promise<{ transactionHash: Hex; requestKey?: Hex }>): LiveAgentSubmitter & { calls: number } => {
     const submitter = { calls: 0, submit: async () => { submitter.calls += 1; return behavior(); } };
@@ -119,6 +121,33 @@ describe("CallPut Live Agent worker, scheduler and owner controls", () => {
     const grant = await armed(db, ownerId);
     expect((await tick(db, ownerId, grant.id, { preparePlan: async () => null })).status).toBe("no-trade");
     expect(await acquireLiveAgentLease(db, ownerId, "someone-else", 1_000, NOW)).toBe(true);
+  });
+
+  it("allows one live agent per owner: a second agent's grant cannot be activated while the first is active", async () => {
+    const { db, ownerId } = await setup();
+    await armed(db, ownerId);
+    const second = await proposeLiveAgentGrant(db, ownerId, proposal({ agentId: "agent-2" }), NOW);
+    await recordLiveAgentEvidence(db, ownerId, second.id, EVIDENCE, NOW);
+    const result = await activateLiveAgentGrant(db, ownerId, second.id, NOW);
+    expect(result.activated).toBe(false);
+    expect(result.blockers.map((blocker) => blocker.id)).toEqual(["one-live-agent"]);
+  });
+
+  it("asks for no plan and sends nothing while any PM gate fails, or when the gates cannot be evaluated", async () => {
+    const { db, ownerId } = await setup();
+    const grant = await armed(db, ownerId);
+    const submitter = countingSubmitter(async () => ({ transactionHash: `0x${"ab".repeat(32)}` as Hex }));
+    let planAsked = 0;
+    const preparePlan = async () => { planAsked += 1; return plan(); };
+    const failing = { allPass: false, evaluatedAt: NOW.toISOString(), gates: [{ id: "G6" as const, title: "Paper history", pass: false, detail: "0 of 7 paper days", remediation: "wait" }] };
+    const closed = await tick(db, ownerId, grant.id, { preparePlan, submitter, gates: async () => failing });
+    expect(closed.status).toBe("gated");
+    expect(closed.detail).toContain("G6");
+    const unreadable = await tick(db, ownerId, grant.id, { preparePlan, submitter, gates: async () => { throw new Error("db down"); } });
+    expect(unreadable.status).toBe("gated");
+    expect(planAsked).toBe(0);
+    expect(submitter.calls).toBe(0);
+    expect((await listLiveAgentRequests(db, ownerId)).length).toBe(0);
   });
 
   it("authorizes but never submits without a verified route: the reservation is released", async () => {
@@ -256,7 +285,14 @@ describe("CallPut Live Agent worker, scheduler and owner controls", () => {
     await activateLiveAgentGrant(db, strangerId, revoked.id, NOW);
     await revokeLiveAgentGrant(db, strangerId, revoked.id, NOW);
 
-    const ran = await runLiveAgentSchedule({ db, now: NOW, env: ENV, readSnapshots: async () => [], preparePlan: async () => plan() });
+    // Production path: the real database-backed G1–G7 evaluation. Nothing is satisfied here, so no plan is even requested.
+    let planAsked = 0;
+    const real = await runLiveAgentSchedule({ db, now: NOW, env: ENV, readSnapshots: async () => [], preparePlan: async () => { planAsked += 1; return plan(); } });
+    expect(real.results.map((r) => [r.grantId, r.status])).toEqual([[grant.id, "gated"]]);
+    expect(real.results[0]?.detail).toMatch(/G1.*G4.*G5.*G6.*G7/);
+    expect(planAsked).toBe(0);
+
+    const ran = await runLiveAgentSchedule({ db, now: NOW, env: ENV, readSnapshots: async () => [], preparePlan: async () => plan(), gates: async () => GATES_PASS });
     expect(ran.status).toBe("completed");
     expect(ran.results.map((r) => r.grantId)).toEqual([grant.id]);
     expect(ran.results[0]?.status).toBe("no-submission-route");
@@ -304,6 +340,20 @@ describe("CallPut Live Agent worker, scheduler and owner controls", () => {
       const denied = createLiveAgentHandlers({ db, readSession: async () => Response.json({ error: { code: "UNAUTHORIZED" } }, { status: 401 }) });
       expect((await denied.status(req("GET"))).status).toBe(401);
       expect((await denied.stop(req("POST"))).status).toBe(401);
+    });
+
+    it("reports the live CallPut account gates for the signed-in wallet and degrades to unavailable instead of failing the page", async () => {
+      const { db, ownerId } = await setup();
+      const base = { db, readSession: async () => session(ownerId, WALLET), now: () => NOW, env: {} };
+      const gates = { openToAll: false, safeMode: true, ownerCanOpen: false, ownerAccountCount: 0, accountUsable: false };
+      expect((await (await createLiveAgentHandlers(base).status(req("GET"))).json()).accountGates).toEqual({ status: "not-configured" });
+      let asked = "";
+      const ok = await (await createLiveAgentHandlers({ ...base, readAccountGates: async (owner) => { asked = owner; return gates; } }).status(req("GET"))).json();
+      expect(ok.accountGates).toEqual({ status: "ok", ...gates });
+      expect(asked.toLowerCase()).toBe(WALLET.toLowerCase());
+      const down = await createLiveAgentHandlers({ ...base, readAccountGates: async () => { throw new Error("rpc down"); } }).status(req("GET"));
+      expect(down.status).toBe(200);
+      expect((await down.json()).accountGates).toEqual({ status: "unavailable" });
     });
 
     it("reports venue delegation evidence on status and degrades to unavailable instead of failing the page", async () => {

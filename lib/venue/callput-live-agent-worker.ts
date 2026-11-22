@@ -8,6 +8,7 @@
  */
 import type { Hex } from "viem";
 import type { AppDatabase } from "../db/client";
+import type { GateReport } from "../live/gates";
 import type { CallPutOpenSpreadPlan, CallPutRiskCheck } from "./callput-robinhood-write";
 import type { CallPutRobinhoodRequestSnapshot } from "./callput-robinhood-requests";
 import {
@@ -43,6 +44,11 @@ export type LiveAgentTickInput = {
   preparePlan: () => Promise<CallPutOpenSpreadPlan | null>;
   /** On-chain snapshots for the tracked request keys. Reject on RPC failure. */
   readSnapshots: (requestKeys: Hex[]) => Promise<CallPutRobinhoodRequestSnapshot[]>;
+  /**
+   * Evaluates PM gates G1–G7 for this owner and grant. Required: the worker never decides on its own that live trading
+   * is allowed. A rejection is treated as "not allowed", never as a pass.
+   */
+  gates: () => Promise<GateReport>;
   submitter?: LiveAgentSubmitter;
   leaseMs?: number;
 };
@@ -53,6 +59,7 @@ export type LiveAgentTickStatus =
   | "rpc-failure"
   | "halted"
   | "stopped"
+  | "gated"
   | "no-trade"
   | "blocked"
   | "replayed"
@@ -87,7 +94,16 @@ export async function runLiveAgentTick(input: LiveAgentTickInput): Promise<LiveA
     const control = await getLiveAgentControl(db, ownerId);
     if (control.stopped) return { status: "stopped", detail: control.reason ?? "The agent is stopped." };
 
-    // 2. Ask for a plan. No plan is a normal outcome.
+    // 2. Every PM gate must pass before a plan is even requested. Reconciliation above still ran.
+    let gateReport: GateReport;
+    try {
+      gateReport = await input.gates();
+    } catch {
+      return { status: "gated", detail: "The live gates could not be evaluated; no order was considered." };
+    }
+    if (!gateReport.allPass) return { status: "gated", detail: `Live gates not met: ${gateReport.gates.filter((gate) => !gate.pass).map((gate) => gate.id).join(", ")}. No order was considered.` };
+
+    // 3. Ask for a plan. No plan is a normal outcome.
     let plan: CallPutOpenSpreadPlan | null;
     try {
       plan = await input.preparePlan();
@@ -96,7 +112,7 @@ export async function runLiveAgentTick(input: LiveAgentTickInput): Promise<LiveA
     }
     if (!plan) return { status: "no-trade", detail: "The agent produced no order for this tick." };
 
-    // 3. Every durable and policy gate, then an idempotent reservation.
+    // 4. Every durable and policy gate, then an idempotent reservation.
     const auth = await reserveAuthorizedLiveAgentOrder(db, {
       ownerId, grantId: input.grantId, agentId: input.agentId, tickId: input.tickId, holder: input.holder, plan, now, env,
     });
@@ -104,7 +120,7 @@ export async function runLiveAgentTick(input: LiveAgentTickInput): Promise<LiveA
     if (!auth.allowed || !auth.request) return { status: "blocked", detail: `Blocked by: ${auth.checks.filter((c) => !c.ok).map((c) => c.id).join(", ")}.`, checks: auth.checks };
     const request = auth.request;
 
-    // 4. Submission. Without a verified route the reservation is released immediately so it cannot wedge the agent.
+    // 5. Submission. Without a verified route the reservation is released immediately so it cannot wedge the agent.
     if (!input.submitter) {
       await advanceLiveAgentRequest(db, ownerId, request.id, { state: "cancelled" }, now);
       return { status: "no-submission-route", detail: "Authorized, but no verified delegated submission route is configured. Nothing was sent.", checks: auth.checks, requestId: request.id };

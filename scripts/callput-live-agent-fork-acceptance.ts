@@ -120,10 +120,13 @@ const submitterFor = (actor: Actor, wrap?: (send: Send) => Send): LiveAgentSubmi
   return createSignerSubmitter({ publicClient, signer: { address: actor.address, sendTransaction: wrap ? wrap(send) : send } });
 };
 
+/** Harness only: the fork has no Paper history, edge country or operator allowlist, so gate evaluation is covered by tests/live. */
+const GATES_GREEN = async () => ({ allPass: true, gates: [], evaluatedAt: new Date().toISOString() });
+
 const tick = async (actor: Actor, tickId: string, options: { noPlan?: boolean; plan?: CallPutOpenSpreadPlan; submitter?: LiveAgentSubmitter; env?: Record<string, string | undefined> } = {}) =>
   runLiveAgentTick({
     db, ownerId: actor.ownerId, grantId: actor.grantId, agentId: "agent-1", tickId, holder: "fork-acceptance", now: new Date(await chainNowMs()), env: options.env ?? ENV,
-    preparePlan: options.noPlan ? async () => null : options.plan ? async () => options.plan! : () => buildPlan(actor), readSnapshots,
+    preparePlan: options.noPlan ? async () => null : options.plan ? async () => options.plan! : () => buildPlan(actor), readSnapshots, gates: GATES_GREEN,
     ...(options.submitter ? { submitter: options.submitter } : {}),
   });
 
@@ -174,7 +177,7 @@ try {
     const usdgBefore = await usdgOf(A.address);
     const now = new Date(await chainNowMs());
     const hourBucket = new Date(Math.floor(now.getTime() / 3_600_000) * 3_600_000).toISOString();
-    const outcome = await runLiveAgentSchedule({ db, now, env: ENV, readSnapshots, preparePlan: () => buildPlan(A), submitter: submitterFor(A) });
+    const outcome = await runLiveAgentSchedule({ db, now, env: ENV, readSnapshots, preparePlan: () => buildPlan(A), submitter: submitterFor(A), gates: GATES_GREEN });
     const result = outcome.results.find((r) => r.grantId === A.grantId);
     const requests = await listLiveAgentRequests(db, A.ownerId);
     const request = requests[0];
@@ -183,7 +186,7 @@ try {
     check("the request key from the receipt is on the ledger in state pending, and the chain agrees", request?.state === "pending" && !!request.requestKey && snapshot?.status === "Pending" && snapshot.account?.toLowerCase() === A.address.toLowerCase(), `${request?.state}/${snapshot?.status}`);
     check("the committed collateral left the wallet and matches the ledger", usdgBefore - (await usdgOf(A.address)) === BigInt(request!.collateralRaw) && snapshot?.amountIn === BigInt(request!.collateralRaw), `${usdgBefore - (await usdgOf(A.address))} raw`);
     // Same decision, same tick id: idempotent replay, nothing new on chain.
-    const replay = await runLiveAgentTick({ db, ownerId: A.ownerId, grantId: A.grantId, agentId: "agent-1", tickId: hourBucket, holder: "fork-acceptance", now, env: ENV, preparePlan: async () => A.plans[0]!, readSnapshots, submitter: submitterFor(A) });
+    const replay = await runLiveAgentTick({ db, ownerId: A.ownerId, grantId: A.grantId, agentId: "agent-1", tickId: hourBucket, holder: "fork-acceptance", now, env: ENV, gates: GATES_GREEN, preparePlan: async () => A.plans[0]!, readSnapshots, submitter: submitterFor(A) });
     check("replaying the same decision is recognized and sends nothing", replay.status === "replayed" && (await queueLength()) === queueBefore + 1n, `${replay.status}`);
     return request!.requestKey as Hex;
   })();

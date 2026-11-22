@@ -6,7 +6,7 @@
  * grant is active with every autonomy evidence reference recorded, the durable stop is cleared, the caller holds the
  * lease, no tracked request is stale or unknown, and the pure policy in `callput-live-agent-guard` passes.
  */
-import { and, eq, gt, inArray, sql } from "drizzle-orm";
+import { and, eq, gt, inArray, ne, sql } from "drizzle-orm";
 import { z } from "zod";
 import { liveAgentControls, liveAgentGrants, liveAgentLeases, liveAgentRequests } from "../../db/schema";
 import type { AppDatabase } from "../db/client";
@@ -281,6 +281,10 @@ export async function activateLiveAgentGrant(db: AppDatabase, ownerId: string, g
   if (grant.expiresAtMs <= now.getTime()) return { activated: false, blockers: [{ id: "grant-expired", detail: "Grant expired before activation." }], grant };
   const blockers = autonomyBlockers(grant.evidence);
   if (blockers.length > 0) return { activated: false, blockers, grant };
+  // PM 16.2: one live agent per user. The unique index already stops two active grants for the same agent.
+  const others = await db.select({ id: liveAgentGrants.id }).from(liveAgentGrants)
+    .where(and(eq(liveAgentGrants.ownerId, ownerId), eq(liveAgentGrants.status, "active"), ne(liveAgentGrants.id, grantId), gt(liveAgentGrants.expiresAt, now))).limit(1);
+  if (others.length > 0) return { activated: false, blockers: [{ id: "one-live-agent", detail: "Another live agent grant is already active for this owner. The beta allows one live agent per user." }], grant };
   const [updated] = await db.update(liveAgentGrants).set({ status: "active", updatedAt: now })
     .where(and(eq(liveAgentGrants.id, grantId), eq(liveAgentGrants.ownerId, ownerId), eq(liveAgentGrants.status, "proposed"))).returning();
   return { activated: Boolean(updated), blockers: [], grant: updated ? toGrant(updated) : grant };
@@ -365,10 +369,11 @@ export async function loadLiveAgentState(db: AppDatabase, ownerId: string, now: 
   let daily = 0n;
   let ordersToday = 0;
   let pending = 0;
+  let positions = 0;
   for (const row of rows) {
     const state = row.state as LiveAgentRequestState;
     const collateral = BigInt(row.collateralRaw);
-    if (state === "executed") open += collateral;
+    if (state === "executed") { open += collateral; positions += 1; }
     if (state !== "cancelled" && row.createdAt.getTime() >= dayStart) {
       daily += collateral;
       ordersToday += 1;
@@ -376,7 +381,7 @@ export async function loadLiveAgentState(db: AppDatabase, ownerId: string, now: 
     if (UNRESOLVED.includes(state)) pending += 1;
   }
   const processStop = env.LIVE_AGENT_KILL_SWITCH === "true";
-  return { nowMs: now.getTime(), openCollateralRaw: open, dailyCollateralRaw: daily, ordersToday, pendingRequests: pending, globalKillSwitch: control.stopped || processStop };
+  return { nowMs: now.getTime(), openCollateralRaw: open, dailyCollateralRaw: daily, ordersToday, pendingRequests: pending, openPositions: positions, globalKillSwitch: control.stopped || processStop };
 }
 
 /**

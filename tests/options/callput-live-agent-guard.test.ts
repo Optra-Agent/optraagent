@@ -44,7 +44,7 @@ function policy(overrides: Partial<LiveAgentPolicy> = {}): LiveAgentPolicy {
   return { ...defaultLiveAgentPolicy(WALLET, WALLET, nowForWindow), enabled: true, allowedUnderlyings: ["AAPL"], maxCollateralPerOrderRaw: 50_000_000n, maxOpenCollateralRaw: 50_000_000n, maxDailyCollateralRaw: 50_000_000n, ...overrides };
 }
 function state(overrides: Partial<LiveAgentState> = {}): LiveAgentState {
-  return { nowMs: nowForWindow, openCollateralRaw: 0n, dailyCollateralRaw: 0n, ordersToday: 0, pendingRequests: 0, globalKillSwitch: false, ...overrides };
+  return { nowMs: nowForWindow, openCollateralRaw: 0n, dailyCollateralRaw: 0n, ordersToday: 0, pendingRequests: 0, openPositions: 0, globalKillSwitch: false, ...overrides };
 }
 const failed = (d: ReturnType<typeof evaluateLiveAgentOrder>) => d.checks.filter((c) => !c.ok).map((c) => c.id);
 
@@ -77,6 +77,8 @@ describe("live agent order policy", () => {
     expect(failed(evaluateLiveAgentOrder(policy(), p, state({ dailyCollateralRaw: 50_000_000n })))).toContain("daily-budget");
     expect(failed(evaluateLiveAgentOrder(policy({ maxOrdersPerDay: 1 }), p, state({ ordersToday: 1 })))).toContain("order-count");
     expect(failed(evaluateLiveAgentOrder(policy(), p, state({ pendingRequests: 1 })))).toContain("pending-requests");
+    expect(failed(evaluateLiveAgentOrder(policy(), p, state({ openPositions: 2 })))).not.toContain("open-positions");
+    expect(failed(evaluateLiveAgentOrder(policy(), p, state({ openPositions: 3 })))).toContain("open-positions");
   });
 
   it("enforces the execution-fee cap and the expiry window", () => {

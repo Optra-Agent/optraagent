@@ -57,6 +57,13 @@
       "when": 1795277803491,
       "tag": "0007_house_strategy_agents",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1795345201321,
+      "tag": "0008_live_risk_acknowledgement",
+      "breakpoints": true
     }
   ]
 }

@@ -1,0 +1,60 @@
+{
+  "generatedAt": "2026-11-22T10:47:50.551Z",
+  "chainId": 4663,
+  "note": "Read-only. Account implementation is not source-verified on Blockscout; behavior is inferred from the ABI surface, live state and one real transaction.",
+  "contracts": {
+    "factory": "0xbcaC622Bb396B2f868b37D7C41F34695c9be1862",
+    "beacon": "0x5685d4DD5114c74C805322d4612CA5D73EAcdc62",
+    "accountImplementation": "0xaB002E1B4cE8c3B5905b26f31bF374d32ACa2fcd",
+    "sampleAccount": "0x9d2bDa3470C69681B212FFF7C02143D8afA2157e",
+    "sampleAccountOwner": "0x95Fb77ba09e48b914FE7B93989d05431EA1B0F99"
+  },
+  "factoryGates": {
+    "openToAll": false,
+    "safeMode": true,
+    "guardian": "0x0000000000000000000000000000000000000000",
+    "admin": "0x23DB9f5fDde30853EC8eBd75E0492c09505a6D1d",
+    "accountCount": "5",
+    "maxSubAccounts": "10"
+  },
+  "ownerEoa": {
+    "address": "0xAa8fDF2f96aFC037D50659CFd09fDF3Fac060bBf",
+    "isOpenAllowed": false,
+    "canOpen": false,
+    "accountsOf": [],
+    "predictedAccount0": "0x6b565373726fAA9217B07E067A28Ca81952fB9b3"
+  },
+  "sampleAccountOwnerGate": {
+    "isOpenAllowed": false,
+    "canOpen": false
+  },
+  "accountConstants": {
+    "SESSION_STRATEGIES": "480",
+    "MAX_SESSION_DURATION_seconds": "15552000",
+    "MAX_UNDERLYINGS": "32"
+  },
+  "accessProbesFromArbitraryAddress": {
+    "settleExpiredEmpty": "ZeroAmount()",
+    "withdraw": "NotOwner()",
+    "revokeSession": "NotOwner()",
+    "interpretation": "settleExpired reaches amount validation (not an owner check), so settlement is permissionless; withdraw and revokeSession are owner-only."
+  },
+  "realSessionGrant": {
+    "sourceTx": "0xa509d69fe40222efc08c47e2d3afbdc3816ebdfcde3f904611ea95c32fd3c97d",
+    "relayer": "0xc8295c54b6d4a7822a70c9c564bf851eedda1918",
+    "function": "closeWithSession (separate from openWithSession)",
+    "deviceSigner": "0xBd4a342154b10fd45f65F45ebe9f44605F101356",
+    "validFromUtc": "2026-11-06T02:28:59.000Z",
+    "validUntilUtc": "2027-05-05T02:28:59.000Z",
+    "durationDays": 180,
+    "underlyings": [],
+    "strategyMask": 480,
+    "field7": "max uint256 (unbounded)",
+    "field8": "max uint256 (unbounded)",
+    "field9": "max uint32 (unbounded)",
+    "field10": "max uint32 (unbounded)",
+    "field11": "1000000000000000",
+    "field12": "8589934590000000000000000",
+    "interpretation": "A close-only grant with unbounded value caps: the venue enforces whatever the owner signs, so limits are only as tight as the grant the owner signs. Field names are inferred."
+  }
+}
