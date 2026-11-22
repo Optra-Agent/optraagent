@@ -11,9 +11,12 @@ RUN bun install --frozen-lockfile
 FROM dependencies AS builder
 COPY . .
 ENV NODE_ENV=production
-# Open-order signing is wallet-confirmed per transaction and was rehearsed on a mainnet fork. Close and settle signing
-# (NEXT_PUBLIC_CALLPUT_POSITION_ACTIONS) stays off until an opened position has been verified end to end.
+# Open, close and settle signing are each wallet-confirmed per transaction and behind separate flags. Open was rehearsed
+# on a mainnet fork; close and settle were exercised against the real CallPut contracts on a fork with the keeper's
+# calls replayed (docs/evidence/callput/fork-lifecycle-20261122.log) and have not yet run against a live keeper fill.
 ENV NEXT_PUBLIC_CALLPUT_LIVE_ORDERS=true
+ENV NEXT_PUBLIC_CALLPUT_CLOSE=true
+ENV NEXT_PUBLIC_CALLPUT_SETTLE=true
 RUN bun run build
 
 FROM base AS runtime-dependencies

@@ -182,7 +182,7 @@ export function createPublicHandlers(options: PublicHandlerOptions = {}) {
           {
             id: "live_execution",
             status: "disabled",
-            statement: "No OPTRA agent, server or scheduler can place a real-money order. The only real-money path is the wallet-signed CallPut open-spread flow on Tape, where the connected owner confirms every transaction in their own wallet; close and settle signing are disabled.",
+            statement: "No OPTRA agent, server or scheduler can place a real-money order. The only real-money paths are the wallet-signed CallPut open, close and settle flows on Tape, where the connected owner confirms every transaction in their own wallet.",
             evidencePath: "/api/public/v1/verify",
           },
           {

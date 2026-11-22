@@ -44,10 +44,13 @@ import { Chip, Panel } from "../ui";
 /** Opening a spread from this panel. The Docker image enables it; other builds are preview-only unless they opt in. */
 export const CALLPUT_LIVE_ORDERS_ENABLED = process.env.NEXT_PUBLIC_CALLPUT_LIVE_ORDERS === "true";
 /**
- * Close and settle signing. Off everywhere by default: those paths cannot be rehearsed without a keeper fill and have
- * only been unit tested, so they stay disabled until a real opened position has been verified end to end.
+ * Close and settle signing, each behind its own build flag so one can be switched off without the other. Both paths
+ * are exercised against the real CallPut contracts on a mainnet fork (scripts/callput-fork-lifecycle.ts); neither has
+ * yet been run against the live keeper, and every transaction still needs the owner's per-transaction wallet confirmation.
  */
-export const CALLPUT_POSITION_ACTIONS_ENABLED = process.env.NEXT_PUBLIC_CALLPUT_POSITION_ACTIONS === "true";
+export const CALLPUT_CLOSE_ENABLED = process.env.NEXT_PUBLIC_CALLPUT_CLOSE === "true";
+export const CALLPUT_SETTLE_ENABLED = process.env.NEXT_PUBLIC_CALLPUT_SETTLE === "true";
+export const callPutPositionActionEnabled = (kind: "close" | "settle") => (kind === "close" ? CALLPUT_CLOSE_ENABLED : CALLPUT_SETTLE_ENABLED);
 const INTENT_STORAGE_KEY = "optra.callput.robinhood.intents.v1";
 const QUOTE_MAX_AGE_MS = 60_000;
 const GAS_QUOTE_MAX_AGE_MS = 30_000;

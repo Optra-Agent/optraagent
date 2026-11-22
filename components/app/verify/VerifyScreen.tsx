@@ -29,7 +29,7 @@ const claimTitle: Record<string, string> = {
 const roadmap = [
   ["AI strategy composition", "Planned", "No AI provider is configured. Rules decide; recipes are built by clicking."],
   ["Community public agents", "Planned", "Only OPTRA's own House Agents are public. A user's agent and its Tape stay private to the wallet that owns them."],
-  ["Live options trading", "Wallet-signed opens only", "Needs a verified options execution venue, explicit wallet authorization, enforced risk and transaction limits, and a real order lifecycle with settlement records. A wallet-signed CallPut spread order panel can open positions from your own wallet, one confirmed transaction at a time; close and settle signing are disabled, and no OPTRA agent can submit a real-money order."],
+  ["Live options trading", "Wallet-signed only", "Needs a verified options execution venue, explicit wallet authorization, enforced risk and transaction limits, and a real order lifecycle with settlement records. A wallet-signed CallPut spread order panel can open, close and settle positions from your own wallet, one confirmed transaction at a time. Close and settle were rehearsed on a mainnet fork and have not yet run against a live keeper fill. No OPTRA agent can submit a real-money order."],
   ["Onchain Uniswap v4 hooks", "Deployed, inactive", "Hooks are inspired by Uniswap v4. One experimental spot-swap guard, OptraGuardHook, is deployed to Robinhood Chain Mainnet (see Mainnet contracts above). It is unaudited, has no pool, holds no funds and is not part of options execution (claim level L0)."],
   ["Listing, Floor, MCP, x402", "Planned", "Roadmap items with no route or service yet."],
 ] as const;

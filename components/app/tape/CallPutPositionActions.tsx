@@ -32,7 +32,7 @@ import {
 } from "@/lib/venue/callput-order-ledger-client";
 import type { CallPutOrderIntentRecord } from "@/lib/venue/callput-order-ledger";
 import { robinhoodMainnet } from "@/lib/chain/robinhood";
-import { CALLPUT_POSITION_ACTIONS_ENABLED } from "./CallPutOrderPanel";
+import { callPutPositionActionEnabled } from "./CallPutOrderPanel";
 import { Chip, Panel } from "../ui";
 
 const ACTION_STORAGE_KEY = "optra.callput.robinhood.position-actions.v1";
@@ -446,8 +446,8 @@ export function CallPutPositionActions() {
 
   async function sign() {
     if (!plan || !publicClient || !walletClient || !address || busy.current || pendingAction) return;
-    if (!CALLPUT_POSITION_ACTIONS_ENABLED) {
-      setError("Signing is disabled in this build for close and settle until an opened position has been verified end to end. Nothing was sent.");
+    if (!callPutPositionActionEnabled(plan.kind)) {
+      setError(`Signing is disabled in this build for ${plan.kind}. Nothing was sent.`);
       return;
     }
     const walletChainId = (walletClient as unknown as { chain?: { id?: number } }).chain?.id;
@@ -732,6 +732,7 @@ export function CallPutPositionActions() {
               <div><dt className="text-xs text-muted-foreground">Estimated network fee ceiling (wei)</dt><dd className="mono">{plan.gas.totalCostWei.toString()}</dd></div>
               {plan.transactions.length > 1 ? <div className="sm:col-span-2"><dt className="text-xs text-muted-foreground">Next transaction estimate</dt><dd>Will be refreshed after approval confirmation; re-prepare before signing.</dd></div> : null}
             </dl>
+            {plan.kind === "settle" ? <p className="text-xs text-muted-foreground">The venue deducts a position fee from the settlement payout (about 1.4% in the fork rehearsal), so the USDG you receive is below the option&apos;s intrinsic value. The wallet receives the net amount reported by the settlement event.</p> : null}
             <div className="rounded-md border border-border p-3 text-sm">
               <p>{transaction.label}</p>
               <p className="mono mt-1 break-all text-xs text-muted-foreground">to {transaction.to} · value {transaction.value.toString()} wei</p>
@@ -742,10 +743,10 @@ export function CallPutPositionActions() {
               <input type="checkbox" checked={reviewed} onChange={(event) => setReviewed(event.target.checked)} />
               I reviewed this exact transaction and approve it.
             </label>
-            <Button type="button" disabled={!CALLPUT_POSITION_ACTIONS_ENABLED || !reviewed || !walletClient || working || Boolean(pendingAction)} onClick={() => void sign()}>
+            <Button type="button" disabled={!callPutPositionActionEnabled(plan.kind) || !reviewed || !walletClient || working || Boolean(pendingAction)} onClick={() => void sign()}>
               Sign position transaction
             </Button>
-            {!CALLPUT_POSITION_ACTIONS_ENABLED ? <p className="text-xs text-muted-foreground">Signing is disabled in this build for close and settle until an opened position has been verified end to end. Nothing was sent. Manage open positions in CallPut itself.</p> : null}
+            {!callPutPositionActionEnabled(plan.kind) ? <p className="text-xs text-muted-foreground">Signing is disabled in this build for {plan.kind}. Nothing was sent. Manage open positions in CallPut itself.</p> : null}
           </div> : null}
 
           {message ? <p role="status" className="text-sm text-muted-foreground">{message}</p> : null}

@@ -18,6 +18,7 @@ import {
   type LiveAgentGrantRecord,
 } from "./callput-live-agent-store";
 import { autonomyBlockers } from "./callput-live-agent-guard";
+import type { DelegationFinding } from "./callput-account-capability";
 import { liveAgentGrants } from "../../db/schema";
 import { desc, eq } from "drizzle-orm";
 
@@ -26,6 +27,8 @@ export type LiveAgentHandlerOptions = {
   readSession: (request: Request) => Promise<Session | Response>;
   now?: () => Date;
   env?: Record<string, string | undefined>;
+  /** Read-only venue evidence about delegated sessions. Failure must never break the status page. */
+  readVenueDelegation?: () => Promise<{ fetchedAt: string; findings: DelegationFinding[] }>;
 };
 
 const json = (body: unknown, status = 200): Response => Response.json(body, { status, headers: { "cache-control": "no-store" } });
@@ -79,9 +82,18 @@ export function createLiveAgentHandlers(options: LiveAgentHandlerOptions) {
         const requests = (await listLiveAgentRequests(options.db, who.ownerId))
           .sort((a, b) => b.createdAtMs - a.createdAtMs).slice(0, 50)
           .map((r) => ({ id: r.id, state: r.state, collateralRaw: r.collateralRaw, transactionHash: r.transactionHash, requestKey: r.requestKey, createdAt: new Date(r.createdAtMs).toISOString() }));
+        let venueDelegation: { status: "ok"; fetchedAt: string; findings: DelegationFinding[] } | { status: "unavailable" } | { status: "not-configured" } = { status: "not-configured" };
+        if (options.readVenueDelegation) {
+          try {
+            venueDelegation = { status: "ok", ...(await options.readVenueDelegation()) };
+          } catch {
+            venueDelegation = { status: "unavailable" };
+          }
+        }
         return json({
           liveTradingEnabled: env.LIVE_TRADING_ENABLED === "true",
           submissionRoute: "not-configured",
+          venueDelegation,
           control,
           grants: grants.map(PublicGrant),
           requests,

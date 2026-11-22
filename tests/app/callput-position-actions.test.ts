@@ -56,10 +56,11 @@ function settlementLog() {
   };
 }
 
-async function loadActions(liveEnabled: boolean) {
+async function loadActions(liveEnabled: boolean, flags: { close?: boolean; settle?: boolean } = {}) {
   vi.resetModules();
   vi.stubEnv("NEXT_PUBLIC_CALLPUT_LIVE_ORDERS", liveEnabled ? "true" : "false");
-  vi.stubEnv("NEXT_PUBLIC_CALLPUT_POSITION_ACTIONS", liveEnabled ? "true" : "false");
+  vi.stubEnv("NEXT_PUBLIC_CALLPUT_CLOSE", (flags.close ?? liveEnabled) ? "true" : "false");
+  vi.stubEnv("NEXT_PUBLIC_CALLPUT_SETTLE", (flags.settle ?? liveEnabled) ? "true" : "false");
   return (await import("../../components/app/tape/CallPutPositionActions")).CallPutPositionActions;
 }
 
@@ -104,6 +105,33 @@ describe("CallPutPositionActions", () => {
     await prepareClose(user);
     expect((screen.getByRole("button", { name: "Sign position transaction" }) as HTMLButtonElement).disabled).toBe(true);
     expect(screen.getByText(/Signing is disabled in this build/)).toBeTruthy();
+    expect(sendTransaction).not.toHaveBeenCalled();
+  });
+
+  it("gates close and settle signing independently, and an unset flag keeps both off", async () => {
+    for (const [close, settle] of [[true, false], [false, true], [true, true], [false, false]] as const) {
+      vi.resetModules();
+      vi.stubEnv("NEXT_PUBLIC_CALLPUT_CLOSE", close ? "true" : "false");
+      vi.stubEnv("NEXT_PUBLIC_CALLPUT_SETTLE", settle ? "true" : "false");
+      const { callPutPositionActionEnabled } = await import("../../components/app/tape/CallPutOrderPanel");
+      expect([callPutPositionActionEnabled("close"), callPutPositionActionEnabled("settle")]).toEqual([close, settle]);
+    }
+    vi.resetModules();
+    vi.unstubAllEnvs();
+    const { callPutPositionActionEnabled } = await import("../../components/app/tape/CallPutOrderPanel");
+    expect([callPutPositionActionEnabled("close"), callPutPositionActionEnabled("settle")]).toEqual([false, false]);
+  });
+
+  it("keeps close signing off when only the settle flag is on", async () => {
+    mocks.publicClient = publicClient();
+    const sendTransaction = vi.fn();
+    mocks.walletClient = { sendTransaction, chain: { id: 4663 } };
+    const Actions = await loadActions(true, { close: false, settle: true });
+    const user = userEvent.setup();
+    render(createElement(Actions));
+    await prepareClose(user);
+    expect((screen.getByRole("button", { name: "Sign position transaction" }) as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByText(/Signing is disabled in this build for close/)).toBeTruthy();
     expect(sendTransaction).not.toHaveBeenCalled();
   });
 

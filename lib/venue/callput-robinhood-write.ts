@@ -256,6 +256,12 @@ export type CallPutWalletState = {
   usdgAllowanceRaw: bigint;
   nativeBalanceWei: bigint;
   executionFeeWei: bigint;
+  /**
+   * False when the account has contract code (smart account or EIP-7702 delegation) that does not return the ERC-1155
+   * receiver magic value. The keeper delivers option tokens with safeTransferFrom; such an account makes every fill revert
+   * and the venue cancels the request while keeping the execution fee. Undefined means "not read" and is not blocked.
+   */
+  accountAcceptsErc1155?: boolean;
 };
 
 export type CallPutOpenSpreadInput = {
@@ -303,6 +309,7 @@ export function prepareCallPutOpenSpread(input: CallPutOpenSpreadInput): CallPut
   const add = (id: string, ok: boolean, detail: string) => checks.push({ id, ok, detail });
 
   add("chain", input.wallet.chainId === CALLPUT_ROBINHOOD_CHAIN_ID, `Wallet must be on Robinhood Mainnet (${CALLPUT_ROBINHOOD_CHAIN_ID}); connected chain is ${input.wallet.chainId}.`);
+  add("account-erc1155", input.wallet.accountAcceptsErc1155 !== false, "This account has contract code (a smart account or an EIP-7702 delegation) that does not accept ERC-1155 option tokens. The keeper could not deliver the position, so the venue would cancel the request and keep the execution fee. Use a plain wallet account.");
   add("feed-chain", input.market.chainId === CALLPUT_ROBINHOOD_CHAIN_ID, "Market feed must be tagged for Robinhood Mainnet.");
   const age = input.nowMs - input.market.timestampMs;
   add("feed-fresh", age >= 0 && age <= CALLPUT_LIMITS.maxMarketAgeMs, `Market data is ${Math.round(age / 1000)}s old; the maximum is ${CALLPUT_LIMITS.maxMarketAgeMs / 1000}s.`);
@@ -573,7 +580,29 @@ export async function readCallPutWalletState(client: PublicClient, account: Addr
   if (getAddress(controller) !== getAddress(CALLPUT_APPROVAL_SPENDER)) {
     throw new Error("PositionManager.controller() no longer matches the pinned approval spender; refusing to prepare approvals.");
   }
-  return { chainId, account: getAddress(account), usdgBalanceRaw, usdgAllowanceRaw, nativeBalanceWei, executionFeeWei };
+  return { chainId, account: getAddress(account), usdgBalanceRaw, usdgAllowanceRaw, nativeBalanceWei, executionFeeWei, accountAcceptsErc1155: await readAccountAcceptsErc1155(client, account) };
+}
+
+const ERC1155_RECEIVER_MAGIC = "0xf23a6e61";
+const ERC1155_RECEIVER_ABI = parseAbi(["function onERC1155Received(address operator, address from, uint256 id, uint256 value, bytes data) returns (bytes4)"]);
+
+/**
+ * Plain EOAs have no code and accept ERC-1155 transfers. An account with code is called exactly the way the venue's
+ * safeTransferFrom will call it (from PositionManager); anything but the receiver magic value, or a revert, is a no.
+ */
+export async function readAccountAcceptsErc1155(client: PublicClient, account: Address): Promise<boolean> {
+  const code = await client.getCode({ address: account });
+  if (!code || code === "0x") return true;
+  try {
+    const result = await client.call({
+      account: CALLPUT_ROBINHOOD_CONTRACTS.positionManager,
+      to: account,
+      data: encodeFunctionData({ abi: ERC1155_RECEIVER_ABI, functionName: "onERC1155Received", args: [CALLPUT_ROBINHOOD_CONTRACTS.positionManager, CALLPUT_ROBINHOOD_CONTRACTS.positionManager, 1n, 1n, "0x"] }),
+    });
+    return (result.data ?? "0x").toLowerCase().startsWith(ERC1155_RECEIVER_MAGIC);
+  } catch {
+    return false;
+  }
 }
 
 export async function readCallPutPositionState(

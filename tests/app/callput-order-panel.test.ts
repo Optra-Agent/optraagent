@@ -48,6 +48,7 @@ function publicClient(receiptLogs: unknown[] = [], o: { usdg?: bigint; eth?: big
   return {
     getChainId: vi.fn(async () => { if (o.rpcFail) throw new Error("HTTP request failed. URL: https://rpc.mainnet.chain.robinhood.com"); return 4663; }),
     getBalance: vi.fn(async () => o.eth ?? 10n ** 17n),
+    getCode: vi.fn(async () => "0x"),
     estimateGas: vi.fn(async () => 21_000n),
     estimateFeesPerGas: vi.fn(async () => ({ gasPrice: 1_000_000_000n })),
     getGasPrice: vi.fn(async () => 1_000_000_000n),
