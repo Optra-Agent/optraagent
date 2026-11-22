@@ -148,7 +148,7 @@ function ExecutionModes() {
       </article>
       <article className="xm-card" data-mode="live" style={at(1)}>
         <header><h3>Manual CallPut</h3><Chip tone="neutral">Wallet-signed</Chip></header>
-        <p>Direct-wallet CallPut spread orders are quoted, reviewed and signed in your own wallet, one transaction at a time. Close and settle signing are disabled. OPTRA has not verified an executed CallPut order.</p>
+        <p>Direct-wallet CallPut spread orders are quoted, reviewed and signed in your own wallet, one transaction at a time. Close and settle are available on the same terms, each with its own review and wallet confirmation. They passed 23 of 23 checks against the real contracts on a Mainnet fork. OPTRA has not yet verified a live open, close or settle.</p>
         <p><strong>Autonomous agents</strong> <Chip tone="ember">Unavailable</Chip></p>
         <p>OPTRA agents do not submit CallPut requests. No owner-specific automation grant or connected order worker exists.</p>
         <p>Before agent-initiated orders:</p>

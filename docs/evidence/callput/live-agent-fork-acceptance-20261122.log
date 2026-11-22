@@ -3,11 +3,11 @@ PASS: grant proposed, evidenced, activated and the agent resumed for owner A
 PASS: LIVE_TRADING_ENABLED unset: the tick does nothing at all (disabled)
 PASS: scheduled pass: authorized, signed and submitted exactly one order (submitted, queue +1)
 PASS: the request key from the receipt is on the ledger in state pending, and the chain agrees (pending/Pending)
-PASS: the committed collateral left the wallet and matches the ledger (296208 raw)
+PASS: the committed collateral left the wallet and matches the ledger (302858 raw)
 PASS: replaying the same decision is recognized and sends nothing (replayed)
 PASS: a second order while one is pending is blocked by the pending-request limit (blocked)
 PASS: after the keeper fill the next tick reconciles the request to executed (executed)
-PASS: the fill is confirmed by the wallet's option-token balance, not by the hash (99759790209790209 raw)
+PASS: the fill is confirmed by the wallet's option-token balance, not by the hash (100216271884654994 raw)
 PASS: a declined signature is not-broadcast: the reservation is cancelled, nothing is sent, the agent keeps running (blocked/1 cancelled)
 PASS: with the first order filled and no pending request, the next order is allowed (submitted)
 PASS: the second order is reconciled to executed (2 executed)
@@ -26,3 +26,4 @@ PASS: the order really was created on chain, which is why the agent must not ret
 PASS: no further order is sent and the agent cannot be resumed until the unknown request is reconciled (halted; A stale or unknown request must be reconciled first.)
 
 25/25 assertions passed
+EXIT=0

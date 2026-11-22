@@ -14,6 +14,7 @@ import { loadAcknowledgedCountry, loadLiveGateReport } from "../live/gate-loader
 import { readCallPutRobinhoodRequest, type CallPutRobinhoodRequestSnapshot } from "./callput-robinhood-requests";
 import { runLiveAgentTick, type LiveAgentSubmitter, type LiveAgentTickResult } from "./callput-live-agent-worker";
 import type { CallPutOpenSpreadPlan } from "./callput-robinhood-write";
+import type { LiveDecisionSource } from "./callput-live-agent-signal";
 
 export type LiveAgentScheduleOptions = {
   db: AppDatabase;
@@ -22,6 +23,12 @@ export type LiveAgentScheduleOptions = {
   readSnapshots?: (keys: Hex[]) => Promise<CallPutRobinhoodRequestSnapshot[]>;
   preparePlan?: (grant: { ownerId: string; agentId: string; grantId: string }) => Promise<CallPutOpenSpreadPlan | null>;
   submitter?: LiveAgentSubmitter;
+  /**
+   * Approved decision-to-order source (see callput-live-agent-signal). When it yields a decision, the tick id is the
+   * decision id, so the same decision can never produce a second order in a later hour. Without a decision the tick
+   * still runs for reconciliation and monitoring and asks for no plan.
+   */
+  decisionSource?: LiveDecisionSource;
   /** Test seam only. Production leaves this unset and gets the database-backed G1–G7 evaluation. */
   gates?: (grant: { ownerId: string; agentId: string; grantId: string }) => Promise<GateReport>;
   runId?: string;
@@ -42,12 +49,15 @@ export async function runLiveAgentSchedule(options: LiveAgentScheduleOptions): P
   const hourBucket = new Date(Math.floor(now.getTime() / 3_600_000) * 3_600_000).toISOString();
   const results: Array<{ grantId: string } & LiveAgentTickResult> = [];
   for (const grant of grants) {
+    const ref = { ownerId: grant.ownerId, agentId: grant.agentId, grantId: grant.id };
+    // A failed decision read means "no decision this tick": it can only prevent an order, never cause one.
+    const decision = options.decisionSource ? await options.decisionSource(ref, now).catch(() => null) : null;
     const result = await runLiveAgentTick({
-      db: options.db, ownerId: grant.ownerId, grantId: grant.id, agentId: grant.agentId, tickId: hourBucket, holder: runId, now, env,
-      preparePlan: () => (options.preparePlan ? options.preparePlan({ ownerId: grant.ownerId, agentId: grant.agentId, grantId: grant.id }) : Promise.resolve(null)),
+      db: options.db, ownerId: grant.ownerId, grantId: grant.id, agentId: grant.agentId, tickId: decision ? `decision:${decision.decisionId}` : hourBucket, holder: runId, now, env,
+      preparePlan: () => (decision ? decision.prepare() : options.preparePlan ? options.preparePlan(ref) : Promise.resolve(null)),
       readSnapshots,
       // No request exists here, so the country is the one recorded with the owner's acknowledgement (null fails G5).
-      gates: options.gates ? () => options.gates!({ ownerId: grant.ownerId, agentId: grant.agentId, grantId: grant.id }) : async () => loadLiveGateReport({ db: options.db, ownerId: grant.ownerId, walletAddress: null, country: await loadAcknowledgedCountry(options.db, grant.ownerId), now, env, grantId: grant.id, agentRef: grant.agentId }),
+      gates: options.gates ? () => options.gates!({ ownerId: grant.ownerId, agentId: grant.agentId, grantId: grant.id }) : async () => loadLiveGateReport({ db: options.db, ownerId: grant.ownerId, walletAddress: null, country: await loadAcknowledgedCountry(options.db, grant.ownerId), geoSource: "stored-at-acknowledgement", now, env, grantId: grant.id, agentRef: grant.agentId }),
       ...(options.submitter ? { submitter: options.submitter } : {}),
     });
     results.push({ grantId: grant.id, ...result });

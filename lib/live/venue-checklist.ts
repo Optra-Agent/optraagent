@@ -32,7 +32,7 @@ export const CALLPUT_VENUE_CHECKLIST: readonly VenueCheck[] = [
   { id: "V10", item: "Historical premium and IV data", status: "open", evidence: "(none recorded)",
     finding: "No historical premium or IV source for CallPut has been recorded. Paper uses a modeled Black-Scholes premium." },
   { id: "V11", item: "Positions owned by the user's wallet; callable from a smart account or session key", status: "blocked", evidence: "docs/evidence/callput/trading-account-onchain-probe-20261122.json",
-    finding: "Options are ERC-1155 tokens held by the wallet that opened them. For sessions, the TradingAccountFactory reports openToAll=false and safeMode=true, and canOpen is false for the owner wallet and for an existing account's owner. Account creation is not available to OPTRA's owner today." },
+    finding: "Options are ERC-1155 tokens held by the wallet that opened them. Delegated sessions run through a TradingAccount. Its factory (verified source) has safeMode=true, which blocks funding, registration and opens, and openToAll=false, so an Account also needs CallPut's admin to allowlist it. Creating an Account is permissionless. Both switches belong to the factory admin (0x23DB9f5fDde30853EC8eBd75E0492c09505a6D1d). The account implementation itself has no verified source." },
   { id: "V12", item: "Small Mainnet end-to-end: open, close, settle", status: "open", evidence: "(none: needs the owner's wallet)",
     finding: "No OPTRA-prepared order has been signed on Mainnet. The fork lifecycle (23 of 23) is not a substitute." },
 ];

@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { NativeSelect } from "@/components/ui/native-select";
 import { CALLPUT_ROBINHOOD_CHAIN_ID } from "@/lib/venue/callput-robinhood-readonly";
 import { readCallPutRobinhoodRequest } from "@/lib/venue/callput-robinhood-requests";
+import { discoverCallPutPositions, type DiscoveredPosition } from "@/lib/venue/callput-position-discovery";
 import {
   CALLPUT_ROBINHOOD_UNDERLYINGS,
   extractCallPutRequestKey,
@@ -293,6 +294,8 @@ export function CallPutPositionActions() {
   const [working, setWorking] = useState(false);
   const [reconciliation, setReconciliation] = useState<PositionReconciliation | null>(null);
   const [serverOrderId, setServerOrderId] = useState<string | null>(null);
+  const [positions, setPositions] = useState<DiscoveredPosition[] | null>(null);
+  const [discoverNonce, setDiscoverNonce] = useState(0);
 
   useEffect(() => {
     if (!address) return;
@@ -345,6 +348,33 @@ export function CallPutPositionActions() {
     }).catch(() => {});
     return () => { active = false; };
   }, [address]);
+
+  // Discovery: only positions the chain confirms (open request Executed for this wallet and a positive token balance).
+  useEffect(() => {
+    if (!address || !publicClient) return;
+    const connectedAddress = address;
+    const client = publicClient as PublicClient;
+    let active = true;
+    void listCallPutOrderIntents().then(async (orders) => {
+      const refs = orders
+        .filter((order) => order.kind === "open" && isAddress(order.account) && order.account.toLowerCase() === connectedAddress.toLowerCase())
+        .flatMap((order) => {
+          const key = [...order.events].sort((a, b) => a.createdAt.localeCompare(b.createdAt)).filter((event) => event.referenceKind === "request-key").at(-1)?.requestKey;
+          return key && order.intent.kind === "open" ? [{ requestKey: key as Hex, underlying: order.intent.underlying }] : [];
+        });
+      const found = await discoverCallPutPositions(client, connectedAddress, refs, nowMs());
+      if (active) setPositions(found);
+    }).catch(() => { if (active) setPositions(null); });
+    return () => { active = false; };
+  }, [address, publicClient, discoverNonce]);
+
+  function selectPosition(position: DiscoveredPosition) {
+    setUnderlying(position.underlying);
+    setKind(position.action === "settle" ? "settle" : "close");
+    setOptionTokenIdText(position.optionTokenId.toString());
+    setSizeRawText(position.action === "settle" ? "" : position.balanceRaw.toString());
+    resetPlan();
+  }
 
   function resetPlan() {
     setPlan(null);
@@ -681,6 +711,26 @@ export function CallPutPositionActions() {
         <summary className="cursor-pointer text-sm font-semibold">Close or settle a position</summary>
         <div className="mt-4 grid gap-3">
           <p className="text-sm text-muted-foreground">Direct-wallet actions only. Your connected EVM wallet remains the account and signer. CallPut Account sessions and autonomous execution are not enabled. Close and settlement outputs are not quoted; you set raw minimum-output floors, and a keeper may execute at a different price.</p>
+          {address && positions !== null ? (
+            <div className="grid gap-2" aria-label="Your filled positions">
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-sm font-medium">Your filled positions</p>
+                <Button type="button" variant="outline" size="sm" onClick={() => setDiscoverNonce((value) => value + 1)}>Refresh</Button>
+              </div>
+              {positions.length === 0 ? (
+                <p className="text-xs text-muted-foreground">No filled position found. A position is listed only after the venue&apos;s keeper filled an open order placed from this wallet here and the wallet holds the option token. A submitted transaction is not a position.</p>
+              ) : (
+                <ul className="grid gap-2">
+                  {positions.map((position) => (
+                    <li key={position.requestKey} className="flex flex-wrap items-center justify-between gap-2 rounded-md border p-3 text-xs">
+                      <span className="mono break-all">{position.underlying} · token {position.optionTokenId.toString().slice(0, 10)}… · balance {position.balanceRaw.toString()} raw · expires {new Date(position.expiry * 1000).toISOString().slice(0, 16).replace("T", " ")} UTC<br />{position.reason}</span>
+                      <Button type="button" variant="outline" size="sm" disabled={position.action === "none"} onClick={() => selectPosition(position)}>{position.action === "settle" ? "Prepare settle" : position.action === "close" ? "Prepare close" : "Not eligible yet"}</Button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          ) : null}
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div className="grid gap-1.5">
               <label htmlFor="cp-position-underlying" className="text-sm font-medium">Underlying</label>

@@ -323,7 +323,8 @@ test("Paper, manual CallPut, and autonomous execution are represented truthfully
   await expect(restricted.getByRole("heading", { name: "Manual CallPut" })).toBeVisible();
   await expect(restricted.getByText("Wallet-signed", { exact: true })).toBeVisible();
   await expect(restricted.getByText(/CallPut spread orders are quoted, reviewed and signed in your own wallet/i)).toBeVisible();
-  await expect(restricted.getByText(/has not verified an executed CallPut order/i)).toBeVisible();
+  await expect(restricted.getByText(/Close and settle are available on the same terms/i)).toBeVisible();
+  await expect(restricted.getByText(/has not yet verified a live open, close or settle/i)).toBeVisible();
   await expect(restricted.getByText("Autonomous agents", { exact: true })).toBeVisible();
   await expect(restricted.getByText("Unavailable", { exact: true })).toBeVisible();
   await expect(restricted.getByText(/agents do not submit CallPut requests/i)).toBeVisible();

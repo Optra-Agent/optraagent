@@ -4,12 +4,14 @@ import { useEffect, useState } from "react";
 import { useAuthSession } from "../AuthSessionProvider";
 import { Chip, Panel } from "../ui";
 import { Button } from "@/components/ui/button";
+import { LiveAgentConfigure } from "./LiveAgentConfigure";
+import { accountBlockReason, describeAccountGates, type AccountGateFacts } from "@/lib/venue/callput-account-gates-text";
 
 type LiveAgentStatus = {
   liveTradingEnabled: boolean;
   submissionRoute: string;
   control: { stopped: boolean; reason: string | null };
-  accountGates?: { status: "ok"; openToAll: boolean; safeMode: boolean; ownerCanOpen: boolean; ownerAccountCount: number; accountUsable: boolean } | { status: "unavailable" } | { status: "not-configured" };
+  accountGates?: ({ status: "ok" } & AccountGateFacts) | { status: "unavailable" } | { status: "not-configured" };
   venueDelegation?: { status: "ok"; fetchedAt: string; findings: Array<{ id: string; ok: boolean; detail: string }> } | { status: "unavailable" } | { status: "not-configured" };
   grants: Array<{ id: string; agentId: string; tradingAddress: string; route: string; status: "proposed" | "active" | "revoked"; expiresAt: string; missingEvidence: string[] }>;
   requests: Array<{ id: string; state: string; collateralRaw: string; transactionHash: string | null; requestKey: string | null; createdAt: string }>;
@@ -79,9 +81,9 @@ export function LiveAgentControls() {
           <p className="panel-note">Autonomous execution is not available. Every real order is approved by you in your own wallet, one transaction at a time (open, close and settle on this page).</p>
           {data.accountGates?.status === "ok" ? (
             <p className="panel-note" aria-label="CallPut account gates">
-              {data.accountGates.accountUsable
-                ? "CallPut's account factory currently lets this wallet open with an Account."
-                : `CallPut's account factory does not currently let this wallet open with an Account (open to all: ${data.accountGates.openToAll ? "yes" : "no"}, safe mode: ${data.accountGates.safeMode ? "on" : "off"}, this wallet allowed: ${data.accountGates.ownerCanOpen ? "yes" : "no"}, accounts owned: ${data.accountGates.ownerAccountCount}). Read from the chain just now.`}
+              {accountBlockReason(data.accountGates) === null
+                ? "CallPut's account factory would let your Account open today."
+                : `CallPut's account factory would refuse an open today: ${accountBlockReason(data.accountGates)}. Read from the chain just now: ${describeAccountGates(data.accountGates)}.`}
             </p>
           ) : null}
           {data.venueDelegation?.status === "ok" ? (
@@ -116,6 +118,7 @@ export function LiveAgentControls() {
               ))}
             </ul>
           ) : null}
+          <LiveAgentConfigure tradingAddress={data.accountGates?.status === "ok" ? data.accountGates.account : null} accountUsable={data.accountGates?.status === "ok" ? data.accountGates.accountUsable : null} onProposed={() => setRefreshCount((count) => count + 1)} />
           <div className="panel-actions">
             <Button type="button" variant="outline" disabled={busy !== "" || data.control.stopped} onClick={() => void post("/api/venue/callput/live-agent/stop", "Emergency stop")}>Emergency stop</Button>
           </div>

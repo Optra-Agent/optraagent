@@ -6,7 +6,9 @@ import { z } from "zod";
 import type { AppDatabase } from "../db/client";
 import { SessionSchema, type Session } from "../domain/contracts";
 import { isCompleteAcknowledgement, loadLiveGateReport, saveAcknowledgement } from "./gate-loader";
-import { BETA_CAPS, countryFromHeaders, DEFAULT_BLOCKED_COUNTRIES, MIN_EXPIRY_CYCLES, MIN_PAPER_DAYS, readGateEnv, RISK_ACK_STATEMENTS, RISK_ACK_VERSION } from "./gates";
+import { resolveCountry } from "./geo";
+import type { CallPutAccountGates } from "../venue/callput-account-gates";
+import { BETA_CAPS, DEFAULT_BLOCKED_COUNTRIES, MIN_EXPIRY_CYCLES, MIN_PAPER_DAYS, readGateEnv, RISK_ACK_STATEMENTS, RISK_ACK_VERSION } from "./gates";
 import { CALLPUT_VENUE_CHECKLIST, summarizeVenueChecklist } from "./venue-checklist";
 
 export type LiveGateHandlerOptions = {
@@ -14,6 +16,10 @@ export type LiveGateHandlerOptions = {
   readSession: (request: Request) => Promise<Session | Response>;
   now?: () => Date;
   env?: Record<string, string | undefined>;
+  /** Live CallPut account-factory read for the signed-in wallet. A failure leaves the evidence out; it never passes a gate. */
+  readAccountGates?: (owner: string) => Promise<CallPutAccountGates>;
+  /** Test seam for the server-side IP lookup. */
+  fetchImpl?: typeof fetch;
 };
 
 const json = (body: unknown, status = 200): Response => Response.json(body, { status, headers: { "cache-control": "no-store" } });
@@ -39,8 +45,9 @@ export function createLiveGateHandlers(options: LiveGateHandlerOptions) {
       const who = await owner(request, "GET");
       if (who instanceof Response) return who;
       try {
-        const country = countryFromHeaders(request.headers, env);
-        const report = await loadLiveGateReport({ db: options.db, ownerId: who.ownerId, walletAddress: who.address, country, now: now(), env });
+        const geo = await resolveCountry(request.headers, env, options.fetchImpl);
+        const accountGates = options.readAccountGates ? await options.readAccountGates(who.address).catch(() => null) : null;
+        const report = await loadLiveGateReport({ db: options.db, ownerId: who.ownerId, walletAddress: who.address, country: geo.country, geoSource: geo.source, accountGates, now: now(), env });
         return json({
           allPass: report.allPass,
           evaluatedAt: report.evaluatedAt,
@@ -68,7 +75,7 @@ export function createLiveGateHandlers(options: LiveGateHandlerOptions) {
       if (!body.success) return failure("VALIDATION_ERROR", "Acknowledgement is malformed.", 400);
       if (body.data.version !== RISK_ACK_VERSION) return failure("VALIDATION_ERROR", "The risk wording has changed. Reload and read it again.", 409);
       if (!isCompleteAcknowledgement(body.data.statementIds)) return failure("VALIDATION_ERROR", "Every risk statement must be acknowledged.", 400);
-      const country = countryFromHeaders(request.headers, env);
+      const country = (await resolveCountry(request.headers, env, options.fetchImpl)).country;
       if (country && readGateEnv(env).blockedCountries.includes(country)) return failure("JURISDICTION_BLOCKED", `Live trading is not available in ${country}.`, 403);
       try {
         await saveAcknowledgement(options.db, who.ownerId, body.data.statementIds, country, now());

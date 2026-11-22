@@ -1,5 +1,8 @@
 import { getDatabase } from "@/lib/db/client";
 import { hasValidPaperSchedulerCredential } from "@/lib/paper/scheduler";
+import { createPublicClient, http } from "viem";
+import { robinhoodMainnet } from "@/lib/chain/robinhood";
+import { createPaperDecisionSource } from "@/lib/venue/callput-live-agent-signal";
 import { runLiveAgentSchedule } from "@/lib/venue/callput-live-agent-scheduler";
 
 export const runtime = "nodejs";
@@ -17,7 +20,10 @@ export async function POST(request: Request): Promise<Response> {
   }
   if (process.env.LIVE_TRADING_ENABLED !== "true") return Response.json({ status: "disabled", results: [] }, { headers });
   try {
-    const outcome = await runLiveAgentSchedule({ db: await getDatabase() });
+    const db = await getDatabase();
+    const client = createPublicClient({ chain: robinhoodMainnet, transport: http() });
+    // The decision source is inert until the owner records LIVE_MAPPING_APPROVAL_REF, and no signer is wired here, so this pass still cannot submit.
+    const outcome = await runLiveAgentSchedule({ db, decisionSource: createPaperDecisionSource({ db, client, env: process.env }) });
     return Response.json({ status: outcome.status, results: outcome.results.map(({ grantId, status, detail }) => ({ grantId, status, detail })) }, { headers });
   } catch {
     return Response.json({ error: { code: "UPSTREAM_UNAVAILABLE", message: "The Live Agent scheduler is temporarily unavailable.", retryable: true } }, { status: 503, headers });

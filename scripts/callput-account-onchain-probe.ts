@@ -3,9 +3,15 @@
  * no key: it reads constants and gates, runs eth_call probes from an arbitrary address, and decodes a real on-chain
  * `closeWithSession` call to show the shape and values of a real session grant.
  *
- * The account implementation is NOT source-verified on Blockscout (checked 2026-11-22), so everything here is read from
- * the ABI surface (function selectors), live state and one real transaction. Field NAMES in the decoded grant are
+ * Source status on Blockscout (read in a browser 2026-11-22): TradingAccountFactory is fully verified (its source defines
+ * every factory gate used below); the TradingAccount implementation behind the beacon is NOT verified, so its session
+ * enforcement is read only from its ABI surface, live state and one real transaction. Field NAMES in the decoded grant are
  * inferred from their types and values, and the enforcement behind each field is inferred, not proven.
+ *
+ * Factory semantics from its verified source: canOpen(account) = !safeMode && isAccount[account] && (openToAll ||
+ * allowlisted[account]). It takes an ACCOUNT address, never an owner wallet. createAccount is permissionless and works in
+ * safe mode; deposits, funding and registration revert while safeMode is on. The admin sets safeMode, openToAll and the
+ * allowlist.
  *
  * Usage: bun run scripts/callput-account-onchain-probe.ts > docs/evidence/callput/trading-account-onchain-probe-20261122.json
  */
@@ -22,7 +28,7 @@ const REAL_CLOSE_TX = "0xa509d69fe40222efc08c47e2d3afbdc3816ebdfcde3f904611ea95c
 const factoryAbi = parseAbi([
   "function openToAll() view returns (bool)", "function safeMode() view returns (bool)", "function guardian() view returns (address)", "function admin() view returns (address)",
   "function maxSubAccounts() view returns (uint96)", "function accountCount() view returns (uint256)", "function isOpenAllowed(address) view returns (bool)", "function canOpen(address) view returns (bool)",
-  "function accountsOf(address) view returns (address[])", "function computeAddress(address,uint96) view returns (address)", "function isAccount(address) view returns (bool)",
+  "function accountsOf(address) view returns (address[])", "function computeAddress(address,uint96) view returns (address)", "function isAccount(address) view returns (bool)", "function isCreated(address) view returns (bool)",
 ]);
 const accountAbi = parseAbi([
   "function owner() view returns (address)", "function epoch() view returns (uint256)", "function SESSION_STRATEGIES() view returns (uint256)", "function MAX_SESSION_DURATION() view returns (uint256)", "function MAX_UNDERLYINGS() view returns (uint256)",
@@ -56,6 +62,7 @@ const g = decoded.args[0] as readonly [Address, bigint, bigint, number, number, 
 const MAX_U256 = 2n ** 256n - 1n;
 
 const impl = await client.readContract({ address: C.tradingAccountBeacon as Address, abi: parseAbi(["function implementation() view returns (address)"]), functionName: "implementation" });
+const predicted = (await client.readContract({ address: FACTORY, abi: factoryAbi, functionName: "computeAddress", args: [OWNER_EOA, 0n] })) as Address;
 const accountOwner = (await read(() => client.readContract({ address: account, abi: accountAbi, functionName: "owner" }))) as Address;
 const encode = (abi: typeof accountAbi, functionName: "settleExpired" | "withdraw" | "revokeSession", args: readonly unknown[]) => encodeFunctionData({ abi, functionName, args } as never) as Hex;
 
@@ -72,16 +79,21 @@ const result = {
     accountCount: String(await read(() => client.readContract({ address: FACTORY, abi: factoryAbi, functionName: "accountCount" }))),
     maxSubAccounts: String(await read(() => client.readContract({ address: FACTORY, abi: factoryAbi, functionName: "maxSubAccounts" }))),
   },
-  ownerEoa: {
+  ownerWallet: {
     address: OWNER_EOA,
-    isOpenAllowed: await read(() => client.readContract({ address: FACTORY, abi: factoryAbi, functionName: "isOpenAllowed", args: [OWNER_EOA] })),
-    canOpen: await read(() => client.readContract({ address: FACTORY, abi: factoryAbi, functionName: "canOpen", args: [OWNER_EOA] })),
-    accountsOf: await read(() => client.readContract({ address: FACTORY, abi: factoryAbi, functionName: "accountsOf", args: [OWNER_EOA] })),
-    predictedAccount0: await read(() => client.readContract({ address: FACTORY, abi: factoryAbi, functionName: "computeAddress", args: [OWNER_EOA, 0n] })),
+    registeredAccounts: await read(() => client.readContract({ address: FACTORY, abi: factoryAbi, functionName: "accountsOf", args: [OWNER_EOA] })),
+    predictedAccount0: predicted,
+    predictedAccount0Created: await read(() => client.readContract({ address: FACTORY, abi: factoryAbi, functionName: "isCreated", args: [predicted] })),
+    predictedAccount0Registered: await read(() => client.readContract({ address: FACTORY, abi: factoryAbi, functionName: "isAccount", args: [predicted] })),
+    predictedAccount0OpenAllowed: await read(() => client.readContract({ address: FACTORY, abi: factoryAbi, functionName: "isOpenAllowed", args: [predicted] })),
+    predictedAccount0CanOpen: await read(() => client.readContract({ address: FACTORY, abi: factoryAbi, functionName: "canOpen", args: [predicted] })),
+    note: "canOpen and isOpenAllowed take an ACCOUNT address. The owner wallet itself is never asked.",
   },
-  sampleAccountOwnerGate: {
-    isOpenAllowed: await read(() => client.readContract({ address: FACTORY, abi: factoryAbi, functionName: "isOpenAllowed", args: [accountOwner] })),
-    canOpen: await read(() => client.readContract({ address: FACTORY, abi: factoryAbi, functionName: "canOpen", args: [accountOwner] })),
+  sampleAccountGate: {
+    account,
+    registered: await read(() => client.readContract({ address: FACTORY, abi: factoryAbi, functionName: "isAccount", args: [account] })),
+    openAllowed: await read(() => client.readContract({ address: FACTORY, abi: factoryAbi, functionName: "isOpenAllowed", args: [account] })),
+    canOpen: await read(() => client.readContract({ address: FACTORY, abi: factoryAbi, functionName: "canOpen", args: [account] })),
   },
   accountConstants: {
     SESSION_STRATEGIES: String(await read(() => client.readContract({ address: impl, abi: accountAbi, functionName: "SESSION_STRATEGIES" }))),

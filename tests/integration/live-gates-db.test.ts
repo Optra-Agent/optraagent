@@ -91,4 +91,17 @@ describe("live gates against a real database", () => {
     expect(result.detail).toContain("Seasoned");
     expect((await g6()).pass).toBe(true);
   });
+
+  it("counts a running House Agent, which is what the Agents page shows as running, and lists every candidate as evidence", async () => {
+    const { db, ownerId } = await setup();
+    const [house] = await db.insert(agents).values({ ownerId, name: "Protective Put NVDA", templateId: "protective-put", status: "running", kind: "house", visibility: "public", houseKey: "protective-put-nvda", recipe: {} as never, recipeHash: `sha256:${"1".repeat(64)}`, launchedAt: new Date("2026-11-21T23:28:00.000Z") }).returning({ id: agents.id });
+    await db.insert(paperAccounts).values({ agentId: house!.id, initialCapitalUsd: "1000", cashUsd: "1000", peakEquityUsd: "1000", dailyStartEquityUsd: "1000", dailyStartDate: "2026-11-30", meta: { settledItm: 0, settledOtm: 1 } });
+    const g6 = (await loadLiveGateReport({ db, ownerId, walletAddress: WALLET, country: "ID", now: NOW, env: {} })).gates.find((gate) => gate.id === "G6")!;
+    expect(g6.pass).toBe(true);
+    expect(g6.detail).toContain("Protective Put NVDA");
+    expect(g6.evidence[0]).toContain("(House): launched 2026-11-21");
+    const named = (await loadLiveGateReport({ db, ownerId, walletAddress: WALLET, country: "ID", now: new Date("2026-11-25T00:00:00.000Z"), env: {}, agentRef: "protective-put-nvda" })).gates.find((gate) => gate.id === "G6")!;
+    expect(named.pass).toBe(false);
+    expect(named.evidence[0]).toContain("earliest eligible 2026-11-28");
+  });
 });

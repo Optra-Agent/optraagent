@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-11-22T10:47:50.551Z",
+  "generatedAt": "2026-11-22T12:49:02.029Z",
   "chainId": 4663,
   "note": "Read-only. Account implementation is not source-verified on Blockscout; behavior is inferred from the ABI surface, live state and one real transaction.",
   "contracts": {
@@ -17,15 +17,20 @@
     "accountCount": "5",
     "maxSubAccounts": "10"
   },
-  "ownerEoa": {
+  "ownerWallet": {
     "address": "0xAa8fDF2f96aFC037D50659CFd09fDF3Fac060bBf",
-    "isOpenAllowed": false,
-    "canOpen": false,
-    "accountsOf": [],
-    "predictedAccount0": "0x6b565373726fAA9217B07E067A28Ca81952fB9b3"
+    "registeredAccounts": [],
+    "predictedAccount0": "0x6b565373726fAA9217B07E067A28Ca81952fB9b3",
+    "predictedAccount0Created": false,
+    "predictedAccount0Registered": false,
+    "predictedAccount0OpenAllowed": false,
+    "predictedAccount0CanOpen": false,
+    "note": "canOpen and isOpenAllowed take an ACCOUNT address. The owner wallet itself is never asked."
   },
-  "sampleAccountOwnerGate": {
-    "isOpenAllowed": false,
+  "sampleAccountGate": {
+    "account": "0x9d2bDa3470C69681B212FFF7C02143D8afA2157e",
+    "registered": true,
+    "openAllowed": false,
     "canOpen": false
   },
   "accountConstants": {

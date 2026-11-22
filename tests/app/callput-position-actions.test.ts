@@ -318,7 +318,7 @@ describe("CallPutPositionActions", () => {
     const Actions = await loadActions(false);
     render(createElement(Actions));
 
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2)); // order history is read once for recovery and once for position discovery
     await waitFor(() => {
       const hydrated = JSON.parse(window.localStorage.getItem("optra.callput.robinhood.position-actions.v1") ?? "[]")[0];
       expect(hydrated).toMatchObject({

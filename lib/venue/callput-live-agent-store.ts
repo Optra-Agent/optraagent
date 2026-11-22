@@ -23,17 +23,8 @@ import {
   type LiveAgentState,
 } from "./callput-live-agent-guard";
 
-/** Absolute ceilings no owner policy can exceed, whatever the grant row says. */
-export const LIVE_AGENT_HARD_CAPS = {
-  maxCollateralPerOrderRaw: 10_000_000n,
-  maxOpenCollateralRaw: 25_000_000n,
-  maxDailyCollateralRaw: 25_000_000n,
-  maxOrdersPerDay: 5,
-  maxPendingRequests: 1,
-  maxGrantLifetimeMs: 30 * 86_400_000,
-  /** A request that never obtained a request key within this window is treated as unknown and halts the agent. */
-  maxUnkeyedRequestAgeMs: 10 * 60_000,
-} as const;
+import { LIVE_AGENT_HARD_CAPS } from "./callput-live-agent-limits";
+export { LIVE_AGENT_HARD_CAPS };
 
 export const LIVE_AGENT_REQUEST_STATES = ["reserved", "submitted", "pending", "executed", "cancelled", "stale", "unknown", "closed"] as const;
 export type LiveAgentRequestState = (typeof LIVE_AGENT_REQUEST_STATES)[number];

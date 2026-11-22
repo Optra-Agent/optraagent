@@ -7,11 +7,13 @@
  * worker would refuse, or the reverse.
  */
 import { autonomyBlockers, LIVE_BETA_MAX_OPEN_POSITIONS, type AutonomyEvidence } from "../venue/callput-live-agent-guard";
+import { accountBlockReason, describeAccountGates, type AccountGateFacts } from "../venue/callput-account-gates-text";
 import { CALLPUT_VENUE_CHECKLIST, type VenueCheck } from "./venue-checklist";
 
 export const GATE_IDS = ["G1", "G2", "G3", "G4", "G5", "G6", "G7"] as const;
 export type GateId = (typeof GATE_IDS)[number];
-export type GateResult = { id: GateId; title: string; pass: boolean; detail: string; remediation: string | null };
+/** `evidence` is what was actually read or computed (never a claim): short factual lines the owner can check. */
+export type GateResult = { id: GateId; title: string; pass: boolean; detail: string; remediation: string | null; evidence: string[] };
 export type GateReport = { allPass: boolean; gates: GateResult[]; evaluatedAt: string };
 
 /** PM §16.2 proposed beta caps. The engine's own hard caps (callput-live-agent-store) are stricter and still apply. */
@@ -41,6 +43,8 @@ export const RISK_ACK_STATEMENTS = [
  */
 export const DEFAULT_BLOCKED_COUNTRIES = ["US", "CU", "IR", "KP", "SY"] as const;
 
+export type PaperCandidate = { label: string; kind: "house" | "user"; launchedAt: Date | null; expiryCycles: number };
+
 export type GateInput = {
   now: Date;
   /** Venue checklist rows and the owner's recorded sign-off reference. */
@@ -53,33 +57,43 @@ export type GateInput = {
   /** ISO 3166-1 alpha-2 from the edge, or null when it could not be determined. */
   country: string | null;
   blockedCountries?: readonly string[];
-  paper: { launchedAt: Date | null; expiryCycles: number; agentLabel: string | null };
+  paper: { launchedAt: Date | null; expiryCycles: number; agentLabel: string | null; candidates?: PaperCandidate[] };
+  /** How the country was obtained: the operator's overwriting edge header, a server-side IP lookup, or unknown. */
+  geoSource?: "edge-header" | "ip-lookup" | "stored-at-acknowledgement" | null;
+  /** Live read of the CallPut account factory for this wallet. Absent when it was not read (for example in the worker). */
+  accountGates?: AccountGateFacts | null;
   acknowledgement: { version: string; acceptedAt: Date; statementIds: readonly string[] } | null;
 };
 
-const result = (id: GateId, title: string, pass: boolean, detail: string, remediation: string | null): GateResult => ({ id, title, pass, detail, remediation: pass ? null : remediation });
+const result = (id: GateId, title: string, pass: boolean, detail: string, remediation: string | null, evidence: string[] = []): GateResult => ({ id, title, pass, detail, remediation: pass ? null : remediation, evidence });
 
 function evaluateG1(input: GateInput): GateResult {
   const rows = input.venue?.rows ?? CALLPUT_VENUE_CHECKLIST;
   const open = rows.filter((row) => row.status !== "verified");
   const signoff = input.venue?.ownerSignoffRef?.trim() || null;
-  if (open.length === 0 && signoff) return result("G1", "Venue verified", true, `V1–V${rows.length} verified and signed off (${signoff}).`, null);
+  const evidence = rows.map((row) => `${row.id} ${row.status}: ${row.evidence}`);
+  if (open.length === 0 && signoff) return result("G1", "Venue verified", true, `V1–V${rows.length} verified and signed off (${signoff}).`, null, evidence);
   const list = open.map((row) => `${row.id} ${row.status}`).join(", ");
   const detail = open.length > 0 ? `${rows.length - open.length} of ${rows.length} verified; not verified: ${list}.` : "All items verified, but the owner has not signed the result.";
-  return result("G1", "Venue verified", false, detail, "Close each open V item with Mainnet or venue evidence, then record the owner sign-off reference in LIVE_VENUE_SIGNOFF_REF. V11 and V12 need the owner's wallet and a venue-enabled account.");
+  return result("G1", "Venue verified", false, detail, "Close each open V item with Mainnet or venue evidence, then record the owner sign-off reference in LIVE_VENUE_SIGNOFF_REF. V11 and V12 need the owner's wallet and a venue-enabled account.", evidence);
 }
 
 function evaluateG2(input: GateInput): GateResult {
   const { activeGrant, route, evidence } = input.custody;
-  if (!activeGrant || !evidence) return result("G2", "Custody ready", false, "No active scoped grant. OPTRA holds no signer and no session key.", "Create and fund a CallPut Account, sign a scoped session grant on-chain, and record the venue, on-chain, audit, owner and revocation evidence. The venue must first allow the account (see V11).");
-  if (route !== "callput-account") return result("G2", "Custody ready", false, `Grant route is ${route ?? "unknown"}; scoped delegated custody needs the callput-account route.`, "Use a CallPut Account session grant. A direct-wallet route can only be used with per-transaction owner signing.");
+  const gates = input.accountGates;
+  const facts = gates ? [`CallPut account factory (verified source, read from the chain): ${describeAccountGates(gates)}.`] : [];
+  const reason = gates ? accountBlockReason(gates) : null;
+  const venueBlock = reason ? ` CallPut's factory would refuse an open today: ${reason}.` : "";
+  if (!activeGrant || !evidence) return result("G2", "Custody ready", false, `No active scoped grant. OPTRA holds no signer and no session key.${venueBlock}`, "Create and fund a CallPut Account, sign a scoped session grant on-chain, and record the venue, on-chain, audit, owner and revocation evidence. CallPut must first take the factory out of safe mode and allowlist the Account (see V11).", facts);
+  if (route !== "callput-account") return result("G2", "Custody ready", false, `Grant route is ${route ?? "unknown"}; scoped delegated custody needs the callput-account route.`, "Use a CallPut Account session grant. A direct-wallet route can only be used with per-transaction owner signing.", facts);
   const missing = autonomyBlockers(evidence);
-  if (missing.length > 0) return result("G2", "Custody ready", false, `Missing evidence: ${missing.map((blocker) => blocker.id).join(", ")}.`, missing.map((blocker) => blocker.detail).join(" "));
-  return result("G2", "Custody ready", true, "Active callput-account grant with venue, on-chain, audit, owner and revocation evidence recorded.", null);
+  if (missing.length > 0) return result("G2", "Custody ready", false, `Missing evidence: ${missing.map((blocker) => blocker.id).join(", ")}.${venueBlock}`, missing.map((blocker) => blocker.detail).join(" "), facts);
+  if (gates && reason) return result("G2", "Custody ready", false, `Evidence is recorded.${venueBlock}`, "CallPut must take the factory out of safe mode and allowlist the Account.", facts);
+  return result("G2", "Custody ready", true, "Active callput-account grant with venue, on-chain, audit, owner and revocation evidence recorded.", null, facts);
 }
 
 function evaluateG3(input: GateInput): GateResult {
-  return result("G3", "Global kill switch", input.globalSwitchOn, input.globalSwitchOn ? "The operator has switched live trading on. The owner stop and the process kill switch still override it." : "Live trading is not open yet. Your agent keeps running on paper.", "The operator turns it on manually (LIVE_TRADING_ENABLED=true) after G1, G2 and G6 are satisfied. It stays off by default.");
+  return result("G3", "Global kill switch", input.globalSwitchOn, input.globalSwitchOn ? "The operator has switched live trading on. The owner stop and the process kill switch still override it." : "Live trading is not open yet. Your agent keeps running on paper.", "The operator turns it on manually (LIVE_TRADING_ENABLED=true) after G1, G2 and G6 are satisfied. It stays off by default.", [`Operator switch is ${input.globalSwitchOn ? "on" : "off"}.`]);
 }
 
 const sameAddress = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
@@ -89,31 +103,41 @@ function evaluateG4(input: GateInput, g2: GateResult): GateResult {
   if (!address) return result("G4", "Wallet allowlist", false, "No wallet is connected.", "Connect a wallet.");
   if (!g2.pass) return result("G4", "Wallet allowlist", false, "Allowlisting follows a verified custody setup (G2), which is not met.", "Satisfy G2 first; the owner then adds the wallet to LIVE_WALLET_ALLOWLIST.");
   const listed = input.wallet.allowlist.some((entry) => sameAddress(entry, address));
-  return result("G4", "Wallet allowlist", listed, listed ? "Wallet is allowlisted." : "Wallet is not on the allowlist.", "The owner adds this wallet to LIVE_WALLET_ALLOWLIST.");
+  return result("G4", "Wallet allowlist", listed, listed ? "Wallet is allowlisted." : "Wallet is not on the allowlist.", "The owner adds this wallet to LIVE_WALLET_ALLOWLIST.", [`Allowlist holds ${input.wallet.allowlist.length} wallet(s); G2 is met.`]);
 }
 
 function evaluateG5(input: GateInput): GateResult {
   const blocked = new Set((input.blockedCountries ?? DEFAULT_BLOCKED_COUNTRIES).map((code) => code.toUpperCase()));
   const country = input.country?.trim().toUpperCase() || null;
-  if (!country || !/^[A-Z]{2}$/.test(country) || country === "XX" || country === "T1") return result("G5", "Jurisdiction", false, "Your country could not be determined, so live trading stays closed.", "Retry without a VPN or proxy. Live trading is only offered where the location is known.");
-  if (blocked.has(country)) return result("G5", "Jurisdiction", false, `Live trading is not available in ${country}.`, "Not available from this location. Paper trading is unaffected.");
-  return result("G5", "Jurisdiction", true, `Detected ${country}; not on the provisional block list. Counsel has not approved the final list.`, null);
+  const source = input.geoSource ?? null;
+  const evidence = [`Block list (provisional, counsel owns the final list): ${[...blocked].sort().join(", ")}.`, source ? `Country source: ${source}.` : "No trusted country source is configured or it returned nothing."];
+  if (!country || !/^[A-Z]{2}$/.test(country) || country === "XX" || country === "T1") return result("G5", "Jurisdiction", false, "Your country could not be determined from a trusted source, so live trading stays closed.", "The operator configures a trusted server-side country source (an edge header that is overwritten at the edge, or a server-side IP lookup). Retry without a VPN or proxy.", evidence);
+  if (blocked.has(country)) return result("G5", "Jurisdiction", false, `Live trading is not available in ${country}.`, "Not available from this location. Paper trading is unaffected.", [...evidence, `Detected ${country}.`]);
+  return result("G5", "Jurisdiction", true, `Detected ${country}; not on the provisional block list. Counsel has not approved the final list.`, null, [...evidence, `Detected ${country}.`]);
 }
+
+const day = (date: Date) => date.toISOString().slice(0, 10);
 
 function evaluateG6(input: GateInput): GateResult {
   const { launchedAt, expiryCycles, agentLabel } = input.paper;
   const days = launchedAt ? Math.floor((input.now.getTime() - launchedAt.getTime()) / 86_400_000) : 0;
   const pass = launchedAt !== null && days >= MIN_PAPER_DAYS && expiryCycles >= MIN_EXPIRY_CYCLES;
   const who = agentLabel ? `${agentLabel}: ` : "";
-  const detail = launchedAt === null ? "No launched paper agent." : `${who}${days} of ${MIN_PAPER_DAYS} paper days, ${expiryCycles} of ${MIN_EXPIRY_CYCLES} settled expiry cycle.`;
-  return result("G6", "Paper history", pass, detail, `Keep the agent on paper for at least ${MIN_PAPER_DAYS} days and through one expiry settlement. This cannot be sped up.`);
+  const detail = launchedAt === null ? "No launched Paper Agent." : `${who}${days} of ${MIN_PAPER_DAYS} paper days, ${expiryCycles} of ${MIN_EXPIRY_CYCLES} settled expiry cycle.`;
+  const evidence = (input.paper.candidates ?? []).map((candidate) => {
+    if (!candidate.launchedAt) return `${candidate.label} (${candidate.kind === "house" ? "House" : "yours"}): not launched.`;
+    const elapsed = Math.floor((input.now.getTime() - candidate.launchedAt.getTime()) / 86_400_000);
+    const eligible = new Date(candidate.launchedAt.getTime() + MIN_PAPER_DAYS * 86_400_000);
+    return `${candidate.label} (${candidate.kind === "house" ? "House" : "yours"}): launched ${day(candidate.launchedAt)}, ${elapsed} of ${MIN_PAPER_DAYS} days, ${candidate.expiryCycles} settled expiries, earliest eligible ${day(eligible)}.`;
+  });
+  return result("G6", "Paper history", pass, detail, `Keep the agent on paper for at least ${MIN_PAPER_DAYS} days and through one expiry settlement. This cannot be sped up.`, evidence);
 }
 
 function evaluateG7(input: GateInput): GateResult {
   const ack = input.acknowledgement;
   const needed = RISK_ACK_STATEMENTS.map((statement) => statement.id);
   const ok = ack !== null && ack.version === RISK_ACK_VERSION && needed.every((id) => ack.statementIds.includes(id));
-  return result("G7", "Risk acknowledgement", ok, ok ? `Acknowledged on ${ack.acceptedAt.toISOString().slice(0, 10)}.` : ack ? "The acknowledgement is for an older version or is incomplete." : "The three risk statements have not been acknowledged.", "Tick all three risk statements on the Enable live screen.");
+  return result("G7", "Risk acknowledgement", ok, ok ? `Acknowledged on ${ack.acceptedAt.toISOString().slice(0, 10)}.` : ack ? "The acknowledgement is for an older version or is incomplete." : "The three risk statements have not been acknowledged.", "Tick all three risk statements on the Enable live screen.", ack ? [`Acknowledgement version ${ack.version}, recorded ${ack.acceptedAt.toISOString()}.`] : []);
 }
 
 export function evaluateLiveGates(input: GateInput): GateReport {
@@ -134,16 +158,4 @@ export function readGateEnv(env: Record<string, string | undefined>) {
     blockedCountries: [...new Set([...DEFAULT_BLOCKED_COUNTRIES, ...extra])],
     ownerSignoffRef: env.LIVE_VENUE_SIGNOFF_REF?.trim() || null,
   };
-}
-
-/**
- * Country from ONE operator-named header (LIVE_GEO_HEADER, e.g. `cf-ipcountry`). A client can send any header, so
- * a country header is only trustworthy when the operator's edge overwrites it. With no header configured this
- * returns null and G5 stays closed; it never guesses from a header it was not told to trust.
- */
-export function countryFromHeaders(headers: Headers, env: Record<string, string | undefined>): string | null {
-  const name = env.LIVE_GEO_HEADER?.trim();
-  if (!name) return null;
-  const code = headers.get(name)?.trim().toUpperCase() ?? "";
-  return /^[A-Z]{2}$/.test(code) ? code : null;
 }

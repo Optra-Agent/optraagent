@@ -10,7 +10,7 @@ vi.mock("../../components/app/AuthSessionProvider", () => ({ useAuthSession: () 
 
 import { LiveGatesPanel } from "../../components/app/tape/LiveGatesPanel";
 
-const gate = (id: string, title: string, pass: boolean, detail: string, remediation: string | null = pass ? null : `fix ${id}`) => ({ id, title, pass, detail, remediation });
+const gate = (id: string, title: string, pass: boolean, detail: string, remediation: string | null = pass ? null : `fix ${id}`, evidence: string[] = []) => ({ id, title, pass, detail, remediation, evidence });
 const STATEMENTS = [{ id: "total-loss", text: "A long option can lose 100% of the premium paid." }, { id: "covered-call-cap", text: "A covered call gives up the upside above its strike." }, { id: "not-the-stock", text: "A synthetic option is not the stock." }];
 const body = (over: Record<string, unknown> = {}) => ({
   allPass: false, canEnableLive: false,
@@ -30,8 +30,8 @@ describe("Enable live panel", () => {
     fetchMock.mockResolvedValue(Response.json(body()));
     render(createElement(LiveGatesPanel));
     expect(await screen.findByText("0 of 7 gates pass")).toBeTruthy();
-    for (const id of ["G1", "G2", "G3", "G4", "G5", "G6", "G7"]) expect(screen.getByText(new RegExp(`^${id} ·`))).toBeTruthy();
-    expect(screen.getByText(/To fix: fix G6/)).toBeTruthy();
+    for (const title of ["Venue verified", "Custody ready", "Global kill switch", "Wallet allowlist", "Jurisdiction", "Paper history", "Risk acknowledgement"]) expect(screen.getByRole("heading", { name: new RegExp(`^G[1-7] ${title}$`) })).toBeTruthy();
+    expect(screen.getByText("fix G6")).toBeTruthy();
     expect(screen.getByText("Live trading is not open yet. Your agent keeps running on paper.", { selector: "p" })).toBeTruthy();
     expect((screen.getByRole("button", { name: /Enable live \(every gate must pass\)/ }) as HTMLButtonElement).disabled).toBe(true);
     expect(screen.getByText(/V1–V12: 2 verified, 5 partial, 3 open, 1 blocked/)).toBeTruthy();

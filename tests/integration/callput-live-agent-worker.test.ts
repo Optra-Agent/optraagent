@@ -23,6 +23,8 @@ import {
 } from "../../lib/venue/callput-live-agent-store";
 import { NotBroadcastError, runLiveAgentTick, type LiveAgentSubmitter } from "../../lib/venue/callput-live-agent-worker";
 import { runLiveAgentSchedule } from "../../lib/venue/callput-live-agent-scheduler";
+import { createPaperDecisionSource } from "../../lib/venue/callput-live-agent-signal";
+import { agents, paperDecisions } from "../../db/schema";
 import { createLiveAgentHandlers } from "../../lib/venue/callput-live-agent-handlers";
 
 const WALLET = "0x000000000000000000000000000000000000dEaD" as Address;
@@ -123,6 +125,62 @@ describe("CallPut Live Agent worker, scheduler and owner controls", () => {
     expect(await acquireLiveAgentLease(db, ownerId, "someone-else", 1_000, NOW)).toBe(true);
   });
 
+  it("scheduler: a decision becomes exactly one order, and the same decision an hour later is a replay, not a second order", async () => {
+    const { db, ownerId } = await setup();
+    const grant = await armed(db, ownerId);
+    const submitter = countingSubmitter(async () => ({ transactionHash: `0x${"ab".repeat(32)}` as Hex, requestKey: `0x${"cd".repeat(32)}` as Hex }));
+    const decisionSource = async () => ({ decisionId: "decision-1", prepare: async () => plan() });
+    const common = { db, env: ENV, readSnapshots: async () => [], submitter, gates: async () => GATES_PASS, decisionSource };
+    const first = await runLiveAgentSchedule({ ...common, now: NOW, runId: "run-1" });
+    expect(first.results.map((r) => [r.grantId, r.status])).toEqual([[grant.id, "submitted"]]);
+    // Request key is tracked and the chain snapshot says Pending, so the next pass reconciles it and does not halt.
+    const pending = { requestKey: `0x${"cd".repeat(32)}` as Hex, kind: "open" as const, status: "Pending" as const, account: WALLET, underlyingAssetIndex: null, expiry: null, optionTokenId: null, minSize: null, amountIn: null, minOutWhenSwap: null, size: null, minAmountOut: null, sizeOut: null, amountOut: null, executionPrice: null, submittedAt: BigInt(Math.floor((NOW.getTime() + 3_600_000) / 1000) - 30), processedAt: null, nativeTokenHandling: null };
+    const later = await runLiveAgentSchedule({ ...common, readSnapshots: async () => [pending], now: new Date(NOW.getTime() + 3_600_000), runId: "run-2" });
+    expect(later.results[0]?.status).toBe("replayed");
+    expect(submitter.calls).toBe(1);
+  });
+
+  it("scheduler: a decision source that throws means no decision this tick, never an order", async () => {
+    const { db, ownerId } = await setup();
+    await armed(db, ownerId);
+    const submitter = countingSubmitter(async () => ({ transactionHash: `0x${"ab".repeat(32)}` as Hex }));
+    const ran = await runLiveAgentSchedule({ db, now: NOW, env: ENV, readSnapshots: async () => [], submitter, gates: async () => GATES_PASS, decisionSource: async () => { throw new Error("db down"); } });
+    expect(ran.results[0]?.status).toBe("no-trade");
+    expect(submitter.calls).toBe(0);
+  });
+
+  describe("paper decision source", () => {
+    async function seed(db: DatabaseConnection["db"], ownerId: string, template: string, actions: Array<{ action: string; ageMs: number }>) {
+      const [agent] = await db.insert(agents).values({ ownerId, name: "Seeded", templateId: template, status: "running", recipe: { underlyingSymbol: "NVDA" } as never, recipeHash: `sha256:${"2".repeat(64)}`, launchedAt: NOW }).returning({ id: agents.id });
+      for (const [index, entry] of actions.entries()) {
+        await db.insert(paperDecisions).values({ id: `d-${index}-${agent!.id}`, agentId: agent!.id, tickId: `t-${index}`, action: entry.action, reason: "test", hookResults: [], snapshotSource: "test", recipeHash: `sha256:${"2".repeat(64)}`, createdAt: new Date(NOW.getTime() - entry.ageMs) });
+      }
+      return agent!.id;
+    }
+
+    it("is inert without the owner's approval reference, even when a mappable decision exists", async () => {
+      const { db, ownerId } = await setup();
+      const agentId = await seed(db, ownerId, "protective_put", [{ action: "open", ageMs: 60_000 }]);
+      const grant = await armed(db, ownerId, { agentId });
+      const source = (env: Record<string, string>) => createPaperDecisionSource({ db, client: {} as never, env });
+      expect(await source({})(({ ownerId, agentId, grantId: grant.id }), NOW)).toBeNull();
+      expect(await source({ LIVE_MAPPING_APPROVAL_REF: "  " })(({ ownerId, agentId, grantId: grant.id }), NOW)).toBeNull();
+      const found = await source({ LIVE_MAPPING_APPROVAL_REF: "owner-2026-12-01" })({ ownerId, agentId, grantId: grant.id }, NOW);
+      expect(found?.decisionId).toContain(`d-0-${agentId}`);
+    });
+
+    it("ignores stale, non-open and unmappable decisions", async () => {
+      const { db, ownerId } = await setup();
+      const env = { LIVE_MAPPING_APPROVAL_REF: "owner-ref" };
+      const stale = await seed(db, ownerId, "protective_put", [{ action: "open", ageMs: 3 * 3_600_000 }]);
+      const hold = await seed(db, ownerId, "protective_put", [{ action: "hold", ageMs: 60_000 }, { action: "close", ageMs: 30_000 }]);
+      const covered = await seed(db, ownerId, "covered_call", [{ action: "open", ageMs: 60_000 }]);
+      const grant = await armed(db, ownerId, { agentId: stale });
+      const source = createPaperDecisionSource({ db, client: {} as never, env });
+      for (const agentId of [stale, hold, covered]) expect(await source({ ownerId, agentId, grantId: grant.id }, NOW)).toBeNull();
+    });
+  });
+
   it("allows one live agent per owner: a second agent's grant cannot be activated while the first is active", async () => {
     const { db, ownerId } = await setup();
     await armed(db, ownerId);
@@ -139,7 +197,7 @@ describe("CallPut Live Agent worker, scheduler and owner controls", () => {
     const submitter = countingSubmitter(async () => ({ transactionHash: `0x${"ab".repeat(32)}` as Hex }));
     let planAsked = 0;
     const preparePlan = async () => { planAsked += 1; return plan(); };
-    const failing = { allPass: false, evaluatedAt: NOW.toISOString(), gates: [{ id: "G6" as const, title: "Paper history", pass: false, detail: "0 of 7 paper days", remediation: "wait" }] };
+    const failing = { allPass: false, evaluatedAt: NOW.toISOString(), gates: [{ id: "G6" as const, title: "Paper history", pass: false, detail: "0 of 7 paper days", remediation: "wait", evidence: [] }] };
     const closed = await tick(db, ownerId, grant.id, { preparePlan, submitter, gates: async () => failing });
     expect(closed.status).toBe("gated");
     expect(closed.detail).toContain("G6");
@@ -345,7 +403,7 @@ describe("CallPut Live Agent worker, scheduler and owner controls", () => {
     it("reports the live CallPut account gates for the signed-in wallet and degrades to unavailable instead of failing the page", async () => {
       const { db, ownerId } = await setup();
       const base = { db, readSession: async () => session(ownerId, WALLET), now: () => NOW, env: {} };
-      const gates = { openToAll: false, safeMode: true, ownerCanOpen: false, ownerAccountCount: 0, accountUsable: false };
+      const gates = { openToAll: false, safeMode: true, account: "0x6b565373726fAA9217B07E067A28Ca81952fB9b3" as Address, accountCreated: false, accountRegistered: false, accountAllowed: false, accountCanOpen: false, ownerAccountCount: 0, accountUsable: false };
       expect((await (await createLiveAgentHandlers(base).status(req("GET"))).json()).accountGates).toEqual({ status: "not-configured" });
       let asked = "";
       const ok = await (await createLiveAgentHandlers({ ...base, readAccountGates: async (owner) => { asked = owner; return gates; } }).status(req("GET"))).json();

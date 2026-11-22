@@ -1,13 +1,13 @@
 /**
  * Database-backed inputs for the live gates. Reads only; the one write is the owner's own G7 acknowledgement.
  */
-import { and, eq } from "drizzle-orm";
+import { and, eq, or } from "drizzle-orm";
 import { z } from "zod";
 import { agents, liveAgentGrants, liveRiskAcknowledgements, paperAccounts } from "../../db/schema";
 import type { AppDatabase } from "../db/client";
 import type { AutonomyEvidence } from "../venue/callput-live-agent-guard";
 import { getLiveAgentGrant, type LiveAgentGrantRecord } from "../venue/callput-live-agent-store";
-import { evaluateLiveGates, readGateEnv, RISK_ACK_STATEMENTS, RISK_ACK_VERSION, type GateInput, type GateReport } from "./gates";
+import { evaluateLiveGates, readGateEnv, RISK_ACK_STATEMENTS, RISK_ACK_VERSION, type GateInput, type GateReport, type PaperCandidate } from "./gates";
 import { CALLPUT_VENUE_CHECKLIST } from "./venue-checklist";
 
 const numberOf = (value: unknown): number => (typeof value === "number" && Number.isFinite(value) ? value : 0);
@@ -20,20 +20,27 @@ const better = (a: GateInput["paper"], b: GateInput["paper"]): boolean => {
   return a.launchedAt.getTime() < b.launchedAt.getTime();
 };
 
-/** Best paper history among the owner's agents, or for one named agent (a UUID or a house key). */
+/**
+ * Paper history for G6. Without a named agent the candidates are the owner's own agents AND the OPTRA House Agents,
+ * because the House Agents are the ones PM section 13.3 says may go live and they are what the Agents page shows as
+ * running. With a named agent (a UUID or a house key) only that agent counts. Dates come from `agents.launchedAt` and
+ * settlements from the paper account counters; nothing here can be set by the owner.
+ */
 export async function loadPaperHistory(db: AppDatabase, ownerId: string, agentRef?: string): Promise<GateInput["paper"]> {
   const isUuid = z.uuid().safeParse(agentRef).success;
   const where = agentRef
     ? isUuid ? eq(agents.id, agentRef) : eq(agents.houseKey, agentRef)
-    : eq(agents.ownerId, ownerId);
-  const rows = await db.select({ name: agents.name, launchedAt: agents.launchedAt, status: agents.status, meta: paperAccounts.meta })
-    .from(agents).leftJoin(paperAccounts, eq(paperAccounts.agentId, agents.id)).where(and(where, agentRef ? undefined : eq(agents.kind, "user")));
-  let best: GateInput["paper"] = { launchedAt: null, expiryCycles: 0, agentLabel: null };
-  for (const row of rows) {
-    if (!row.launchedAt) continue;
+    : or(and(eq(agents.ownerId, ownerId), eq(agents.kind, "user")), eq(agents.kind, "house"));
+  const rows = await db.select({ name: agents.name, kind: agents.kind, launchedAt: agents.launchedAt, meta: paperAccounts.meta })
+    .from(agents).leftJoin(paperAccounts, eq(paperAccounts.agentId, agents.id)).where(where);
+  const candidates: PaperCandidate[] = rows.map((row) => {
     const meta = (row.meta ?? {}) as Record<string, unknown>;
-    const candidate = { launchedAt: row.launchedAt, expiryCycles: numberOf(meta.settledItm) + numberOf(meta.settledOtm), agentLabel: row.name };
-    if (better(candidate, best)) best = candidate;
+    return { label: row.name, kind: row.kind === "house" ? "house" : "user", launchedAt: row.launchedAt, expiryCycles: numberOf(meta.settledItm) + numberOf(meta.settledOtm) };
+  });
+  let best: GateInput["paper"] = { launchedAt: null, expiryCycles: 0, agentLabel: null, candidates };
+  for (const candidate of candidates) {
+    if (!candidate.launchedAt) continue;
+    if (better({ ...candidate, agentLabel: candidate.label }, best)) best = { launchedAt: candidate.launchedAt, expiryCycles: candidate.expiryCycles, agentLabel: candidate.label, candidates };
   }
   return best;
 }
@@ -69,6 +76,10 @@ export type LoadGatesOptions = {
   env: Record<string, string | undefined>;
   grantId?: string;
   agentRef?: string;
+  /** How `country` was obtained, for the evidence line. */
+  geoSource?: GateInput["geoSource"];
+  /** Live CallPut account-factory read for this wallet, when the caller has one. */
+  accountGates?: GateInput["accountGates"];
 };
 
 /** Loads every gate input and evaluates G1–G7. Any read failure propagates; callers must treat that as "not allowed". */
@@ -85,6 +96,8 @@ export async function loadLiveGateReport(options: LoadGatesOptions): Promise<Gat
     globalSwitchOn: operator.globalSwitchOn,
     wallet: { address: options.walletAddress ?? grant?.ownerAddress ?? null, allowlist: operator.allowlist },
     country: options.country,
+    geoSource: options.geoSource ?? null,
+    accountGates: options.accountGates ?? null,
     blockedCountries: operator.blockedCountries,
     paper,
     acknowledgement,

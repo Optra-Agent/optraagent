@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { BETA_CAPS, countryFromHeaders, evaluateLiveGates, readGateEnv, RISK_ACK_STATEMENTS, RISK_ACK_VERSION, type GateInput } from "../../lib/live/gates";
+import { BETA_CAPS, evaluateLiveGates, readGateEnv, RISK_ACK_STATEMENTS, RISK_ACK_VERSION, type GateInput } from "../../lib/live/gates";
 import { CALLPUT_VENUE_CHECKLIST, summarizeVenueChecklist } from "../../lib/live/venue-checklist";
 
 const NOW = new Date("2026-12-01T00:00:00.000Z");
@@ -86,15 +86,28 @@ describe("PM live gates G1–G7", () => {
     for (const gate of report.gates) expect(gate.remediation === null).toBe(gate.pass);
   });
 
-  it("reads operator settings fail-closed and trusts a country header only when the operator names one", () => {
+  it("reads operator settings fail-closed", () => {
     expect(readGateEnv({}).globalSwitchOn).toBe(false);
     expect(readGateEnv({ LIVE_TRADING_ENABLED: "true" }).globalSwitchOn).toBe(true);
     expect(readGateEnv({ LIVE_TRADING_ENABLED: "true", LIVE_AGENT_KILL_SWITCH: "true" }).globalSwitchOn).toBe(false);
     expect(readGateEnv({ LIVE_GEO_EXTRA_BLOCKED: "gb, ca" }).blockedCountries).toEqual(expect.arrayContaining(["US", "GB", "CA"]));
-    const headers = new Headers({ "cf-ipcountry": "ID", "x-vercel-ip-country": "ID" });
-    expect(countryFromHeaders(headers, {})).toBeNull();
-    expect(countryFromHeaders(headers, { LIVE_GEO_HEADER: "cf-ipcountry" })).toBe("ID");
-    expect(countryFromHeaders(new Headers({ "cf-ipcountry": "Indonesia" }), { LIVE_GEO_HEADER: "cf-ipcountry" })).toBeNull();
+  });
+
+  it("attaches factual evidence to every gate, including per-agent Paper history and the live account-factory read", () => {
+    const report = evaluateLiveGates({
+      ...green(), geoSource: "ip-lookup",
+      accountGates: { openToAll: false, safeMode: true, account: "0x6b565373726fAA9217B07E067A28Ca81952fB9b3", accountCreated: false, accountRegistered: false, accountAllowed: false, accountCanOpen: false, ownerAccountCount: 0, accountUsable: false },
+      paper: { launchedAt: new Date("2026-11-29T00:00:00.000Z"), expiryCycles: 0, agentLabel: "Protective Put NVDA", candidates: [{ label: "Protective Put NVDA", kind: "house", launchedAt: new Date("2026-11-29T00:00:00.000Z"), expiryCycles: 0 }, { label: "Mine", kind: "user", launchedAt: null, expiryCycles: 0 }] },
+    });
+    const by = Object.fromEntries(report.gates.map((gate) => [gate.id, gate]));
+    expect(by.G1!.evidence).toHaveLength(12);
+    expect(by.G2!.evidence[0]).toContain("safe mode on, open to all no");
+    expect(by.G2!.pass).toBe(false);
+    expect(by.G2!.detail).toContain("factory would refuse an open today: CallPut's factory is in safe mode");
+    expect(by.G5!.evidence.join(" ")).toContain("Country source: ip-lookup");
+    expect(by.G6!.evidence[0]).toContain("Protective Put NVDA (House): launched 2026-11-29, 2 of 7 days, 0 settled expiries, earliest eligible 2026-12-06");
+    expect(by.G6!.evidence[1]).toContain("Mine (yours): not launched");
+    expect(by.G7!.evidence[0]).toContain(RISK_ACK_VERSION);
   });
 
   it("keeps the engine's own hard caps at or below the PM beta caps", async () => {
