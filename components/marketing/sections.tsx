@@ -147,8 +147,8 @@ function ExecutionModes() {
         <Link className={cn(buttonVariants())} href="/agents">Launch an agent</Link>
       </article>
       <article className="xm-card" data-mode="live" style={at(1)}>
-        <header><h3>Manual CallPut</h3><Chip tone="neutral">Signing disabled</Chip></header>
-        <p>Direct-wallet CallPut preparation and review are implemented for opens, closes, and expiry settlement. Signing is disabled by default. OPTRA has not verified an executed CallPut order.</p>
+        <header><h3>Manual CallPut</h3><Chip tone="neutral">Wallet-signed</Chip></header>
+        <p>Direct-wallet CallPut spread orders are quoted, reviewed and signed in your own wallet, one transaction at a time. Close and settle signing are disabled. OPTRA has not verified an executed CallPut order.</p>
         <p><strong>Autonomous agents</strong> <Chip tone="ember">Unavailable</Chip></p>
         <p>OPTRA agents do not submit CallPut requests. No owner-specific automation grant or connected order worker exists.</p>
         <p>Before agent-initiated orders:</p>

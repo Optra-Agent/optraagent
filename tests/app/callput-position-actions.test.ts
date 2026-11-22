@@ -59,6 +59,7 @@ function settlementLog() {
 async function loadActions(liveEnabled: boolean) {
   vi.resetModules();
   vi.stubEnv("NEXT_PUBLIC_CALLPUT_LIVE_ORDERS", liveEnabled ? "true" : "false");
+  vi.stubEnv("NEXT_PUBLIC_CALLPUT_POSITION_ACTIONS", liveEnabled ? "true" : "false");
   return (await import("../../components/app/tape/CallPutPositionActions")).CallPutPositionActions;
 }
 

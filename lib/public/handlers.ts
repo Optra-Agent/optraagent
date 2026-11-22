@@ -182,13 +182,13 @@ export function createPublicHandlers(options: PublicHandlerOptions = {}) {
           {
             id: "live_execution",
             status: "disabled",
-            statement: "This build has no real-money execution path enabled.",
+            statement: "No OPTRA agent, server or scheduler can place a real-money order. The only real-money path is the wallet-signed CallPut open-spread flow on Tape, where the connected owner confirms every transaction in their own wallet; close and settle signing are disabled.",
             evidencePath: "/api/public/v1/verify",
           },
           {
             id: "v4_claim_level",
             status: "verified",
-            statement: "V4 claim level is L0; the product does not claim deployed or onchain v4 hooks.",
+            statement: "V4 claim level is L0. One unaudited, uninitialized OptraGuardHook is deployed on Robinhood Chain Mainnet (address on the Verify page); it has no pool, holds no funds and is not part of options execution, so the product claims no working onchain v4 hook.",
             evidencePath: "/api/public/v1/verify",
           },
         ],

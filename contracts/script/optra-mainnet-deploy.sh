@@ -9,15 +9,15 @@ readonly CONTRACTS_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 mode="${1:-}"
 output_path="${2:-}"
 
-if [[ "$mode" != "--estimate" && "$mode" != "--prepare" && "$mode" != "--broadcast" ]]; then
-  printf '%s\n' 'Usage: optra-mainnet-deploy.sh --estimate <report.json> | --prepare <approval-packet.json> | --broadcast <approval-packet.json>' >&2
+if [[ "$mode" != "--estimate" && "$mode" != "--freeze" && "$mode" != "--prepare" && "$mode" != "--broadcast" && "$mode" != "--verify" ]]; then
+  printf '%s\n' 'Usage: optra-mainnet-deploy.sh --estimate <report.json> | --freeze <candidate.json> | --prepare <approval-packet.json> | --verify <approval-packet.json> | --broadcast <approval-packet.json>' >&2
   exit 2
 fi
 if [[ -z "$output_path" ]]; then
   printf '%s\n' 'BLOCKED: provide a new output path; existing files are never overwritten.' >&2
   exit 2
 fi
-if [[ "$mode" != "--broadcast" && -e "$output_path" ]]; then
+if [[ "$mode" != "--broadcast" && "$mode" != "--verify" && -e "$output_path" ]]; then
   printf 'BLOCKED: refusing to overwrite existing file: %s\n' "$output_path" >&2
   exit 2
 fi
@@ -30,7 +30,7 @@ if [[ -z "$rpc_url" ]]; then
 fi
 rpc_host="$(python3 -c 'from urllib.parse import urlparse; import sys; print(urlparse(sys.argv[1]).hostname or "invalid-host")' "$rpc_url")"
 [[ "$rpc_host" != "invalid-host" ]] || { printf '%s\n' 'BLOCKED: OPTRA_MAINNET_RPC_URL is not a valid URL.' >&2; exit 2; }
-if [[ "$mode" == "--estimate" ]]; then
+if [[ "$mode" == "--estimate" || "$mode" == "--freeze" ]]; then
   "$SCRIPT_DIR/optra-mainnet-preflight.sh" --estimate
 else
   "$SCRIPT_DIR/optra-mainnet-preflight.sh" --strict
@@ -71,22 +71,28 @@ fields = [
     packet["build"]["sourceCommit"], packet["build"]["sourceSha256"], packet["build"]["foundryConfigSha256"],
     packet["deployment"]["create2Salt"], packet["deployment"]["initCodeHash"],
     packet["deployment"]["constructorArgumentsHex"], packet["configuration"]["poolManager"],
+    packet["build"].get("contractsTreeSha", ""),
 ]
 print("\t".join(fields))
 PY
 }
 
-if [[ "$mode" == "--broadcast" ]]; then
+if [[ "$mode" == "--broadcast" || "$mode" == "--verify" ]]; then
   [[ -f "$output_path" ]] || { printf 'BLOCKED: approval packet does not exist: %s\n' "$output_path" >&2; exit 2; }
   approval_ref="${OPTRA_MAINNET_FINAL_APPROVAL_REF:-}"
   approved_hash="${OPTRA_MAINNET_APPROVED_PACKET_SHA256:-}"
   account="${OPTRA_MAINNET_SIGNER_ACCOUNT:-}"
-  [[ -n "$approval_ref" && -n "$approved_hash" && -n "$account" ]] || {
+  [[ "$mode" == "--verify" || ( -n "$approval_ref" && -n "$approved_hash" && -n "$account" ) ]] || {
     printf '%s\n' 'BLOCKED: --broadcast requires OPTRA_MAINNET_FINAL_APPROVAL_REF, OPTRA_MAINNET_APPROVED_PACKET_SHA256, and OPTRA_MAINNET_SIGNER_ACCOUNT.' >&2
     exit 2
   }
   packet_fields="$(approval_packet_fields "$output_path")"
-  IFS=$'\t' read -r packet_chain packet_from packet_to packet_data packet_nonce packet_gas packet_max_fee packet_priority packet_hook packet_hash packet_source_commit packet_source_sha packet_foundry_sha packet_salt packet_init_hash packet_constructor_args packet_manager <<< "$packet_fields"
+  IFS=$'\t' read -r packet_chain packet_from packet_to packet_data packet_nonce packet_gas packet_max_fee packet_priority packet_hook packet_hash packet_source_commit packet_source_sha packet_foundry_sha packet_salt packet_init_hash packet_constructor_args packet_manager packet_contracts_tree <<< "$packet_fields"
+  if [[ "$mode" == "--verify" ]]; then
+    # Read-only rehearsal of every broadcast check. It is not an approval and never signs or sends.
+    approval_ref="${approval_ref:-verify-only-record}"
+    approved_hash="${approved_hash:-$packet_hash}"
+  fi
   actual_hash="$(python3 - "$output_path" <<'PY'
 import hashlib, json, sys
 with open(sys.argv[1], encoding="utf-8") as f:
@@ -120,9 +126,15 @@ import hashlib, pathlib, sys
 print(hashlib.sha256(pathlib.Path(sys.argv[1]).read_bytes()).hexdigest())
 PY
 )"
-  current_source_commit="$(git -C "$CONTRACTS_DIR" rev-parse HEAD)"
-  [[ "$packet_source_commit" == "$current_source_commit" && "$packet_source_sha" == "$current_source_sha" && "$packet_foundry_sha" == "$current_foundry_sha" ]] || {
-    printf '%s\n' 'BLOCKED: source revision or Foundry settings changed after packet preparation; prepare and review a new packet.' >&2
+  # The packet binds the exact contracts/ tree (source, tests, scripts, Foundry settings), not the whole repository
+  # commit, so unrelated commits do not invalidate an approved packet while any contracts/ change does.
+  current_contracts_tree="$(git -C "$CONTRACTS_DIR" rev-parse 'HEAD:./')"
+  [[ -z "$(git -C "$CONTRACTS_DIR" status --porcelain --untracked-files=no -- .)" ]] || {
+    printf '%s\n' 'BLOCKED: contracts/ has uncommitted changes; commit them and prepare a new packet.' >&2
+    exit 2
+  }
+  [[ -n "$packet_contracts_tree" && "$packet_contracts_tree" == "$current_contracts_tree" && "$packet_source_sha" == "$current_source_sha" && "$packet_foundry_sha" == "$current_foundry_sha" ]] || {
+    printf '%s\n' 'BLOCKED: contracts/ tree, hook source or Foundry settings changed after packet preparation; prepare and review a new packet.' >&2
     exit 2
   }
   python3 - "$output_path" "$OPTRA_MAINNET_DEPLOYER" "$OPTRA_MAINNET_ADMIN_SAFE" "$OPTRA_MAINNET_KEEPER" "$OPTRA_MAINNET_POOL_CREATOR" "$OPTRA_MAINNET_UNDERLYING" "$OPTRA_MAINNET_QUOTE" "$OPTRA_MAINNET_INITIAL_SQRT_PRICE_X96" "$OPTRA_MAINNET_POOL_FEE" "$OPTRA_MAINNET_TICK_SPACING" "$OPTRA_MAINNET_MAX_POLICY_AGE" <<'PY'
@@ -189,10 +201,12 @@ data, salt, init_code = sys.argv[1:]
 if data.lower() != ("0x" + salt[2:] + init_code[2:]).lower():
     raise SystemExit("BLOCKED: transaction calldata differs from approved CREATE2 salt + current init code")
 PY
-  signer="$(cast wallet address --account "$account")"
-  signer_lower="$(printf '%s' "$signer" | tr '[:upper:]' '[:lower:]')"
-  from_lower="$(printf '%s' "$packet_from" | tr '[:upper:]' '[:lower:]')"
-  [[ "$signer_lower" == "$from_lower" ]] || { printf '%s\n' 'BLOCKED: selected keystore address differs from the approved packet signer.' >&2; exit 2; }
+  if [[ "$mode" == "--broadcast" ]]; then
+    signer="$(cast wallet address --account "$account")"
+    signer_lower="$(printf '%s' "$signer" | tr '[:upper:]' '[:lower:]')"
+    from_lower="$(printf '%s' "$packet_from" | tr '[:upper:]' '[:lower:]')"
+    [[ "$signer_lower" == "$from_lower" ]] || { printf '%s\n' 'BLOCKED: selected keystore address differs from the approved packet signer.' >&2; exit 2; }
+  fi
   current_chain="$(rpc chain-id)"
   current_nonce="$(rpc nonce "$packet_from")"
   [[ "$current_chain" == "$packet_chain" && "$current_nonce" == "$packet_nonce" ]] || {
@@ -208,6 +222,10 @@ if balance < required:
     raise SystemExit(f"BLOCKED: signer balance {balance} wei is below the approved max-cost bound {required} wei")
 print(f"PASS: signer balance covers approved maximum transaction cost ({required} wei)")
 PY
+  if [[ "$mode" == "--verify" ]]; then
+    printf 'PASS: packet %s satisfies every broadcast check. Nothing was signed or sent.\n' "$packet_hash"
+    exit 0
+  fi
   printf 'Broadcasting only approved packet %s via the local Foundry keystore.\n' "$packet_hash"
   rpc send "$packet_to" --account "$account" --chain "$packet_chain" --nonce "$packet_nonce" --gas-limit "$packet_gas" --gas-price "$packet_max_fee" --priority-gas-price "$packet_priority" --data "$packet_data" --async
   exit 0
@@ -240,6 +258,18 @@ creation_bytecode="$(cd "$CONTRACTS_DIR" && forge inspect 'src/OptraGuardHook.so
 [[ "$creation_bytecode" =~ ^0x[0-9a-fA-F]+$ ]] || { printf '%s\n' 'FAIL: unable to read compiled OptraGuardHook creation bytecode.' >&2; exit 1; }
 block_number="$(rpc block-number)"
 source_commit="$(git -C "$CONTRACTS_DIR" rev-parse HEAD)"
+contracts_tree="$(git -C "$CONTRACTS_DIR" rev-parse 'HEAD:./')"
+if [[ "$mode" == "--prepare" ]]; then
+  [[ -z "$(git -C "$CONTRACTS_DIR" status --porcelain --untracked-files=no -- .)" ]] || { printf '%s\n' 'BLOCKED: contracts/ has uncommitted changes; commit them before preparing a packet.' >&2; exit 2; }
+  export OPTRA_CONTRACTS_TREE_SHA="$contracts_tree"
+  if [[ -n "${OPTRA_MAINNET_RISK_ACCEPTANCE_REF:-}" ]]; then
+    # The strict preflight already validated the acceptance document; waived gates are recorded, never invented.
+    for waived_name in OPTRA_MAINNET_ASSET_APPROVAL_REF OPTRA_MAINNET_JURISDICTION_APPROVAL_REF OPTRA_MAINNET_KEEPER_RUNBOOK_REF OPTRA_MAINNET_AUDIT_REPORT_REF; do
+      [[ -n "${!waived_name:-}" ]] || export "$waived_name=WAIVED by owner deployment-only risk acceptance ${OPTRA_MAINNET_RISK_ACCEPTANCE_REF}"
+    done
+    [[ -n "${OPTRA_MAINNET_AUDIT_REPORT_SHA256:-}" ]] || export OPTRA_MAINNET_AUDIT_REPORT_SHA256=waived
+  fi
+fi
 source_sha256="$(python3 - "$CONTRACTS_DIR/src/OptraGuardHook.sol" <<'PY'
 import hashlib, pathlib, sys
 print(hashlib.sha256(pathlib.Path(sys.argv[1]).read_bytes()).hexdigest())
@@ -259,7 +289,13 @@ PY
 )"
 init_code_hash="$(cast keccak "$init_code")"
 
-salt_output="$(cast create2 --deployer "$CREATE2_FACTORY" --init-code-hash "$init_code_hash" --ends-with 2080 </dev/null)"
+# OPTRA_MAINNET_CREATE2_SALT pins a previously frozen salt so every later run derives the same address.
+if [[ -n "${OPTRA_MAINNET_CREATE2_SALT:-}" ]]; then
+  [[ "$OPTRA_MAINNET_CREATE2_SALT" =~ ^0x[0-9a-fA-F]{64}$ ]] || { printf '%s\n' 'FAIL: OPTRA_MAINNET_CREATE2_SALT must be a 32-byte hex value.' >&2; exit 1; }
+  salt_output="$(cast create2 --deployer "$CREATE2_FACTORY" --init-code-hash "$init_code_hash" --salt "$OPTRA_MAINNET_CREATE2_SALT" </dev/null)"
+else
+  salt_output="$(cast create2 --deployer "$CREATE2_FACTORY" --init-code-hash "$init_code_hash" --ends-with 2080 </dev/null)"
+fi
 read -r predicted_hook salt < <(python3 - "$salt_output" <<'PY'
 import re, sys
 text = sys.argv[1]
@@ -377,9 +413,20 @@ packet = {
     },
     "build": {
         "sourceCommit": source_commit,
+        "contractsTreeSha": os.environ["OPTRA_CONTRACTS_TREE_SHA"],
         "sourceSha256": source_sha,
         "foundryConfigSha256": foundry_sha,
     },
+    "riskAcceptance": (
+        {
+            "kind": "deployment-only",
+            "reference": os.environ["OPTRA_MAINNET_RISK_ACCEPTANCE_REF"],
+            "documentSha256": os.environ["OPTRA_MAINNET_RISK_ACCEPTANCE_SHA256"].lower(),
+            "waivedGates": ["OPTRA_MAINNET_ASSET_APPROVAL_REF", "OPTRA_MAINNET_JURISDICTION_APPROVAL_REF", "OPTRA_MAINNET_KEEPER_RUNBOOK_REF", "OPTRA_MAINNET_AUDIT_REPORT_REF", "OPTRA_MAINNET_AUDIT_REPORT_SHA256"],
+            "effectiveOnlyOnApprovalOfThisPacketHash": True,
+        }
+        if os.environ.get("OPTRA_MAINNET_RISK_ACCEPTANCE_REF") else None
+    ),
     "createdAtBlock": int(block),
     "rpcHost": rpc_host,
 }
@@ -403,6 +450,82 @@ print(f"approvalSha256={outer['approvalSha256']}")
 print(f"predictedHookAddress={hook}")
 print(f"estimatedGas={estimate}")
 print(f"packet={os.path.abspath(path)}")
+PY
+  exit 0
+fi
+
+if [[ "$mode" == "--freeze" ]]; then
+  for name in OPTRA_MAINNET_GAS_LIMIT OPTRA_MAINNET_MAX_FEE_PER_GAS_WEI OPTRA_MAINNET_MAX_PRIORITY_FEE_PER_GAS_WEI; do
+    [[ -n "${!name:-}" ]] || { printf 'BLOCKED: --freeze requires %s.\n' "$name" >&2; exit 2; }
+  done
+  missing_gate_output="$("$SCRIPT_DIR/optra-mainnet-preflight.sh" --strict 2>&1 || true)"
+  missing_evidence="$(printf '%s\n' "$missing_gate_output" | sed -n 's/^  - \(OPTRA_MAINNET_[A-Za-z0-9_=]*\)$/\1/p')"
+  deployer_balance="$(rpc balance "$deployer")"
+  umask 077
+  mkdir -p "$(dirname "$output_path")"
+  python3 - "$output_path" "$CHAIN_ID_REQUIRED" "$deployer" "$CREATE2_FACTORY" "$factory_data" "$nonce" "$OPTRA_MAINNET_GAS_LIMIT" "$OPTRA_MAINNET_MAX_FEE_PER_GAS_WEI" "$OPTRA_MAINNET_MAX_PRIORITY_FEE_PER_GAS_WEI" "$estimated_gas" "$predicted_hook" "$salt" "$init_code_hash" "$constructor_args" "$admin" "$keeper" "$underlying" "$quote" "$creator" "$initial_sqrt_price" "$pool_fee" "$tick_spacing" "$max_policy_age" "$block_number" "$source_commit" "$source_sha256" "$foundry_config_sha256" "$rpc_host" "$deployer_balance" "$missing_evidence" <<'PY'
+import hashlib, json, os, sys, tempfile
+(
+    path, chain_id, sender, factory, data, nonce, gas_limit, max_fee, priority_fee,
+    estimate, hook, salt, init_hash, constructor_args, admin, keeper, underlying,
+    quote, creator, sqrt_price, fee, spacing, policy_age, block, source_commit,
+    source_sha, foundry_sha, rpc_host, balance, missing,
+) = sys.argv[1:]
+def integer(value): return int(value, 16) if value.lower().startswith("0x") else int(value, 10)
+gas_limit, max_fee, priority_fee, estimate, balance = map(integer, (gas_limit, max_fee, priority_fee, estimate, balance))
+if estimate > gas_limit: raise SystemExit("FAIL: estimated gas exceeds the frozen gas limit")
+ceiling = gas_limit * max_fee
+if balance < ceiling: raise SystemExit("FAIL: deployer balance is below the frozen fee ceiling")
+candidate = {
+    "format": "optra-mainnet-p4-frozen-candidate-v1",
+    "approvalEligible": False,
+    "notice": "Frozen engineering candidate. It is NOT an approval packet: owner evidence is missing, so optra-mainnet-deploy.sh --broadcast refuses it. Nothing was signed or sent.",
+    "chainId": int(chain_id),
+    "scope": "one CREATE2 deployment transaction only; no pool initialization, liquidity provisioning, policy publication, router action, or options execution",
+    "transaction": {
+        "from": sender, "to": factory, "valueWei": "0", "data": data,
+        "calldataSha256": hashlib.sha256(bytes.fromhex(data[2:])).hexdigest(),
+        "nonce": int(nonce), "gasLimit": gas_limit, "maxFeePerGasWei": max_fee,
+        "maxPriorityFeePerGasWei": priority_fee, "estimatedGas": estimate,
+        "feeCeilingWei": ceiling, "expectedCostAtEstimateWei": estimate * max_fee,
+        "deployerBalanceWeiAtFreeze": balance,
+    },
+    "deployment": {
+        "contract": "OptraGuardHook", "predictedHookAddress": hook, "create2Salt": salt,
+        "initCodeHash": init_hash, "constructorArgumentsHex": constructor_args,
+    },
+    "configuration": {
+        "poolManager": "0x8366a39CC670B4001A1121B8F6A443A643e40951", "underlying": underlying,
+        "quote": quote, "poolCreator": creator, "adminSafe": admin, "keeper": keeper,
+        "initialSqrtPriceX96": str(sqrt_price), "poolFee": int(fee), "tickSpacing": int(spacing),
+        "maxPolicyAgeSeconds": int(policy_age),
+    },
+    "build": {"sourceCommit": source_commit, "sourceSha256": source_sha, "foundryConfigSha256": foundry_sha},
+    "evidenceReferences": {name: os.environ[name] for name in sorted(os.environ) if name.startswith("OPTRA_MAINNET_") and (name.endswith("_REF") or name.endswith("_SHA256"))},
+    "missingEvidence": [line for line in missing.splitlines() if line],
+    "createdAtBlock": int(block), "rpcHost": rpc_host,
+}
+canonical = json.dumps(candidate, sort_keys=True, separators=(",", ":")).encode()
+outer = {"candidate": candidate, "candidateSha256": hashlib.sha256(canonical).hexdigest()}
+parent = os.path.dirname(os.path.abspath(path))
+os.makedirs(parent, exist_ok=True)
+fd, temporary = tempfile.mkstemp(prefix=".optra-candidate-", dir=parent, text=True)
+try:
+    with os.fdopen(fd, "w", encoding="utf-8") as f:
+        json.dump(outer, f, indent=2); f.write("\n")
+    os.chmod(temporary, 0o600)
+    os.link(temporary, path)
+    os.unlink(temporary)
+except Exception:
+    try: os.unlink(temporary)
+    except FileNotFoundError: pass
+    raise
+print(f"candidateSha256={outer['candidateSha256']}")
+print(f"calldataSha256={candidate['transaction']['calldataSha256']}")
+print(f"predictedHookAddress={hook}")
+print(f"feeCeilingWei={ceiling}")
+print(f"missingEvidenceCount={len(candidate['missingEvidence'])}")
+print(f"candidate={os.path.abspath(path)}")
 PY
   exit 0
 fi

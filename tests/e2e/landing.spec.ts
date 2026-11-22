@@ -27,7 +27,7 @@ test("landing capability claims match the catalog and roadmap items are not pres
   await expect(proof.getByText("Live execution")).toBeVisible();
   await expect(proof.getByText("Disabled", { exact: true })).toBeVisible();
   await expect(proof.getByText("An MCP server and pay-per-call endpoints are planned, not built.", { exact: false })).toBeVisible();
-  await expect(proof.locator('.xm-card[data-mode="live"]').getByText("Signing disabled", { exact: true })).toBeVisible();
+  await expect(proof.locator('.xm-card[data-mode="live"]').getByText("Wallet-signed", { exact: true })).toBeVisible();
   await expect(proof.locator('.xm-card[data-mode="live"]').getByText("Planned", { exact: true })).toHaveCount(0);
   await expect(page.locator("#agents .pn-agents").getByText("Paper ready", { exact: true })).toHaveCount(4);
   await expect(page.locator("#agents .pn-agents").getByText("Preview", { exact: true })).toHaveCount(0);
@@ -318,8 +318,8 @@ test("Paper, manual CallPut, and autonomous execution are represented truthfully
   await expect(modes.getByRole("link", { name: "Launch an agent" })).toHaveAttribute("href", "/agents");
   const restricted = modes.locator('[data-mode="live"]');
   await expect(restricted.getByRole("heading", { name: "Manual CallPut" })).toBeVisible();
-  await expect(restricted.getByText("Signing disabled", { exact: true })).toBeVisible();
-  await expect(restricted.getByText(/CallPut preparation and review are implemented for opens, closes, and expiry settlement/i)).toBeVisible();
+  await expect(restricted.getByText("Wallet-signed", { exact: true })).toBeVisible();
+  await expect(restricted.getByText(/CallPut spread orders are quoted, reviewed and signed in your own wallet/i)).toBeVisible();
   await expect(restricted.getByText(/has not verified an executed CallPut order/i)).toBeVisible();
   await expect(restricted.getByText("Autonomous agents", { exact: true })).toBeVisible();
   await expect(restricted.getByText("Unavailable", { exact: true })).toBeVisible();

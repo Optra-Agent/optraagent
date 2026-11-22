@@ -4,6 +4,10 @@ Status: NO-GO — P4 engineering configuration is selected and real-asset fork-t
 Date: 2026-11-21
 Baseline: owner authorized P4 engineering and confirmed PM scope alignment. This sheet does not authorize signing, broadcasting, pool initialization, liquidity, or live trading.
 
+## Owner configuration decisions recorded 2026-11-21
+
+The Project Owner approved the ETH/USDG, fee 3000, spacing 60, 300-second policy-age configuration, the public Robinhood RPC `https://rpc.mainnet.chain.robinhood.com`, the deployer, keeper and proposed Safe, and acknowledged real Mainnet fees. The record is `docs/evidence/p4/owner-configuration-decisions-20261121.md` (SHA-256 `aa24831c512d0ca37b1d6a4a679196e811604b3bc8b5a53e4fe4933712a2e57e`). It satisfies the provider, PM-scope, pool-route and Mainnet-acknowledgement rows as owner decisions. It is not Safe-owner consent, issuer/legal eligibility, a keeper custody runbook, an independent audit, or a transaction approval; those rows stay open.
+
 ## Scope acknowledgement
 
 `OptraGuardHook` is an experimental one-pool Uniswap v4 spot swap-direction gate. It can gate risk-increasing swaps in a pool initialized with this hook and permit configured-underlying sells. It does not identify options orders or user exposure, close an options position, execute CallPut orders, manage a general portfolio, or move funds. Native ETH is represented by `address(0)` as currency0; quote USDG remains an ERC-20. The proposed deployment transaction creates only the hook; it does not create or initialize a pool.

@@ -122,6 +122,30 @@ for name in "${required_config[@]}"; do
   fi
 done
 
+# Owner-accepted deployment-only risk acceptance. It can waive only the gates named below, never the chain,
+# runtime-fingerprint, address, fork, gas, fee-ceiling, acknowledgement or final packet-approval controls. The
+# document is repository-pinned by SHA-256 and must name every waived gate and the deployment-only scope.
+waived=()
+waivable=(OPTRA_MAINNET_ASSET_APPROVAL_REF OPTRA_MAINNET_JURISDICTION_APPROVAL_REF OPTRA_MAINNET_KEEPER_RUNBOOK_REF OPTRA_MAINNET_AUDIT_REPORT_REF OPTRA_MAINNET_AUDIT_REPORT_SHA256)
+is_waived() {
+  local candidate="$1" item
+  for item in "${waived[@]:-}"; do [[ "$item" == "$candidate" ]] && return 0; done
+  return 1
+}
+if [[ "$mode" == "--strict" && -n "${OPTRA_MAINNET_RISK_ACCEPTANCE_REF:-}" ]]; then
+  acceptance_path="$SCRIPT_DIR/../../${OPTRA_MAINNET_RISK_ACCEPTANCE_REF}"
+  acceptance_sha="${OPTRA_MAINNET_RISK_ACCEPTANCE_SHA256:-}"
+  [[ "$acceptance_sha" =~ ^[0-9a-fA-F]{64}$ && -f "$acceptance_path" ]] || { printf '%s\n' 'FAIL: risk acceptance needs an existing repository file and its 64-hex OPTRA_MAINNET_RISK_ACCEPTANCE_SHA256.' >&2; exit 1; }
+  actual_acceptance_sha="$(python3 -c 'import hashlib,sys; print(hashlib.sha256(open(sys.argv[1],"rb").read()).hexdigest())' "$acceptance_path")"
+  [[ "$actual_acceptance_sha" == "$(lowercase "$acceptance_sha")" ]] || { printf '%s\n' 'FAIL: risk acceptance document hash differs from OPTRA_MAINNET_RISK_ACCEPTANCE_SHA256.' >&2; exit 1; }
+  grep -q 'DEPLOYMENT-ONLY' "$acceptance_path" || { printf '%s\n' 'FAIL: risk acceptance document does not declare the DEPLOYMENT-ONLY scope.' >&2; exit 1; }
+  for name in "${waivable[@]}"; do
+    grep -q "$name" "$acceptance_path" || { printf 'FAIL: risk acceptance document does not name waived gate %s.\n' "$name" >&2; exit 1; }
+    waived+=("$name")
+  done
+  printf 'WAIVED (owner deployment-only risk acceptance %s, sha256 %s): %s\n' "$OPTRA_MAINNET_RISK_ACCEPTANCE_REF" "$actual_acceptance_sha" "${waivable[*]}"
+fi
+
 if [[ "$mode" == "--strict" ]]; then
   required_refs=(
     OPTRA_MAINNET_PROVIDER_APPROVAL_REF
@@ -135,6 +159,7 @@ if [[ "$mode" == "--strict" ]]; then
     OPTRA_MAINNET_AUDIT_REPORT_REF
   )
   for name in "${required_refs[@]}"; do
+    if is_waived "$name"; then continue; fi
     value="${!name:-}"
     normalized="$(lowercase "$value")"
     if [[ -z "$value" || "$normalized" == *pending* || "$normalized" == *unaudited* || "$normalized" == *internal-only* || "$normalized" == none || "$normalized" == n/a ]]; then
@@ -142,6 +167,7 @@ if [[ "$mode" == "--strict" ]]; then
     fi
   done
   for name in OPTRA_MAINNET_AUDIT_REPORT_SHA256 OPTRA_MAINNET_REAL_ASSET_FORK_SIMULATION_SHA256 OPTRA_MAINNET_GAS_REPORT_SHA256; do
+    if is_waived "$name"; then continue; fi
     value="${!name:-}"
     if [[ ! "$value" =~ ^[0-9a-fA-F]{64}$ ]]; then pending+=("$name"); fi
   done

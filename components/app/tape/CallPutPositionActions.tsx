@@ -32,7 +32,7 @@ import {
 } from "@/lib/venue/callput-order-ledger-client";
 import type { CallPutOrderIntentRecord } from "@/lib/venue/callput-order-ledger";
 import { robinhoodMainnet } from "@/lib/chain/robinhood";
-import { CALLPUT_LIVE_ORDERS_ENABLED } from "./CallPutOrderPanel";
+import { CALLPUT_POSITION_ACTIONS_ENABLED } from "./CallPutOrderPanel";
 import { Chip, Panel } from "../ui";
 
 const ACTION_STORAGE_KEY = "optra.callput.robinhood.position-actions.v1";
@@ -446,8 +446,8 @@ export function CallPutPositionActions() {
 
   async function sign() {
     if (!plan || !publicClient || !walletClient || !address || busy.current || pendingAction) return;
-    if (!CALLPUT_LIVE_ORDERS_ENABLED) {
-      setError("Signing is disabled in this build. Nothing was sent.");
+    if (!CALLPUT_POSITION_ACTIONS_ENABLED) {
+      setError("Signing is disabled in this build for close and settle until an opened position has been verified end to end. Nothing was sent.");
       return;
     }
     const walletChainId = (walletClient as unknown as { chain?: { id?: number } }).chain?.id;
@@ -742,10 +742,10 @@ export function CallPutPositionActions() {
               <input type="checkbox" checked={reviewed} onChange={(event) => setReviewed(event.target.checked)} />
               I reviewed this exact transaction and approve it.
             </label>
-            <Button type="button" disabled={!CALLPUT_LIVE_ORDERS_ENABLED || !reviewed || !walletClient || working || Boolean(pendingAction)} onClick={() => void sign()}>
+            <Button type="button" disabled={!CALLPUT_POSITION_ACTIONS_ENABLED || !reviewed || !walletClient || working || Boolean(pendingAction)} onClick={() => void sign()}>
               Sign position transaction
             </Button>
-            {!CALLPUT_LIVE_ORDERS_ENABLED ? <p className="text-xs text-muted-foreground">Signing is disabled in this build. Nothing was sent.</p> : null}
+            {!CALLPUT_POSITION_ACTIONS_ENABLED ? <p className="text-xs text-muted-foreground">Signing is disabled in this build for close and settle until an opened position has been verified end to end. Nothing was sent. Manage open positions in CallPut itself.</p> : null}
           </div> : null}
 
           {message ? <p role="status" className="text-sm text-muted-foreground">{message}</p> : null}

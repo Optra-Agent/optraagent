@@ -11,6 +11,9 @@ RUN bun install --frozen-lockfile
 FROM dependencies AS builder
 COPY . .
 ENV NODE_ENV=production
+# Open-order signing is wallet-confirmed per transaction and was rehearsed on a mainnet fork. Close and settle signing
+# (NEXT_PUBLIC_CALLPUT_POSITION_ACTIONS) stays off until an opened position has been verified end to end.
+ENV NEXT_PUBLIC_CALLPUT_LIVE_ORDERS=true
 RUN bun run build
 
 FROM base AS runtime-dependencies

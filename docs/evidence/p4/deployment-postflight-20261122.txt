@@ -1,0 +1,10 @@
+PASS: receipt status=1 tx=0xdc17732c4568fb66735a7f240a586fbc8a4d513922b1c70d152e2b467a869fc0 gasUsed=1647644
+PASS: sender=0xaa8fdf2f96afc037d50659cfd09fdf3fac060bbf destination=0x4e59b44847b379578588920cA78FbF26c0B4956C nonce=0 calldata/value match approved packet
+PASS: poolManager=0x8366a39CC670B4001A1121B8F6A443A643e40951
+PASS: underlyingToken=0x0000000000000000000000000000000000000000
+PASS: quoteToken=0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168
+PASS: poolCreator=0xf9C76ef996C5cbC73E4E23927D6EecB3295c8d45
+PASS: admin=0xf9C76ef996C5cbC73E4E23927D6EecB3295c8d45
+PASS: keeper=0x23439a41eDC01D58D3aAA0C75E9dFEE0C0196848
+PASS: deployed hook 0x4089d38251fF25936d778C799d5d3AB5658c2080 runtimeSize=7085 runtimeSha256=86e1828b23fc82d70ed7df0c97992f9851063cccc93e8cb72212bf51b6b8693c runtimeKeccak=0x152fcfec4be8caaca32ea621c32b9aafc7bad7d803293e4e0a9321fe58fdc6d7
+PASS: deploy-only postflight complete. No pool initialization, liquidity, keeper policy, or options execution was verified or performed.

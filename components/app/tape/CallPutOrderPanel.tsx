@@ -41,8 +41,13 @@ import { findUnresolvedDuplicate } from "@/lib/venue/callput-order-lifecycle";
 import { formatUtc, shortAddress } from "../format";
 import { Chip, Panel } from "../ui";
 
-/** Off by default. Wallet signing from this panel only exists when the build explicitly enables it. */
+/** Opening a spread from this panel. The Docker image enables it; other builds are preview-only unless they opt in. */
 export const CALLPUT_LIVE_ORDERS_ENABLED = process.env.NEXT_PUBLIC_CALLPUT_LIVE_ORDERS === "true";
+/**
+ * Close and settle signing. Off everywhere by default: those paths cannot be rehearsed without a keeper fill and have
+ * only been unit tested, so they stay disabled until a real opened position has been verified end to end.
+ */
+export const CALLPUT_POSITION_ACTIONS_ENABLED = process.env.NEXT_PUBLIC_CALLPUT_POSITION_ACTIONS === "true";
 const INTENT_STORAGE_KEY = "optra.callput.robinhood.intents.v1";
 const QUOTE_MAX_AGE_MS = 60_000;
 const GAS_QUOTE_MAX_AGE_MS = 30_000;
@@ -640,6 +645,11 @@ export function CallPutOrderPanel() {
       <p className="mb-4 text-sm text-muted-foreground">
         Direct wallet route: your wallet is the account and signs every transaction. CallPut supports two-leg spreads here; single-leg opens, the CallPut Account relay, and automated agent orders are not enabled. Quotes are indicative estimates; the venue keeper sets the executed price.
       </p>
+      {CALLPUT_LIVE_ORDERS_ENABLED ? (
+        <p role="note" className="mb-4 rounded-md border border-[var(--ember-text)] p-3 text-sm">
+          Real money. This opens a CallPut position with your own USDG and a native execution fee that is not assumed refundable. OPTRA&apos;s interface is unaudited, quotes are estimates, and a transaction hash is not a fill: the position exists only after the venue reports it executed and your wallet holds the option token. Closing and settling from OPTRA is disabled for now; manage open positions in CallPut itself.
+        </p>
+      ) : null}
       <WalletNetworkStatus />
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         <div className="grid gap-1.5">

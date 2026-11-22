@@ -6,6 +6,7 @@ import type { PublicClaim, PublicVerification } from "../../../lib/domain/contra
 import { Chip, PageHeader, StateBlock, Panel } from "../ui";
 import type { Tone } from "../ui";
 import { errorText } from "../format";
+import { MAINNET_CHAIN_ID, MAINNET_CONTRACTS, MAINNET_EXTERNAL_CONTRACTS, explorerAddressUrl, explorerTxUrl } from "../../../lib/chain/mainnet-contracts";
 
 const statusLabel: Record<PublicClaim["status"], { label: string; tone: Tone }> = {
   verified: { label: "Verified", tone: "azure" },
@@ -28,8 +29,8 @@ const claimTitle: Record<string, string> = {
 const roadmap = [
   ["AI strategy composition", "Planned", "No AI provider is configured. Rules decide; recipes are built by clicking."],
   ["Community public agents", "Planned", "Only OPTRA's own House Agents are public. A user's agent and its Tape stay private to the wallet that owns them."],
-  ["Live options trading", "Not enabled", "Needs a verified options execution venue, explicit wallet authorization, enforced risk and transaction limits, and a real order lifecycle with settlement records. A wallet-signed CallPut order panel exists, but signing is disabled in this build and no OPTRA agent can submit a real-money order."],
-  ["Onchain Uniswap v4 hooks", "Not deployed", "Hooks are inspired by Uniswap v4. An experimental spot-swap guard exists in the repository and passes local tests. No Optra contract is deployed to Robinhood Testnet or Mainnet, and it is not part of options execution (claim level L0)."],
+  ["Live options trading", "Wallet-signed opens only", "Needs a verified options execution venue, explicit wallet authorization, enforced risk and transaction limits, and a real order lifecycle with settlement records. A wallet-signed CallPut spread order panel can open positions from your own wallet, one confirmed transaction at a time; close and settle signing are disabled, and no OPTRA agent can submit a real-money order."],
+  ["Onchain Uniswap v4 hooks", "Deployed, inactive", "Hooks are inspired by Uniswap v4. One experimental spot-swap guard, OptraGuardHook, is deployed to Robinhood Chain Mainnet (see Mainnet contracts above). It is unaudited, has no pool, holds no funds and is not part of options execution (claim level L0)."],
   ["Listing, Floor, MCP, x402", "Planned", "Roadmap items with no route or service yet."],
 ] as const;
 
@@ -99,6 +100,45 @@ export function VerifyScreen() {
           </Panel>
         </>
       ) : null}
+
+      <Panel aria-label="Mainnet contracts">
+        <div className="panel-head"><h2>Mainnet contracts</h2></div>
+        <p>OPTRA-owned contracts on Robinhood Chain Mainnet (chain {MAINNET_CHAIN_ID}). Deployment only: unaudited, no pool initialized, no funds held. Source verification is a partial match on the explorer; it is not an audit.</p>
+        <ul className="claim-list">
+          {MAINNET_CONTRACTS.map((contract) => (
+            <li key={contract.address} className="claim">
+              <div className="claim-head"><h3>{contract.name}</h3><Chip tone="neutral">Deployed, unaudited</Chip></div>
+              <p>{contract.operationalStatus}</p>
+              <p>Bytecode: {contract.bytecodeStatus} Runtime keccak <span className="mono break-all">{contract.runtimeKeccak}</span></p>
+              <p>Source: {contract.sourceStatus}</p>
+              <p>Ownership and configuration read back from the live contract:</p>
+              <ul>
+                {contract.configuration.map(([label, value]) => (
+                  <li key={label}><span>{label}: </span><span className="mono break-all">{value}</span></li>
+                ))}
+              </ul>
+              <a className="claim-link mono" href={explorerAddressUrl(contract.address)} target="_blank" rel="noreferrer">Contract: {contract.address}</a>
+              <a className="claim-link mono" href={explorerTxUrl(contract.deploymentTx)} target="_blank" rel="noreferrer">Deployment tx: {contract.deploymentTx} (block {contract.block.toLocaleString("en-US")})</a>
+              <span className="claim-link mono">Evidence: {contract.evidencePath}</span>
+            </li>
+          ))}
+        </ul>
+      </Panel>
+
+      <Panel aria-label="External CallPut venue contracts">
+        <div className="panel-head"><h2>External venue contracts (CallPut)</h2></div>
+        <p>Third-party contracts on chain {MAINNET_CHAIN_ID} that OPTRA reads and, for wallet-signed spread orders, sends your transactions to. OPTRA does not own, operate, control or audit them.</p>
+        <ul className="claim-list">
+          {MAINNET_EXTERNAL_CONTRACTS.map((contract) => (
+            <li key={contract.address} className="claim">
+              <div className="claim-head"><h3>{contract.name}</h3><Chip tone="neutral">External</Chip></div>
+              <p>{contract.role}</p>
+              <a className="claim-link mono" href={explorerAddressUrl(contract.address)} target="_blank" rel="noreferrer">{contract.address}</a>
+              {contract.implementation ? <span className="claim-link mono">Implementation: {contract.implementation}</span> : null}
+            </li>
+          ))}
+        </ul>
+      </Panel>
 
       <Panel  aria-label="Not yet shipped">
         <div className="panel-head"><h2>Not shipped yet</h2></div>
