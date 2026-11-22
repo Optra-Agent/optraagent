@@ -169,6 +169,9 @@ test("reduced motion shows every section at full opacity without scrolling", asy
 });
 
 test("the opening plays on every page load, can be skipped, never blocks the page, and does not replay on in-site navigation", async ({ page }) => {
+  // The assertion timeouts below add up to more than the default 30 s cap; software-rendered runners that starve
+  // animation frames use most of them (14 s on a fast run, about 32 s on a slow one).
+  test.setTimeout(90_000);
   await page.goto("/");
   const splash = page.locator(".splash");
   await expect(splash).toHaveAttribute("data-state", /boot|form|cast/, { timeout: 15000 });
