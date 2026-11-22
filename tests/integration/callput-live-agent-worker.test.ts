@@ -305,5 +305,25 @@ describe("CallPut Live Agent worker, scheduler and owner controls", () => {
       expect((await denied.status(req("GET"))).status).toBe(401);
       expect((await denied.stop(req("POST"))).status).toBe(401);
     });
+
+    it("reports venue delegation evidence on status and degrades to unavailable instead of failing the page", async () => {
+      const { db, ownerId } = await setup();
+      const base = { db, readSession: async () => session(ownerId, WALLET), now: () => NOW, env: {} };
+      const findings = [{ id: "account-route", ok: true, detail: "execution route callput_account on robinhood, configured=true." }];
+
+      const none = await (await createLiveAgentHandlers(base).status(req("GET"))).json();
+      expect(none.venueDelegation).toEqual({ status: "not-configured" });
+
+      const ok = await (await createLiveAgentHandlers({ ...base, readVenueDelegation: async () => ({ fetchedAt: "2026-11-22T06:00:00.000Z", findings }) }).status(req("GET"))).json();
+      expect(ok.venueDelegation).toEqual({ status: "ok", fetchedAt: "2026-11-22T06:00:00.000Z", findings });
+
+      const down = await createLiveAgentHandlers({ ...base, readVenueDelegation: async () => { throw new Error("MCP unreachable"); } }).status(req("GET"));
+      expect(down.status).toBe(200);
+      const downBody = await down.json();
+      expect(downBody.venueDelegation).toEqual({ status: "unavailable" });
+      // Venue evidence never turns autonomous submission on.
+      expect(downBody.submissionRoute).toBe("not-configured");
+      expect(downBody.liveTradingEnabled).toBe(false);
+    });
   });
 });
