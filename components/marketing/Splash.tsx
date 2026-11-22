@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { CSSProperties } from "react";
 import { BrandMark } from "../brand";
 import { AgentCharacter, characterColor, characterDrawing, type CharacterId } from "./characters";
+import { SplashSound, rememberSound, soundWanted } from "./splash-sound";
 
 /**
  * The opening, on every full page load (not when you move between pages inside the site).
@@ -11,6 +12,7 @@ import { AgentCharacter, characterColor, characterDrawing, type CharacterId } fr
  * The real character pops into place, opens its eyes and blinks. The rest of the cast arrives around it, joined by dotted routes that start to run.
  * Then it hands over to the page: the backdrop and the cast let go, and the first agent glides to the exact place it holds in the hero, where it lands alone.
  * The hero's routes and the rest of its cast then branch out of it.
+ * It has a sound (see splash-sound.ts): it tries to start by itself, otherwise at the first key or tap, and the "Sound" chip turns it off.
  * Any key, scroll or tap skips it. Reduced motion skips it entirely. It never blocks input (pointer events pass through), it is under five seconds,
  * and a CSS failsafe removes it without JavaScript. The counter follows the opening's own timeline; it does not claim to measure loading.
  * The recipe line is the real hash of the default Protective Put recipe, computed on the server.
@@ -78,6 +80,10 @@ export function Splash({ recipeHash }: { recipeHash: string }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const countRef = useRef<HTMLSpanElement>(null);
   const statusRef = useRef<HTMLSpanElement>(null);
+  const soundRef = useRef<SplashSound | null>(null);
+  // What the visitor chose (kept across visits), and whether the browser has actually let sound start.
+  const [wanted, setWanted] = useState(true);
+  const [running, setRunning] = useState(false);
 
   useEffect(() => {
     const root = rootRef.current;
@@ -132,6 +138,11 @@ export function Splash({ recipeHash }: { recipeHash: string }) {
     }));
 
     const started = performance.now();
+    const sound = new SplashSound(() => performance.now() - started);
+    soundRef.current = sound;
+    setWanted(soundWanted());
+    sound.onrun = () => setRunning(true);
+    if (!document.hidden && sound.open()) sound.wake();
     let frame = 0;
     let leaving = false;
     let exitTimer = 0;
@@ -166,6 +177,7 @@ export function Splash({ recipeHash }: { recipeHash: string }) {
       html.dataset.splash = "lift";
       // Only an agent that has already appeared can travel; an early skip simply lets go.
       const docked = (seen === "form" || seen === "cast") && dock(root.querySelector<SVGElement>(".splash-agent"));
+      sound.handoff(docked, DOCK, performance.now() - started < TOTAL - 300);
       removeTimer = window.setTimeout(done, docked ? DOCK + 40 : 520);
     };
 
@@ -224,7 +236,7 @@ export function Splash({ recipeHash }: { recipeHash: string }) {
     frame = requestAnimationFrame(draw);
     exitTimer = window.setTimeout(lift, TOTAL + 600);
 
-    const skip = () => lift();
+    const skip = () => { sound.wake(); lift(); };
     window.addEventListener("keydown", skip, { once: true });
     window.addEventListener("wheel", skip, { once: true, passive: true });
     window.addEventListener("touchstart", skip, { once: true, passive: true });
@@ -237,10 +249,26 @@ export function Splash({ recipeHash }: { recipeHash: string }) {
       window.removeEventListener("wheel", skip);
       window.removeEventListener("touchstart", skip);
       window.removeEventListener("pointerdown", skip);
+      sound.dispose();
+      soundRef.current = null;
     };
   }, []);
 
+  const toggle = () => {
+    // Wanted but not yet running means the browser is waiting for a gesture: this click is that gesture, not a request to mute.
+    if (wanted && !running) {
+      soundRef.current?.wake();
+      return;
+    }
+    const next = !wanted;
+    setWanted(next);
+    rememberSound(next);
+    soundRef.current?.setMuted(!next);
+  };
+  const on = wanted && running;
+
   return (
+    <>
     <div ref={rootRef} className="splash" data-state={played ? "gone" : "wait"} aria-hidden="true">
       <canvas ref={canvasRef} className="splash-canvas" />
       <div className="splash-box">
@@ -271,5 +299,19 @@ export function Splash({ recipeHash }: { recipeHash: string }) {
       <p className="splash-count"><span ref={countRef}>00</span> %</p>
       <div className="splash-bar" aria-hidden="true"><i /></div>
     </div>
+    <button
+      type="button"
+      className="splash-sound"
+      aria-pressed={wanted}
+      aria-label={wanted ? "Opening sound on" : "Opening sound off"}
+      data-on={on ? "1" : "0"}
+      onClick={toggle}
+      onPointerDown={(event) => event.stopPropagation()}
+      onKeyDown={(event) => event.stopPropagation()}
+      onTouchStart={(event) => event.stopPropagation()}
+    >
+      <i aria-hidden="true" />{on ? "Sound on" : wanted ? "Tap for sound" : "Sound off"}
+    </button>
+    </>
   );
 }

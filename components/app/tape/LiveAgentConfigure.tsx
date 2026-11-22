@@ -155,7 +155,7 @@ export function LiveAgentConfigure({ tradingAddress, accountUsable, onProposed }
           {field("live-agent-max-days", "Maximum days to expiry", maxDays, setMaxDays)}
           {field("live-agent-lifetime", "Grant lifetime (days)", lifetimeDays, setLifetimeDays, `Hard cap ${HARD.lifetimeDays}.`)}
         </div>
-        <p className="text-xs text-muted-foreground">Scoped to {tradingAddress ?? "an unread account address"} only. OPTRA would only ever request opens under this grant; closing and settling stay with your own wallet. You can revoke it at any time.</p>
+        <p className="text-xs text-muted-foreground break-all">Scoped to {tradingAddress ?? "an unread account address"} only. OPTRA would only ever request opens under this grant; closing and settling stay with your own wallet. You can revoke it at any time.</p>
         {problems.length > 0 ? <ul className="gate-evidence" aria-label="Validation"><li>{problems[0]}</li>{problems.length > 1 ? <li>and {problems.length - 1} more.</li> : null}</ul> : <p className="ack-done" role="status">Validated against the hard caps.</p>}
         <div className="ack-actions">
           <Button type="button" disabled={problems.length > 0 || busy} onClick={() => void propose()}>{busy ? "Proposing…" : "Propose grant"}</Button>

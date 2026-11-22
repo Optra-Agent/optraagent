@@ -38,6 +38,7 @@ import {
 } from "@/lib/venue/callput-order-ledger-client";
 import type { CallPutOrderIntentRecord } from "@/lib/venue/callput-order-ledger";
 import { findUnresolvedDuplicate } from "@/lib/venue/callput-order-lifecycle";
+import { evaluateOrderPreflight, formatEth, formatPreflightAmount, formatUsdg, type OrderPreflight, type PreflightInput } from "@/lib/venue/callput-order-preflight";
 import { formatUtc, shortAddress } from "../format";
 import { Chip, Panel } from "../ui";
 
@@ -262,6 +263,8 @@ export function CallPutOrderPanel() {
   const [maxCollateral, setMaxCollateral] = useState("5");
   const [plan, setPlan] = useState<CallPutOpenSpreadPlan | null>(null);
   const [gasQuote, setGasQuote] = useState<CallPutGasQuote | null>(null);
+  const [preflight, setPreflight] = useState<OrderPreflight | null>(null);
+  const [preflightGas, setPreflightGas] = useState<PreflightInput["gasCostWei"]>({});
   const [preparedAt, setPreparedAt] = useState(0);
   const [clientIntentId, setClientIntentId] = useState<string | null>(null);
   const [serverOrderId, setServerOrderId] = useState<string | null>(null);
@@ -347,7 +350,7 @@ export function CallPutOrderPanel() {
   const legs = useMemo(() => sideLegs.filter((option) => String(option.expiryTimestamp) === expiry), [sideLegs, expiry]);
 
   function resetPlan() {
-    setPlan(null); setGasQuote(null); setDone([]); setReviewed(null); setMessage(""); setError("");
+    setPlan(null); setGasQuote(null); setPreflight(null); setPreflightGas({}); setDone([]); setReviewed(null); setMessage(""); setError("");
     setClientIntentId(null); setServerOrderId(null);
   }
 
@@ -377,19 +380,29 @@ export function CallPutOrderPanel() {
       }
       const maxCollateralRaw = parseUnits(maxCollateral.trim(), 6);
       const wallet = await readCallPutWalletState(publicClient, address);
+      // Funding checks are deferred: a short wallet still gets the full review (destinations, amounts, exact shortfalls) and a disabled Sign button.
       const result = prepareCallPutOpenSpread({
         strategy, underlying, longOptionId: longId as Hex, shortOptionId: shortId as Hex, size, maxCollateralRaw,
-        market, wallet: { ...wallet, chainId: chainId ?? wallet.chainId }, nowMs: nowMs(),
+        market, wallet: { ...wallet, chainId: chainId ?? wallet.chainId }, nowMs: nowMs(), deferFundingChecks: true,
       });
       const firstTransaction = result.transactions[0];
       if (!firstTransaction) throw new Error("No transaction was prepared for this order.");
-      const estimatedGas = await estimateCallPutGas(publicClient, firstTransaction);
-      const requiredNativeBalance = firstTransaction.value + estimatedGas.totalCostWei;
-      if (wallet.nativeBalanceWei < requiredNativeBalance) {
-        throw new Error(`Native balance cannot cover the execution fee plus estimated gas. Required at least ${requiredNativeBalance} wei; wallet has ${wallet.nativeBalanceWei} wei.`);
+      // Only the next transaction can be simulated: the open request reverts until the approval is confirmed.
+      let estimatedGas: CallPutGasQuote | null = null;
+      let estimateFailure: unknown = null;
+      try {
+        estimatedGas = await estimateCallPutGas(publicClient, firstTransaction);
+      } catch (failure) {
+        estimateFailure = failure;
       }
+      const gasCostWei: PreflightInput["gasCostWei"] = { [firstTransaction.kind]: estimatedGas ? estimatedGas.totalCostWei : null };
+      const evaluated = evaluateOrderPreflight({ wallet, connectedChainId: chainId ?? wallet.chainId, amountInRaw: result.quote.amountInRaw, transactions: result.transactions, gasCostWei });
+      // A failed simulation on a fully funded wallet is a real refusal, not a funding gap.
+      if (!estimatedGas && evaluated.ready) throw estimateFailure ?? new Error("The transaction could not be simulated.");
       setPlan(result);
       setGasQuote(estimatedGas);
+      setPreflight(evaluated);
+      setPreflightGas(gasCostWei);
       setPreparedAt(nowMs());
       setClientIntentId(createCallPutLedgerId());
       setServerOrderId(null);
@@ -402,6 +415,10 @@ export function CallPutOrderPanel() {
 
   async function sign(index: number) {
     if (!plan || !walletClient || !publicClient || !address || busy.current) return;
+    if (!preflight?.ready) {
+      setError(preflight ? `Funding preflight has not passed. ${preflight.summary}` : "Run the funding preflight by preparing the order first.");
+      return;
+    }
     if (pendingTransactionIntent) {
       setError("A previously submitted transaction still needs receipt recovery. Do not submit it again.");
       return;
@@ -456,9 +473,11 @@ export function CallPutOrderPanel() {
       if (currentWalletChain !== CALLPUT_ROBINHOOD_CHAIN_ID) {
         throw new Error(`Switch to Robinhood Mainnet (chain ${CALLPUT_ROBINHOOD_CHAIN_ID}) before signing.`);
       }
-      const currentNativeBalance = await publicClient.getBalance({ address: getAddress(address) });
-      if (currentNativeBalance < tx.value + gasQuote.totalCostWei) {
-        throw new Error("Native balance no longer covers this transaction's execution fee plus estimated gas. Prepare again after funding the wallet.");
+      const freshWallet = await readCallPutWalletState(publicClient, address);
+      const freshPreflight = evaluateOrderPreflight({ wallet: freshWallet, connectedChainId: chainId, amountInRaw: plan.quote.amountInRaw, transactions: plan.transactions, gasCostWei: preflightGas });
+      if (!freshPreflight.ready) {
+        setPreflight(freshPreflight);
+        throw new Error(`Funding preflight failed just before signing. ${freshPreflight.summary}`);
       }
       setMessage("Waiting for wallet approval…");
       const transactionEventId = createCallPutLedgerId();
@@ -650,7 +669,7 @@ export function CallPutOrderPanel() {
       </p>
       {CALLPUT_LIVE_ORDERS_ENABLED ? (
         <p role="note" className="mb-4 rounded-md border border-[var(--ember-text)] p-3 text-sm">
-          Real money. This opens a CallPut position with your own USDG and a native execution fee that is not assumed refundable. OPTRA&apos;s interface is unaudited, quotes are estimates, and a transaction hash is not a fill: the position exists only after the venue reports it executed and your wallet holds the option token. Closing and settling from OPTRA is disabled for now; manage open positions in CallPut itself.
+          Real money. This opens a CallPut position with your own USDG and a native execution fee that is not assumed refundable. OPTRA&apos;s interface is unaudited, quotes are estimates, and a transaction hash is not a fill: the position exists only after the venue reports it executed and your wallet holds the option token. Closing and settling are separate wallet-signed actions in the position panel below. They passed a Mainnet-fork rehearsal, and OPTRA has not yet seen one run against a live keeper fill.
         </p>
       ) : null}
       <WalletNetworkStatus />
@@ -705,17 +724,38 @@ export function CallPutOrderPanel() {
         {!isConnected ? <p role="status" className="mt-2 text-sm text-muted-foreground">Connect a wallet to prepare an order.</p> : null}
       </div>
 
-      {plan && gasQuote ? (
-        <div className="mt-4 grid gap-3 border-t border-border pt-4" aria-live="polite">
+      {plan && preflight ? (
+        <div className="mt-4 grid grid-cols-1 gap-3 border-t border-border pt-4" aria-live="polite">
           <h3 className="text-sm font-semibold">Order review</h3>
           <dl className="grid grid-cols-1 gap-x-6 gap-y-2 text-sm sm:grid-cols-2">
-            <div><dt className="text-xs text-muted-foreground">Estimated collateral committed (USDG)</dt><dd className="mono">{formatUsdgRaw(plan.quote.amountInRaw)}</dd></div>
-            <div><dt className="text-xs text-muted-foreground">Estimated fee (USDG, included)</dt><dd className="mono">{plan.quote.estimatedOpenFeeUsdg.toFixed(6)}</dd></div>
-            <div><dt className="text-xs text-muted-foreground">Minimum fill (raw size)</dt><dd className="mono">{plan.minSizeRaw.toString()}</dd></div>
-            <div><dt className="text-xs text-muted-foreground">Execution fee (wei, not assumed refundable)</dt><dd className="mono">{plan.transactions.at(-1)?.value.toString()}</dd></div>
-            <div><dt className="text-xs text-muted-foreground">Estimated gas limit</dt><dd className="mono">{gasQuote.gasLimit.toString()}</dd></div>
-            <div><dt className="text-xs text-muted-foreground">Estimated network fee ceiling (wei)</dt><dd className="mono">{gasQuote.totalCostWei.toString()}</dd></div>
+            <div className="min-w-0"><dt className="text-xs text-muted-foreground">Estimated collateral committed (USDG)</dt><dd className="mono break-all">{formatUsdgRaw(plan.quote.amountInRaw)}</dd></div>
+            <div className="min-w-0"><dt className="text-xs text-muted-foreground">Estimated fee (USDG, included)</dt><dd className="mono break-all">{plan.quote.estimatedOpenFeeUsdg.toFixed(6)}</dd></div>
+            <div className="min-w-0"><dt className="text-xs text-muted-foreground">Minimum fill (raw size)</dt><dd className="mono break-all">{plan.minSizeRaw.toString()}</dd></div>
+            <div className="min-w-0"><dt className="text-xs text-muted-foreground">Execution fee (wei, not assumed refundable)</dt><dd className="mono break-all">{plan.transactions.at(-1)?.value.toString()}</dd></div>
+            <div className="min-w-0"><dt className="text-xs text-muted-foreground">Estimated gas limit</dt><dd className="mono break-all">{gasQuote ? gasQuote.gasLimit.toString() : "not estimated"}</dd></div>
+            <div className="min-w-0"><dt className="text-xs text-muted-foreground">Estimated network fee ceiling (wei)</dt><dd className="mono break-all">{gasQuote ? gasQuote.totalCostWei.toString() : "not estimated"}</dd></div>
           </dl>
+          <section aria-label="Funding preflight" data-preflight={preflight.ready ? "pass" : "fail"} className="grid grid-cols-1 gap-2 rounded-md border border-border p-3 text-sm">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h4 className="text-sm font-semibold">Funding preflight</h4>
+              <Chip tone={preflight.ready ? "gain" : "ember"}>{preflight.ready ? "Passed" : "Not ready"}</Chip>
+            </div>
+            <ul className="grid grid-cols-1 gap-2">
+              {preflight.lines.map((line) => (
+                <li key={line.id} className="min-w-0 rounded-md border border-border p-2" data-preflight-line={line.id} data-ok={line.ok ? "true" : "false"}>
+                  <p className="font-medium">{line.label}: {line.ok ? "enough" : "short"}</p>
+                  <p className="mono break-all text-xs">needs {formatPreflightAmount(line, line.requiredRaw)} · holds {formatPreflightAmount(line, line.heldRaw)}{line.ok ? "" : ` · short by ${formatPreflightAmount(line, line.shortfallRaw)}`}</p>
+                  <p className="text-xs text-muted-foreground">{line.detail}</p>
+                </li>
+              ))}
+            </ul>
+            <p className="text-xs" data-testid="allowance-explainer"><strong>USDG allowance:</strong> {preflight.allowance.detail}</p>
+            <p className="mono break-all text-xs text-muted-foreground">Allowance spender (CallPut Controller): {preflight.allowance.spender}</p>
+            {preflight.gasNote ? <p className="text-xs text-muted-foreground">{preflight.gasNote}</p> : null}
+            <p className={preflight.ready ? "text-xs text-muted-foreground" : "text-xs text-[var(--ember-text)]"} data-testid="preflight-summary">{preflight.summary}</p>
+            <p className="text-xs text-muted-foreground">OPTRA never transfers, approves or spends anything on its own. Fund the wallet yourself, then re-check.</p>
+            <div><Button type="button" variant="outline" onClick={prepare} disabled={!canPrepare || working}>Re-check funding</Button></div>
+          </section>
           {plan.transactions.length > 1 ? <p className="text-xs text-muted-foreground">Gas shown is for the approval step. After it confirms, prepare again to re-read allowance and estimate the open request.</p> : null}
           <ol className="grid gap-2">
             {plan.transactions.map((tx, index) => (
@@ -724,7 +764,9 @@ export function CallPutOrderPanel() {
                   <span>{index + 1}. {tx.label}</span>
                   {done.includes(tx.kind) ? <Chip tone="gain">Confirmed</Chip> : <Chip>{index === nextIndex ? "Next" : "Waiting"}</Chip>}
                 </div>
-                <p className="mono mt-1 break-all text-xs text-muted-foreground">to {tx.to} · value {tx.value.toString()} wei</p>
+                <p className="mono mt-1 break-all text-xs text-muted-foreground">to {tx.to} · value {tx.value.toString()} wei{tx.value > 0n ? ` (${formatEth(tx.value)} ETH execution fee)` : ""}</p>
+                {tx.kind === "usdg-approval" ? <p className="mono mt-1 break-all text-xs text-muted-foreground">approves exactly {formatUsdg(plan.quote.amountInRaw)} USDG · spender (CallPut Controller) {preflight.allowance.spender}</p> : null}
+                {tx.kind === "open-spread" ? <p className="mono mt-1 break-all text-xs text-muted-foreground">pulls up to {formatUsdg(plan.quote.amountInRaw)} USDG from {plan.intent.account} through the Controller</p> : null}
                 <p className="mono mt-1 break-all text-xs text-muted-foreground">calldata {tx.data}</p>
                 {index === nextIndex ? (
                   <div className="mt-2 grid gap-2">
@@ -732,9 +774,11 @@ export function CallPutOrderPanel() {
                       <input type="checkbox" checked={reviewed === index} onChange={(event) => setReviewed(event.target.checked ? index : null)} />
                       I reviewed this exact transaction and approve it.
                     </label>
-                    <Button type="button" disabled={!CALLPUT_LIVE_ORDERS_ENABLED || reviewed !== index || !walletClient || working || Boolean(pendingTransactionIntent)} onClick={() => void sign(index)}>
+                    <Button type="button" disabled={!CALLPUT_LIVE_ORDERS_ENABLED || !preflight.ready || !gasQuote || reviewed !== index || !walletClient || working || Boolean(pendingTransactionIntent)} onClick={() => void sign(index)}>
                       Sign in wallet
                     </Button>
+                    {!preflight.ready ? <p className="text-xs text-[var(--ember-text)]">Signing is disabled until the funding preflight passes. Nothing was sent.</p> : null}
+                    {preflight.ready && !gasQuote ? <p className="text-xs text-muted-foreground">Signing is disabled until the transaction can be simulated and its gas estimated.</p> : null}
                     {pendingTransactionIntent ? <p className="text-xs text-muted-foreground">A submitted transaction must be recovered before another signature.</p> : null}
                     {!CALLPUT_LIVE_ORDERS_ENABLED ? <p className="text-xs text-muted-foreground">Signing is disabled in this build. Nothing was sent.</p> : null}
                   </div>

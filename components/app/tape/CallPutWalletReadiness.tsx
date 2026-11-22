@@ -20,6 +20,7 @@ export function CallPutWalletReadiness() {
   const publicClient = usePublicClient({ chainId: CALLPUT_ROBINHOOD_CHAIN_ID });
   const [wallet, setWallet] = useState<CallPutWalletState | null>(null);
   const [account, setAccount] = useState<AccountGateFacts | null>(null);
+  const [gasPrice, setGasPrice] = useState<bigint | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -35,8 +36,9 @@ export function CallPutWalletReadiness() {
       setLoading(true);
       setError("");
       try {
-        const [state, gates] = await Promise.allSettled([readCallPutWalletState(client, address), readCallPutAccountGates(client, address)]);
+        const [state, gates, gas] = await Promise.allSettled([readCallPutWalletState(client, address), readCallPutAccountGates(client, address), client.getGasPrice()]);
         if (!active) return;
+        setGasPrice(gas.status === "fulfilled" ? gas.value : null);
         setWallet(state.status === "fulfilled" ? state.value : null);
         setAccount(gates.status === "fulfilled" ? gates.value : null);
         if (state.status === "rejected") setError(state.reason instanceof Error ? state.reason.message : "Wallet balances could not be read.");
@@ -56,7 +58,7 @@ export function CallPutWalletReadiness() {
     );
   }
 
-  const checks = evaluateDirectWalletReadiness(wallet, chainId);
+  const checks = evaluateDirectWalletReadiness(wallet, chainId, gasPrice);
   const ready = checks.every((check) => check.ok);
   const session = usSessionState(new Date());
   const reason = account ? accountBlockReason(account) : null;

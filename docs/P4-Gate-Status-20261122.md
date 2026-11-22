@@ -57,3 +57,25 @@ From CallPut's MCP tool descriptions (read 2026-11-22; venue documentation, not 
 * Paper Agents (four, running), Decision Tape, Mainnet Verify and the contract directory: operational.
 * Manual, owner-confirmed CallPut open, close and settle from the owner's own wallet: shipped, fork-tested, never filled live. Offer it as a supervised beta with the owner placing the first minimal order during the US session.
 * Autonomous Live Agent: not operational and must not be presented as launched. Blockers are listed under G1, G2 and G6 above.
+
+## Update, 2026-11-22 (UI overflow and funding preflight release)
+
+Chain and venue re-read, nothing else changed in the gates:
+
+* Current factory `0x23DB9f5fDde30853EC8eBd75E0492c09505a6D1d`: `openToAll()` true, `safeMode()` false, EIP-1967 implementation still `0x828efe90b0e48cced8a3f7fa9b75ec5dbe19c9ee`. The app reads this address (`lib/venue/callput-robinhood-readonly.ts`), not the superseded `0xbcaC…1862`.
+* CallPut's resolver (`callput_account_resolve`, `sub_index` is a string) answers normally for arbitrary owners (account address, `created: false`, factory `0x23db…6d1d`), but for the deployer wallet `0xAa8f…0bBf` it returned `blocked / workflow_verification_failed` on three consecutive reads. The wallet has no code and nonce 1, so this is not an EIP-7702 delegation. This is a venue-side answer to ask CallPut about; the connected MetaMask wallet's Account is read from the chain by the Wallet readiness panel instead.
+* Account eligibility is per wallet: the Wallet readiness panel shows the Account address computed for the connected wallet, whether it is created and registered, and what the factory would answer. Registration happens on the first funding, so creating the Account and funding it are owner actions.
+
+Close and Settle: the order panel banner said "Closing and settling from OPTRA is disabled for now". That sentence was stale. The production build sets `NEXT_PUBLIC_CALLPUT_CLOSE=true` and `NEXT_PUBLIC_CALLPUT_SETTLE=true` (Dockerfile), and the position panel now prints which of the two the build enables. Both are wallet-signed, per-transaction, fork-rehearsed 23 of 23, and neither has run against a live keeper fill.
+
+Remaining external actions (each is outside the code):
+
+1. Owner: fund the connected wallet. The order review states the exact ETH and USDG shortfall for the prepared order; nothing is moved automatically.
+2. Owner: place the first minimal order during the US session and confirm the approval (exact USDG amount) and the open in the wallet; Close and Settle stay unproven until a real keeper fill exists (V12).
+3. Owner: create the CallPut Account for the connected wallet, fund it (this registers it), and sign a scoped grant (G2).
+4. CallPut: written confirmation that an OPTRA-held device signer is supported (V9), and an answer on the resolver's `workflow_verification_failed` for the deployer wallet.
+5. Owner: key-custody decision and an audit of the unaudited account contracts (G2).
+6. Operator: `LIVE_VENUE_SIGNOFF_REF` (G1), `LIVE_MAPPING_APPROVAL_REF`, `LIVE_WALLET_ALLOWLIST` (G4), `LIVE_GEO_LOOKUP_URL` and token (G5), then `LIVE_TRADING_ENABLED` last (G3).
+7. Time: G6 needs an agent with 7 launched days (2026-11-28 for the House Agents) and one settled expiry.
+
+Decision Tape: production heartbeat read 2026-11-22T15:31Z reports a complete pass at 15:24:53Z with 5 agents considered, 0 evaluated, 0 decisions persisted, market closed (weekend), next eligible candle end 2026-11-23T15:00Z (10:00 New York), next evaluation not before 15:05Z. The in-process scheduler retries every 10 minutes for 2 hours after a candle finalizes. The single standing `deferred` is one MSFT agent's stale Friday candle (older than 2 hours when the process started); it does not block Monday. Three NVDA House Agents were deferred once at 15:04Z with `market_history_provenance_unverified` (upstream multiplier status) and were not deferred on the next pass (deferred=1 again), which is the designed retry path. Each decision id is `replay-<candle end ms>`, so a replay is a recorded duplicate, not a second decision.

@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { useAccount, usePublicClient, useWalletClient } from "wagmi";
-import { getAddress, isAddress, type Address, type Hex, type PublicClient } from "viem";
+import { formatEther, getAddress, isAddress, type Address, type Hex, type PublicClient } from "viem";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { NativeSelect } from "@/components/ui/native-select";
@@ -421,7 +421,7 @@ export function CallPutPositionActions() {
       const gas = await estimateGas(publicClient, firstTransaction);
       const requiredNativeBalance = firstTransaction.value + gas.totalCostWei;
       if (position.nativeBalanceWei < requiredNativeBalance) {
-        throw new Error(`Insufficient native balance for execution fee plus estimated gas. Required at least ${requiredNativeBalance} wei; wallet has ${position.nativeBalanceWei} wei.`);
+        throw new Error(`Funding preflight failed: this ${kind} needs ${formatEther(requiredNativeBalance)} ETH (${formatEther(firstTransaction.value)} ETH execution fee plus ${formatEther(gas.totalCostWei)} ETH estimated network fee ceiling) and the wallet holds ${formatEther(position.nativeBalanceWei)} ETH, short by ${formatEther(requiredNativeBalance - position.nativeBalanceWei)} ETH. No transaction is offered. OPTRA never moves funds; fund the wallet yourself and prepare again.`);
       }
       setPlan({
         id: createActionId(),
@@ -711,6 +711,7 @@ export function CallPutPositionActions() {
         <summary className="cursor-pointer text-sm font-semibold">Close or settle a position</summary>
         <div className="mt-4 grid gap-3">
           <p className="text-sm text-muted-foreground">Direct-wallet actions only. Your connected EVM wallet remains the account and signer. CallPut Account sessions and autonomous execution are not enabled. Close and settlement outputs are not quoted; you set raw minimum-output floors, and a keeper may execute at a different price.</p>
+          <p className="text-xs text-muted-foreground" data-testid="position-signing-flags">Signing in this build: close {callPutPositionActionEnabled("close") ? "enabled" : "disabled"}, settle {callPutPositionActionEnabled("settle") ? "enabled" : "disabled"}. Each needs your own wallet confirmation. Both were rehearsed on a Mainnet fork; neither has yet run against a live keeper fill.</p>
           {address && positions !== null ? (
             <div className="grid gap-2" aria-label="Your filled positions">
               <div className="flex items-center justify-between gap-2">

@@ -275,6 +275,12 @@ export type CallPutOpenSpreadInput = {
   minFillBps?: number;
   /** Hard ceiling for collateral committed (USDG raw). */
   maxCollateralRaw?: bigint;
+  /**
+   * Skip the USDG-balance and ETH-balance throws so the caller can show exact shortfalls from
+   * `evaluateOrderPreflight` and keep signing disabled, instead of an error with no transaction details.
+   * Every other check still throws. The live-agent path never sets this.
+   */
+  deferFundingChecks?: boolean;
   market: CallPutRobinhoodMarketData;
   wallet: CallPutWalletState;
   nowMs: number;
@@ -354,8 +360,8 @@ export function prepareCallPutOpenSpread(input: CallPutOpenSpreadInput): CallPut
   const maxCollateral = input.maxCollateralRaw ?? CALLPUT_LIMITS.defaultMaxCollateralRaw;
   add("collateral-cap", quote.amountInRaw <= maxCollateral, `Estimated collateral ${formatUsdgRaw(quote.amountInRaw)} USDG exceeds the ${formatUsdgRaw(maxCollateral)} USDG cap.`);
   add("execution-fee", input.wallet.executionFeeWei > 0n && input.wallet.executionFeeWei <= CALLPUT_LIMITS.maxExecutionFeeWei, `Execution fee ${input.wallet.executionFeeWei} wei is zero or above the ${CALLPUT_LIMITS.maxExecutionFeeWei} wei ceiling.`);
-  add("usdg-balance", input.wallet.usdgBalanceRaw >= quote.amountInRaw, `USDG balance ${formatUsdgRaw(input.wallet.usdgBalanceRaw)} is below the required ${formatUsdgRaw(quote.amountInRaw)}.`);
-  add("native-balance", input.wallet.nativeBalanceWei > input.wallet.executionFeeWei, "Native ETH must cover the execution fee plus gas.");
+  if (!input.deferFundingChecks) add("usdg-balance", input.wallet.usdgBalanceRaw >= quote.amountInRaw, `USDG balance ${formatUsdgRaw(input.wallet.usdgBalanceRaw)} is below the required ${formatUsdgRaw(quote.amountInRaw)}.`);
+  if (!input.deferFundingChecks) add("native-balance", input.wallet.nativeBalanceWei > input.wallet.executionFeeWei, "Native ETH must cover the execution fee plus gas.");
   if (checks.some((check) => !check.ok)) throw new CallPutRiskError(checks.filter((check) => !check.ok));
 
   const from = getAddress(input.wallet.account);

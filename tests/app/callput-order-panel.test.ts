@@ -219,25 +219,45 @@ describe("CallPutOrderPanel", () => {
     expect(sendTransaction).not.toHaveBeenCalled();
   });
 
-  it("blocks an open when native balance cannot cover its execution fee plus estimated gas", async () => {
-    const pc = publicClient([], { eth: 80_000_000_000_000n });
+  it("shows the full review with the exact ETH shortfall and keeps Sign disabled when native balance cannot cover the execution fee plus estimated gas", async () => {
+    const sendTransaction = vi.fn();
+    const pc = publicClient([], { eth: 80_000_000_000_000n, allowance: 10n ** 12n });
     mocks.publicClient = pc;
-    mocks.walletClient = { sendTransaction: vi.fn(), chain: { id: 4663 } };
+    mocks.walletClient = { sendTransaction, chain: { id: 4663 } };
     const Panel = await loadPanel(true);
     const user = userEvent.setup();
     render(createElement(Panel));
-    await user.click(screen.getByRole("button", { name: "Load market" }));
-    const expiry = await screen.findByLabelText("Expiry");
-    await user.selectOptions(expiry, expiry.querySelectorAll("option")[1].getAttribute("value") as string);
-    const long = screen.getByLabelText("Long leg");
-    const options = long.querySelectorAll("option");
-    await user.selectOptions(long, options[2].value);
-    await user.selectOptions(screen.getByLabelText("Short leg"), options[1].value);
-    await user.click(screen.getByRole("button", { name: "Prepare order" }));
+    await prepareOrder(user);
 
-    expect((await screen.findByRole("alert")).textContent).toMatch(/execution fee plus estimated gas/i);
-    expect(screen.queryByText("Order review")).toBeNull();
+    // 0.00008 ETH held; the open needs 0.00006 fee + 21000 gas * 1 gwei (0.000021) = 0.000081 ETH, so it is short by 0.000001 ETH.
+    const preflight = screen.getByLabelText("Funding preflight");
+    expect(preflight.getAttribute("data-preflight")).toBe("fail");
+    expect(preflight.querySelector('[data-preflight-line="eth"]')?.textContent).toMatch(/short by 0\.000001 ETH/);
+    expect(preflight.querySelector('[data-preflight-line="usdg"]')?.getAttribute("data-ok")).toBe("true");
+    expect(screen.getByTestId("preflight-summary").textContent).toMatch(/Fund this wallet with at least 0\.000001 ETH/);
+    expect(screen.getByText(/to 0x[0-9a-fA-F]{40} · value 60000000000000 wei/)).toBeTruthy();
+    await user.click(screen.getByRole("checkbox"));
+    expect((screen.getByRole("button", { name: "Sign in wallet" }) as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByText(/Signing is disabled until the funding preflight passes/)).toBeTruthy();
+    expect(sendTransaction).not.toHaveBeenCalled();
     expect(pc.estimateGas).toHaveBeenCalledTimes(1);
+  });
+
+  it("re-reads balances right before signing and refuses when funding dropped after the review", async () => {
+    const pc = publicClient();
+    mocks.publicClient = pc;
+    const sendTransaction = vi.fn();
+    mocks.walletClient = { sendTransaction, chain: { id: 4663 } };
+    const Panel = await loadPanel(true);
+    const user = userEvent.setup();
+    render(createElement(Panel));
+    await prepareOrder(user);
+    expect(screen.getByLabelText("Funding preflight").getAttribute("data-preflight")).toBe("pass");
+    // The wallet is drained after the review was shown.
+    pc.getBalance.mockResolvedValue(1_000n);
+    await signFirst(user);
+    expect((await screen.findByRole("alert")).textContent).toMatch(/Funding preflight failed just before signing/);
+    expect(sendTransaction).not.toHaveBeenCalled();
   });
 
   const eventLog = () => ({
@@ -329,12 +349,29 @@ describe("CallPutOrderPanel", () => {
     vi.restoreAllMocks();
   });
 
-  it.each([
-    ["insufficient USDG", { usdg: 1_000n }, /USDG balance/],
-    ["insufficient ETH for the execution fee", { eth: 1_000n }, /Native ETH/],
-    ["an RPC failure", { rpcFail: true }, /HTTP request failed/],
-  ])("blocks preparation for %s without offering a transaction", async (_name, overrides, pattern) => {
-    mocks.publicClient = publicClient([], overrides);
+  it("shows the exact USDG shortfall and the allowance explanation, offers the destinations and keeps Sign disabled when USDG is short", async () => {
+    mocks.publicClient = publicClient([], { usdg: 1_000n, allowance: 0n });
+    const sendTransaction = vi.fn();
+    mocks.walletClient = { sendTransaction, chain: { id: 4663 } };
+    const Panel = await loadPanel(true);
+    const user = userEvent.setup();
+    render(createElement(Panel));
+    await prepareOrder(user);
+
+    const usdgLine = screen.getByLabelText("Funding preflight").querySelector('[data-preflight-line="usdg"]');
+    expect(usdgLine?.getAttribute("data-ok")).toBe("false");
+    expect(usdgLine?.textContent).toMatch(/holds 0\.001000 USDG · short by \d+\.\d{6} USDG/);
+    expect(screen.getByTestId("allowance-explainer").textContent).toMatch(/separate approval transaction for exactly .* USDG/);
+    expect(screen.getByText(new RegExp(`spender \\(CallPut Controller\\) ${CALLPUT_ROBINHOOD_CONTRACTS.controller}`))).toBeTruthy();
+    expect(screen.getByText(/approves exactly \d+\.\d{6} USDG/)).toBeTruthy();
+    expect(screen.getAllByText(new RegExp(`to ${CALLPUT_ROBINHOOD_CONTRACTS.usdg}`)).length).toBeGreaterThan(0);
+    await user.click(screen.getByRole("checkbox"));
+    expect((screen.getByRole("button", { name: "Sign in wallet" }) as HTMLButtonElement).disabled).toBe(true);
+    expect(sendTransaction).not.toHaveBeenCalled();
+  });
+
+  it("blocks preparation for an RPC failure without offering a transaction", async () => {
+    mocks.publicClient = publicClient([], { rpcFail: true });
     mocks.walletClient = { sendTransaction: vi.fn(), chain: { id: 4663 } };
     const Panel = await loadPanel(true);
     const user = userEvent.setup();
@@ -348,7 +385,7 @@ describe("CallPutOrderPanel", () => {
     await user.selectOptions(screen.getByLabelText("Short leg"), options[1].value);
     await user.click(screen.getByRole("button", { name: "Prepare order" }));
     const alert = await screen.findByRole("alert");
-    expect(alert.textContent).toMatch(pattern);
+    expect(alert.textContent).toMatch(/HTTP request failed/);
     expect(alert.textContent).not.toMatch(/https?:\/\//);
     expect(screen.queryByRole("button", { name: "Sign in wallet" })).toBeNull();
   });

@@ -39,6 +39,16 @@
 .splash[data-state="lift"]::before { animation: splash-veil 760ms ease 260ms forwards; }
 .splash[data-state="lift"] :is(.splash-canvas, .splash-cast, .splash-lines, .splash-mark, .splash-status, .splash-count, .splash-bar) { animation: splash-shed 460ms ease-in forwards; }
 
+/* The sound chip: shown only while the opening runs, above it, and the one part of the opening that takes clicks. */
+.splash-sound { position: fixed; top: 18px; right: 18px; z-index: 201; display: none; align-items: center; gap: 8px; min-height: 32px; padding: 0 12px; border: 1px solid var(--line); border-radius: 999px; background: rgb(11 12 14 / 0.6); color: var(--muted); font-family: var(--font-data); font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; cursor: pointer; -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); transition: color 200ms var(--m-ease), border-color 200ms var(--m-ease); }
+html[data-splash="active"] .splash-sound { display: inline-flex; }
+.splash-sound:hover { color: var(--text); border-color: var(--muted); }
+.splash-sound:focus-visible { outline: 2px solid var(--azure-hover); outline-offset: 2px; }
+.splash-sound i { display: block; width: 7px; height: 7px; border-radius: 50%; background: var(--dim); }
+.splash-sound[data-on="1"] i { background: var(--azure-hover); box-shadow: 0 0 8px var(--azure-hover); animation: splash-sound-pulse 1.4s ease-in-out infinite; }
+@keyframes splash-sound-pulse { 50% { opacity: 0.45; } }
+@media (prefers-reduced-motion: reduce) { .splash-sound { display: none !important; } }
+
 @keyframes splash-pop { 0% { transform: scale(0.5); opacity: 0; } 55% { transform: scale(1.12); opacity: 1; } 100% { transform: scale(1); opacity: 1; } }
 @keyframes splash-eyes { 0% { transform: scaleY(0); } 14% { transform: scaleY(1.18); } 22%, 56% { transform: scaleY(1); } 61% { transform: scaleY(0.05); } 68%, 82% { transform: scaleY(1); } 87% { transform: scaleY(0.05); } 95%, 100% { transform: scaleY(1); } }
 @keyframes splash-cast-in { 0% { opacity: 0; transform: scale(0.2) rotate(-70deg); } 60% { opacity: 1; transform: scale(1.14) rotate(6deg); } 100% { opacity: 1; transform: scale(1) rotate(0); } }
