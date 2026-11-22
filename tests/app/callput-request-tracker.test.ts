@@ -14,6 +14,7 @@ vi.mock("wagmi", () => ({
   usePublicClient: () => mocks.publicClient,
   useAccount: () => ({ address: undefined, chainId: undefined, isConnected: false }),
   useWalletClient: () => ({ data: undefined }),
+  useSwitchChain: () => ({ switchChainAsync: vi.fn() }),
 }));
 vi.mock("../../components/app/AuthSessionProvider", () => ({
   useAuthSession: () => ({ status: "signed_out", setWalletMenuOpen: mocks.setWalletMenuOpen }),

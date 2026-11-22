@@ -217,6 +217,18 @@ test("OPTRA's four House Agents are provisioned, public, read-only and separate 
   await expect(page.getByRole("button", { name: /run paper tick|pause|stop|fork/i })).toHaveCount(0);
   expect(pageErrors).toEqual([]);
 
+  // The signed-out Tape page is the public Decision Tape: the persisted record, plus why it may be empty and when the next tick is.
+  await page.goto("/tape");
+  const publicTape = page.getByRole("region", { name: "OPTRA House Agents Decision Tape" });
+  await expect(publicTape.getByRole("heading", { name: "House Agents Decision Tape" })).toBeVisible();
+  await expect(publicTape.getByTestId("scheduler-status")).toContainText(/US market (open|closed)/);
+  await expect(publicTape.getByTestId("scheduler-status")).toContainText(/Next evaluation: the candle closing/);
+  const tapeBody = await (await page.request.get(new URL("/api/public/v1/tape?limit=100", origin).toString())).json() as { decisions: unknown[]; scheduler: { nextEligibleCandleEndAt: string | null } };
+  if (tapeBody.decisions.length === 0) await expect(publicTape.getByText("No decisions have been persisted yet.")).toBeVisible();
+  else await expect(publicTape.getByRole("article").first()).toBeVisible();
+  expect(tapeBody.scheduler.nextEligibleCandleEndAt).not.toBeNull();
+  expect(pageErrors).toEqual([]);
+
   // A user's agent id is never served by the public routes.
   const mine = await page.request.get(new URL("/api/public/v1/agents/00000000-0000-4000-8000-000000000000", origin).toString());
   expect(mine.status()).toBe(404);

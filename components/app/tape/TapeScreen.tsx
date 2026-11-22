@@ -7,17 +7,20 @@ import type { Agent, AgentDecision, PaperOrder, PaperPosition } from "../../../l
 import { useAuthSession } from "../AuthSessionProvider";
 import { formatUtc, shortHash, titleCase, errorText } from "../format";
 import { OrdersTable, PositionGrid, TapeList } from "../paper";
+import { CallPutOrderHistory } from "./CallPutOrderHistory";
 import { CallPutOrderPanel } from "./CallPutOrderPanel";
 import { CallPutPositionActions } from "./CallPutPositionActions";
 import { CallPutRequestTracker } from "./CallPutRequestTracker";
 import { LiveAgentControls } from "./LiveAgentControls";
-import { Chip, JourneyRail, PageHeader, Skeleton, StateBlock, Panel } from "../ui";
+import { PublicHouseTape } from "./PublicHouseTape";
+import { Chip, JourneyRail, PageHeader, Skeleton, StateBlock, Panel, decisionOutcome } from "../ui";
+import type { DecisionOutcome } from "../ui";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 type TapeData = { decisions: AgentDecision[]; orders: PaperOrder[]; positions: PaperPosition[] };
 type LoadState = "idle" | "loading" | "ready" | "error";
-type ActionFilter = "all" | AgentDecision["action"];
+type ActionFilter = "all" | DecisionOutcome;
 
 async function parseResponse(response: Response): Promise<unknown> {
   try { return await response.json(); } catch { return null; }
@@ -126,11 +129,11 @@ export function TapeScreen({ agentId }: { agentId: string }) {
   }, [agentId, refreshCount]);
 
   const counts = useMemo(() => {
-    const tally = { open: 0, hold: 0, close: 0, skip: 0 };
-    for (const decision of data.decisions) tally[decision.action] += 1;
+    const tally = { open: 0, hold: 0, close: 0, skip: 0, error: 0 };
+    for (const decision of data.decisions) tally[decisionOutcome(decision)] += 1;
     return tally;
   }, [data.decisions]);
-  const visible = filter === "all" ? data.decisions : data.decisions.filter((decision) => decision.action === filter);
+  const visible = filter === "all" ? data.decisions : data.decisions.filter((decision) => decisionOutcome(decision) === filter);
 
   return (
     <main className="page-container">
@@ -142,9 +145,11 @@ export function TapeScreen({ agentId }: { agentId: string }) {
       />
       {agentId ? <JourneyRail step={6} /> : null}
 
+      {!agentId ? <PublicHouseTape /> : null}
       {!agentId ? <AgentPicker /> : null}
       <CallPutOrderPanel />
       <CallPutPositionActions />
+      <CallPutOrderHistory />
       <CallPutRequestTracker />
       <LiveAgentControls />
       {state === "loading" ? <div className="state-panel" role="status"><Skeleton lines={4} /><span className="sr-only">Loading persisted paper history…</span></div> : null}
@@ -159,6 +164,7 @@ export function TapeScreen({ agentId }: { agentId: string }) {
             <div className="metric"><dt>Decisions</dt><dd className="mono">{data.decisions.length}</dd></div>
             <div className="metric"><dt>Opened</dt><dd className="mono">{counts.open}</dd></div>
             <div className="metric"><dt>Held or skipped</dt><dd className="mono">{counts.hold + counts.skip}</dd></div>
+            <div className="metric"><dt>Errors</dt><dd className="mono">{counts.error}</dd></div>
             <div className="metric"><dt>Paper orders</dt><dd className="mono">{data.orders.length}</dd></div>
           </dl>
           <div className="tape-layout">
@@ -170,7 +176,7 @@ export function TapeScreen({ agentId }: { agentId: string }) {
               {data.decisions.length > 0 ? (
                 <Tabs value={filter} onValueChange={(value) => setFilter(value as ActionFilter)} className="mb-4">
                   <TabsList aria-label="Filter decisions by action" className="h-auto flex-wrap justify-start gap-1 bg-secondary p-1">
-                    {(["all", "open", "hold", "close", "skip"] as const).map((action) => (
+                    {(["all", "open", "hold", "close", "skip", "error"] as const).map((action) => (
                       <TabsTrigger key={action} value={action} className="h-9 px-3 text-sm data-[state=active]:bg-accent data-[state=active]:text-foreground">
                         {action === "all" ? "All" : titleCase(action)}
                         <span className="mono ml-1.5 text-xs text-muted-foreground">{action === "all" ? data.decisions.length : counts[action]}</span>

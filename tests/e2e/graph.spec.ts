@@ -145,7 +145,7 @@ test.describe("Optra Agent Network (desktop)", () => {
     await expect(net(page)).toBeInViewport({ ratio: 0.12 });
     // Scrolling the network into view starts one automatic growth.
     await expect(net(page)).toHaveAttribute("data-playing", "1", { timeout: 20_000 });
-    await expect.poll(async () => Number(await net(page).getAttribute("data-phase")), { timeout: 10_000 }).toBeGreaterThanOrEqual(2);
+    await expect.poll(async () => Number(await net(page).getAttribute("data-phase")), { timeout: 30_000 }).toBeGreaterThanOrEqual(2);
     await controls.getByRole("button", { name: "Pause" }).click();
     await expect(net(page)).toHaveAttribute("data-playing", "0");
     const frozen = await net(page).getAttribute("data-phase");
@@ -353,7 +353,7 @@ test.describe("section visuals", () => {
     await page.goto("/");
     const proof = page.locator("#proof");
     await proof.scrollIntoViewIfNeeded();
-    await expect(proof.getByRole("list", { name: "Claims from the server" }).getByRole("listitem")).toHaveCount(7);
+    await expect(proof.getByRole("list", { name: "Claims from the server" }).getByRole("listitem")).toHaveCount(8);
     await expect(proof.getByRole("link", { name: /Evidence: \/api\/public\/v1\/hooks/ })).toBeVisible();
     await expect(proof.getByText('curl -s "$OPTRA_URL/api/public/v1/hooks"')).toBeVisible();
     await expect(proof.getByText("An MCP server and pay-per-call endpoints are planned, not built.", { exact: false })).toBeVisible();

@@ -1,7 +1,8 @@
+import Link from "next/link";
 import { Database } from "lucide-react";
 import type { AgentDecision, PaperOrder, PaperPosition } from "../../lib/domain/contracts";
-import { formatUsd, formatUtc, shortHash, signedTone } from "./format";
-import { actionTone, Chip, DecisionTrace } from "./ui";
+import { formatUsd, formatUtc, shortHash, signedTone, titleCase } from "./format";
+import { actionTone, Chip, DecisionTrace, decisionOutcome } from "./ui";
 import { Card } from "@/components/ui/card";
 import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
@@ -71,19 +72,44 @@ function tally(decision: AgentDecision) {
   return { pass, block };
 }
 
+export type TapeDecision = AgentDecision & { agentName?: string | undefined; underlyingSymbol?: string | undefined; templateId?: string | undefined };
+
+function record(value: unknown): Record<string, unknown> | null {
+  return value !== null && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : null;
+}
+
+/** What data the evaluation read, taken from the persisted decision itself: the candle, the history hash and window. */
+export function decisionProvenance(decision: AgentDecision): { candleEndAt: string | null; historyHash: string | null; historyCandles: number | null } {
+  const context = record(decision.marketContext);
+  const observation = record(context?.observation);
+  const window = record(context?.historyWindow);
+  const history = Array.isArray(context?.history) ? context.history.length : null;
+  const candles = typeof window?.candles === "number" ? window.candles : history;
+  return {
+    candleEndAt: typeof observation?.endAt === "string" ? observation.endAt : null,
+    historyHash: typeof context?.historyDataHash === "string" ? context.historyDataHash : null,
+    historyCandles: candles,
+  };
+}
+
 /** The Tape as a timeline: one node per persisted decision, newest first, with the evidence a click away. */
-export function TapeList({ decisions }: { decisions: AgentDecision[] }) {
-  if (decisions.length === 0) return <p className="empty-line">No persisted decisions.</p>;
+export function TapeList({ decisions, emptyText = "No persisted decisions." }: { decisions: TapeDecision[]; emptyText?: string }) {
+  if (decisions.length === 0) return <p className="empty-line">{emptyText}</p>;
   return (
     <ol className="tape-list tape-timeline">
       {decisions.map((decision) => {
         const counts = tally(decision);
+        const outcome = decisionOutcome(decision);
+        const provenance = decisionProvenance(decision);
         return (
-          <li className="tape-row" key={decision.id} data-action={decision.action}>
+          <li className="tape-row" key={decision.id} data-action={outcome}>
             <article>
               <div className="tape-row-head">
-                <Chip tone={actionTone(decision.action)}>{decision.action}</Chip>
-                <time className="mono" dateTime={decision.createdAt}>{formatUtc(decision.createdAt)}</time>
+                <Chip tone={actionTone(outcome)}>{outcome}</Chip>
+                {decision.agentName ? (
+                  <span className="tape-agent"><Link href={`/house/${encodeURIComponent(decision.agentId)}`}>{decision.agentName}</Link>{decision.templateId ? <span className="tape-strategy"> · {titleCase(decision.templateId)}{decision.underlyingSymbol ? ` · ${decision.underlyingSymbol}` : ""}</span> : null}</span>
+                ) : null}
+                <time className="mono" dateTime={decision.createdAt} title="Close of the hourly candle that was evaluated">{formatUtc(decision.createdAt)}</time>
                 {counts.pass + counts.block > 0 ? (
                   <span className="tape-tally mono" aria-label={`${counts.pass} hooks passed, ${counts.block} blocked`}>
                     <span className="tally-pass">{counts.pass} pass</span>
@@ -92,7 +118,11 @@ export function TapeList({ decisions }: { decisions: AgentDecision[] }) {
                 ) : null}
               </div>
               <p className="tape-reason">{decision.reason}</p>
-              <p className="tape-source mono"><Database aria-hidden />Source {decision.snapshotSource}<span aria-hidden="true"> · </span>Recipe {shortHash(decision.recipeHash, 14, 6)}</p>
+              <p className="tape-source mono">
+                <Database aria-hidden />Source {decision.snapshotSource}
+                {provenance.historyHash ? <><span aria-hidden="true"> · </span><span title={provenance.historyHash}>History {shortHash(provenance.historyHash, 14, 6)}{provenance.historyCandles ? ` (${provenance.historyCandles} candles)` : ""}</span></> : null}
+                <span aria-hidden="true"> · </span>Recipe {shortHash(decision.recipeHash, 14, 6)}
+              </p>
               <DecisionTrace decision={decision} />
             </article>
           </li>

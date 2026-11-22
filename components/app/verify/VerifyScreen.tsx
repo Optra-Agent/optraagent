@@ -19,14 +19,16 @@ const claimTitle: Record<string, string> = {
   market_data: "Market data",
   hook_catalog: "Hook catalog",
   house_agents: "House Agents",
+  public_house_agents: "Running House Agents",
+  decision_tape: "Decision Tape",
   historical_backtest: "Historical backtest",
   live_execution: "Live execution",
 };
 
 const roadmap = [
   ["AI strategy composition", "Planned", "No AI provider is configured. Rules decide; recipes are built by clicking."],
-  ["Public agents and Tape", "Planned", "There is no public visibility model, so public lists return empty."],
-  ["Live options trading", "Not enabled", "Needs a verified options execution venue, explicit wallet authorization, enforced risk and transaction limits, and a real order lifecycle with settlement records. Nothing can submit a real-money order today."],
+  ["Community public agents", "Planned", "Only OPTRA's own House Agents are public. A user's agent and its Tape stay private to the wallet that owns them."],
+  ["Live options trading", "Not enabled", "Needs a verified options execution venue, explicit wallet authorization, enforced risk and transaction limits, and a real order lifecycle with settlement records. A wallet-signed CallPut order panel exists, but signing is disabled in this build and no OPTRA agent can submit a real-money order."],
   ["Onchain Uniswap v4 hooks", "Not deployed", "Hooks are inspired by Uniswap v4. An experimental spot-swap guard exists in the repository and passes local tests. No Optra contract is deployed to Robinhood Testnet or Mainnet, and it is not part of options execution (claim level L0)."],
   ["Listing, Floor, MCP, x402", "Planned", "Roadmap items with no route or service yet."],
 ] as const;

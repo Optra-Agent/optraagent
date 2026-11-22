@@ -1,4 +1,4 @@
-import { and, count, desc, eq, inArray } from "drizzle-orm";
+import { and, count, desc, eq, inArray, max } from "drizzle-orm";
 import type { AppDatabase } from "../db/client";
 import {
   AgentDecisionSchema, BacktestRunSchema, PaperOrderSchema, PaperPositionSchema, PublicHouseAgentDetailSchema, PublicHouseAgentSchema, RecipeV1Schema,
@@ -9,10 +9,24 @@ import { agents, backtestRuns, paperAccounts, paperDecisions, paperOrders, paper
 
 type AgentRow = typeof agents.$inferSelect;
 
+/**
+ * Public responses carry the evidence, not the raw series: a stored decision can embed the 721-candle history it read
+ * (hundreds of kilobytes). The public view keeps the hash, window and observation, and drops the candle array.
+ */
+function publicContext(context: Record<string, unknown> | null): Record<string, unknown> | null {
+  if (!context) return null;
+  const { history, ...rest } = context;
+  if (!Array.isArray(history)) return context;
+  const first = history[0] as { startAt?: unknown } | undefined;
+  const last = history.at(-1) as { endAt?: unknown } | undefined;
+  return rest.historyWindow ? rest : { ...rest, historyWindow: { startAt: first?.startAt ?? null, endAt: last?.endAt ?? null, candles: history.length } };
+}
+
 function decisionOf(row: typeof paperDecisions.$inferSelect): AgentDecision {
+  const marketContext = publicContext(row.marketContext);
   return AgentDecisionSchema.parse({
     id: row.id, agentId: row.agentId, tickId: row.tickId, action: row.action, reason: row.reason, hookResults: row.hookResults,
-    ...(row.marketContext ? { marketContext: row.marketContext } : {}), snapshotSource: row.snapshotSource, recipeHash: row.recipeHash, createdAt: row.createdAt.toISOString(),
+    ...(marketContext ? { marketContext } : {}), snapshotSource: row.snapshotSource, recipeHash: row.recipeHash, createdAt: row.createdAt.toISOString(),
   });
 }
 
@@ -141,6 +155,13 @@ export class DrizzlePublicRepository {
         ...(run.pricingAssumptions ? { pricingAssumptions: run.pricingAssumptions } : {}), reason: run.reason, createdAt: run.createdAt.toISOString(),
       }) : null,
     });
+  }
+
+  /** How many decisions the public House Agents have persisted, and when the latest was recorded. */
+  async tapeStats(): Promise<{ decisions: number; latestAt: string | null }> {
+    const [row] = await this.db.select({ decisions: count(), latestAt: max(paperDecisions.createdAt) }).from(paperDecisions)
+      .innerJoin(agents, eq(paperDecisions.agentId, agents.id)).where(and(eq(agents.kind, "house"), eq(agents.visibility, "public")));
+    return { decisions: row?.decisions ?? 0, latestAt: row?.latestAt ? row.latestAt.toISOString() : null };
   }
 
   /** The newest public decisions across every House Agent, or one agent's, with the agent's name for the Tape row. */

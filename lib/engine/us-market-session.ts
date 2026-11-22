@@ -131,3 +131,35 @@ export function easternDateKey(timestampMs: number): string {
   if (!local) throw new RangeError("Invalid timestamp.");
   return key(local.year, local.month, local.day);
 }
+
+const HOUR_MS = 60 * 60 * 1000;
+
+export type MarketSessionState = {
+  /** Whether the regular US equity session is open at the instant. */
+  open: boolean;
+  /** Why it is closed: a plain-language reason for the Tape, or null while open. */
+  closedReason: "weekend" | "holiday" | "before_open" | "after_close" | null;
+};
+
+export function marketSessionState(nowMs: number): MarketSessionState {
+  const iso = new Date(nowMs).toISOString();
+  if (isRegularEquitySession(iso)) return { open: true, closedReason: null };
+  const local = newYorkDate(iso);
+  if (!local) return { open: false, closedReason: null };
+  if (local.weekday === 0 || local.weekday === 6) return { open: false, closedReason: "weekend" };
+  if (!isUsMarketDay(local.year, local.month, local.day)) return { open: false, closedReason: "holiday" };
+  return { open: false, closedReason: local.hour * 60 + local.minute < 9 * 60 + 30 ? "before_open" : "after_close" };
+}
+
+/**
+ * The next hourly candle the paper scheduler can evaluate: the first hour boundary inside the regular session whose
+ * candle is still unfinalized or inside the finalization grace window. The scheduler only evaluates candles whose end
+ * falls in the regular session, so this is the instant a House Agent can next record a decision. It looks ten days
+ * ahead (longer than any market closure) and returns null if none exists.
+ */
+export function nextEligibleCandleEndMs(nowMs: number, finalizationGraceMs: number): number | null {
+  for (let end = Math.ceil((nowMs - finalizationGraceMs) / HOUR_MS) * HOUR_MS; end <= nowMs + 10 * 24 * HOUR_MS; end += HOUR_MS) {
+    if (end + finalizationGraceMs > nowMs && isRegularEquitySession(new Date(end).toISOString())) return end;
+  }
+  return null;
+}

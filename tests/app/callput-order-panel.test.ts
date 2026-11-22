@@ -11,12 +11,13 @@ import { CALLPUT_WRITE_ABIS } from "../../lib/venue/callput-robinhood-write";
 
 const ACCOUNT = "0x000000000000000000000000000000000000dEaD" as const;
 const KEY = `0x${"ab".repeat(32)}` as const;
-const mocks = vi.hoisted(() => ({ chainId: 4663, publicClient: null as unknown, walletClient: null as unknown }));
+const mocks = vi.hoisted(() => ({ chainId: 4663, publicClient: null as unknown, walletClient: null as unknown, switchChainAsync: null as unknown as (args: { chainId: number }) => Promise<unknown> }));
 
 vi.mock("wagmi", () => ({
   useAccount: () => ({ address: "0x000000000000000000000000000000000000dEaD", chainId: mocks.chainId, isConnected: true }),
   usePublicClient: () => mocks.publicClient,
   useWalletClient: () => ({ data: mocks.walletClient }),
+  useSwitchChain: () => ({ switchChainAsync: (args: { chainId: number }) => mocks.switchChainAsync(args) }),
 }));
 
 function feed() {
@@ -518,5 +519,87 @@ describe("CallPutOrderPanel", () => {
       expect((await screen.findByRole("alert")).textContent).toMatch(/HTTP request failed/);
       expect(JSON.parse(window.localStorage.getItem("optra.callput.robinhood.intents.v1") ?? "[]")[0].requestKey).toBe(KEY);
     });
+  });
+});
+
+describe("CallPutOrderPanel wallet network and duplicate protection", () => {
+  beforeEach(() => {
+    window.localStorage.clear();
+    mocks.chainId = 4663;
+    vi.stubGlobal("fetch", vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+      if (url.includes("/market?")) return new Response(JSON.stringify(feed()), { status: 200 });
+      if (url === "/api/venue/callput/orders" && (init?.method ?? "GET") === "POST") return new Response(JSON.stringify({ order: { id: "123e4567-e89b-42d3-a456-426614174000" } }), { status: 201 });
+      return new Response(JSON.stringify({ orders: [] }), { status: 200 });
+    }));
+  });
+  afterEach(() => { cleanup(); vi.unstubAllEnvs(); vi.unstubAllGlobals(); mocks.chainId = 4663; mocks.walletClient = null; });
+
+  it("shows the connected network and offers no switch when the wallet is on Robinhood Mainnet", async () => {
+    mocks.publicClient = publicClient();
+    mocks.walletClient = { chain: { id: 4663 } };
+    const Panel = await loadPanel(false);
+    render(createElement(Panel));
+    const status = screen.getByTestId("wallet-network-status");
+    expect(status.getAttribute("data-network")).toBe("ok");
+    expect(status.textContent).toMatch(/Robinhood Mainnet · 4663/);
+    expect(screen.queryByRole("button", { name: /Switch to Robinhood Mainnet/ })).toBeNull();
+  });
+
+  it("blocks on a wrong network and asks the wallet to switch to Robinhood Mainnet", async () => {
+    mocks.chainId = 1;
+    mocks.publicClient = publicClient();
+    const switchChainAsync = vi.fn(async () => undefined);
+    mocks.switchChainAsync = switchChainAsync;
+    mocks.walletClient = { chain: { id: 4663 }, sendTransaction: vi.fn() };
+    const Panel = await loadPanel(true);
+    const user = userEvent.setup();
+    render(createElement(Panel));
+    const status = screen.getByTestId("wallet-network-status");
+    expect(status.getAttribute("data-network")).toBe("wrong");
+    expect(status.textContent).toMatch(/Wrong network · chain 1/);
+    expect(status.textContent).toMatch(/Signing is blocked until the wallet is on that network/);
+    await user.click(screen.getByRole("button", { name: "Switch to Robinhood Mainnet" }));
+    await waitFor(() => expect(switchChainAsync).toHaveBeenCalledWith({ chainId: 4663 }));
+  });
+
+  it("reports a rejected network switch plainly and changes nothing", async () => {
+    mocks.chainId = 1;
+    mocks.publicClient = publicClient();
+    mocks.switchChainAsync = vi.fn().mockRejectedValue(Object.assign(new Error("User rejected the request."), { code: 4001 }));
+    mocks.walletClient = { chain: { id: 4663 } };
+    const Panel = await loadPanel(true);
+    const user = userEvent.setup();
+    render(createElement(Panel));
+    await user.click(screen.getByRole("button", { name: "Switch to Robinhood Mainnet" }));
+    expect((await screen.findByText(/You rejected the request in your wallet/)).textContent).toMatch(/Nothing was sent/);
+  });
+
+  it("refuses a second open while an identical earlier request is unresolved, and sends nothing", async () => {
+    mocks.publicClient = publicClient();
+    const sendTransaction = vi.fn(async () => `0x${"cd".repeat(32)}`);
+    mocks.walletClient = { sendTransaction, chain: { id: 4663 } };
+    const Panel = await loadPanel(true);
+    const user = userEvent.setup();
+    render(createElement(Panel));
+    await prepareOrder(user);
+    // The same wallet already submitted this exact spread a minute ago and the keeper has not resolved it.
+    const key = "optra.callput.robinhood.intents.v1";
+    const fetchCalls = vi.mocked(fetch).mock.calls.length;
+    // Seed a submitted twin using the leg and size currently selected in the panel.
+    const long = (screen.getByLabelText("Long leg") as HTMLSelectElement).value;
+    const short = (screen.getByLabelText("Short leg") as HTMLSelectElement).value;
+    window.localStorage.setItem(key, JSON.stringify([{
+      version: 1, chainId: 4663, account: ACCOUNT, kind: "open", strategy: "BuyPutSpread", underlying: "AAPL", underlyingAssetIndex: 1,
+      longOptionId: long, shortOptionId: short, expiry: 1, sizeRaw: "1000000000000000000", minSizeRaw: "780000000000000000", amountInRaw: "1",
+      createdAtMs: Date.now() - 60_000, txHash: `0x${"11".repeat(32)}`, requestKey: KEY, clientIntentId: "00000000-0000-4000-8000-0000000000aa", lastState: "pending",
+    }]));
+    window.dispatchEvent(new Event("optra-callput-intents"));
+    await user.click(screen.getByRole("checkbox"));
+    await user.click(screen.getByRole("button", { name: "Sign in wallet" }));
+
+    expect((await screen.findByRole("alert")).textContent).toMatch(/identical order for this wallet is still unresolved/);
+    expect(sendTransaction).not.toHaveBeenCalled();
+    expect(vi.mocked(fetch).mock.calls.length).toBe(fetchCalls);
   });
 });

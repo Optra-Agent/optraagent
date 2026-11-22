@@ -6,7 +6,7 @@ import { PublicAgentsResponseSchema } from "../../../lib/domain/contracts";
 import type { PublicHouseAgent } from "../../../lib/domain/contracts";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { formatPct, formatUsd, formatUtc, signedTone } from "../format";
+import { formatPct, formatPts, formatUsd, formatUtc, signedTone } from "../format";
 import { Panel, Skeleton } from "../ui";
 import { AgentCharacter } from "../../marketing/characters";
 import { strategyLine } from "./house-meta";
@@ -60,7 +60,7 @@ export function LiveHouseAgents() {
                 <div><dt>Realized</dt><dd className={`mono pnl pnl-${signedTone(agent.account?.realizedPnlUsd ?? "0")}`}>{agent.account ? formatUsd(agent.account.realizedPnlUsd) : "n/a"}</dd></div>
               </dl>
               {agent.backtest ? (
-                <p className="ag-decision"><span className="ag-tag">BACKTEST</span>{formatPct(agent.backtest.totalReturnPct)} over 30 days{agent.backtest.vsHoldingPct !== null ? `, ${formatPct(agent.backtest.vsHoldingPct)} vs holding` : ""}. Modeled premiums.</p>
+                <p className="ag-decision"><span className="ag-tag">BACKTEST</span>{formatPct(agent.backtest.totalReturnPct)} over 30 days{agent.backtest.vsHoldingPct !== null ? `, ${formatPts(agent.backtest.vsHoldingPct)} vs holding` : ""}. Modeled premiums.</p>
               ) : null}
               <p className="ag-decision">
                 <span className="ag-tag">LATEST</span>

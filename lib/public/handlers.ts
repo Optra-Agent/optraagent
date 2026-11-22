@@ -9,13 +9,23 @@ import {
   PublicVerificationSchema,
 } from "../domain/contracts";
 import { getHookCatalog, getHouseAgentTemplates } from "../hooks/catalog";
+import { marketSessionState, nextEligibleCandleEndMs } from "../engine/us-market-session";
+import { readSchedulerHeartbeat } from "../paper/heartbeat";
+import type { SchedulerHeartbeat } from "../paper/heartbeat";
 import type { DrizzlePublicRepository } from "../paper/public-repository";
 
-type PublicRepository = Pick<DrizzlePublicRepository, "listHouseAgents" | "getHouseAgent" | "listPublicTape">;
+import { BACKGROUND_INTERVAL_MS, CANDLE_FINALIZATION_GRACE_MS } from "../paper/schedule-constants";
+
+const SCHEDULER_INTERVAL_MINUTES = BACKGROUND_INTERVAL_MS / 60_000;
+const SCHEDULER_GRACE_MINUTES = CANDLE_FINALIZATION_GRACE_MS / 60_000;
+
+type PublicRepository = Pick<DrizzlePublicRepository, "listHouseAgents" | "getHouseAgent" | "listPublicTape"> & Partial<Pick<DrizzlePublicRepository, "tapeStats">>;
 
 export type PublicHandlerOptions = {
   /** Omitted only by unit tests that exercise the static claims; every route passes the database-backed repository. */
   repository?: PublicRepository;
+  now?: () => Date;
+  heartbeat?: () => SchedulerHeartbeat | null;
 };
 
 function json(body: unknown, status = 200): Response {
@@ -30,6 +40,26 @@ const AgentIdSchema = z.uuid();
 
 export function createPublicHandlers(options: PublicHandlerOptions = {}) {
   const repository = options.repository;
+  const now = options.now ?? (() => new Date());
+  const heartbeat = options.heartbeat ?? readSchedulerHeartbeat;
+
+  /** Whether zero decisions is expected right now, and when the next real evaluation can happen. Computed, never stored. */
+  function schedulerStatus() {
+    const at = now();
+    const session = marketSessionState(at.getTime());
+    const graceMs = SCHEDULER_GRACE_MINUTES * 60_000;
+    const nextEnd = nextEligibleCandleEndMs(at.getTime(), graceMs);
+    return {
+      intervalMinutes: SCHEDULER_INTERVAL_MINUTES,
+      finalizationGraceMinutes: SCHEDULER_GRACE_MINUTES,
+      checkedAt: at.toISOString(),
+      marketOpen: session.open,
+      marketClosedReason: session.closedReason,
+      nextEligibleCandleEndAt: nextEnd === null ? null : new Date(nextEnd).toISOString(),
+      nextEvaluationNotBeforeAt: nextEnd === null ? null : new Date(nextEnd + graceMs).toISOString(),
+      heartbeat: heartbeat(),
+    };
+  }
 
   return {
     async hooks(): Promise<Response> {
@@ -71,7 +101,7 @@ export function createPublicHandlers(options: PublicHandlerOptions = {}) {
       if (agentId && !agentId.success) return failure("VALIDATION_ERROR", "agentId must be a House Agent id.", 400);
       try {
         const tape = repository ? await repository.listPublicTape({ ...(agentId?.success ? { agentId: agentId.data } : {}), limit }) : { decisions: [], orders: [] };
-        return json(PublicTapeResponseSchema.parse({ ...tape, executionMode: "PAPER" }));
+        return json(PublicTapeResponseSchema.parse({ ...tape, executionMode: "PAPER", scheduler: schedulerStatus() }));
       } catch {
         return failure("INTERNAL_ERROR", "Unable to load the public Tape.", 500);
       }
@@ -91,6 +121,23 @@ export function createPublicHandlers(options: PublicHandlerOptions = {}) {
         } catch {
           // Verify stays available: the live count is simply reported as unavailable below.
           published = -1;
+        }
+      }
+      let tapeClaim: { status: "verified" | "preview" | "unavailable"; statement: string } = { status: "preview", statement: "No House Agent decision has been persisted yet." };
+      if (repository?.tapeStats) {
+        try {
+          const stats = await repository.tapeStats();
+          const schedule = schedulerStatus();
+          tapeClaim = stats.decisions > 0
+            ? { status: "verified", statement: `${stats.decisions} House Agent decisions are persisted in PostgreSQL; the latest was recorded for the candle closing ${stats.latestAt}. Each stores its hourly candle, rule trace and data hash.` }
+            : {
+              status: "preview",
+              statement: schedule.marketOpen
+                ? "No House Agent decision has been persisted yet. The market is open; the first decision is recorded after the next hourly candle finalizes."
+                : `No House Agent decision has been persisted yet. The US market is closed${schedule.marketClosedReason ? ` (${schedule.marketClosedReason.replace("_", " ")})` : ""}, and agents evaluate only candles that close inside the regular session. The next eligible candle ends ${schedule.nextEligibleCandleEndAt ?? "after the next session opens"}.`,
+            };
+        } catch {
+          tapeClaim = { status: "unavailable", statement: "The persisted decision count is temporarily unavailable." };
         }
       }
       const implemented = hooks.definitions.filter((hook) => hook.availability === "implemented").length;
@@ -125,6 +172,7 @@ export function createPublicHandlers(options: PublicHandlerOptions = {}) {
               : `${running} OPTRA House Agents are running in public paper mode, owned by OPTRA and excluded from any community-adoption count. Every decision is on the public Tape; premiums are modeled and no order is a venue fill.`,
             evidencePath: "/api/public/v1/agents",
           },
+          { id: "decision_tape", status: tapeClaim.status, statement: tapeClaim.statement, evidencePath: "/api/public/v1/tape" },
           {
             id: "historical_backtest",
             status: "limited",

@@ -1,7 +1,8 @@
 import { runEnsureHouseAgents } from "../house/runtime";
+import { BACKGROUND_INTERVAL_MS } from "./schedule-constants";
+import { recordSchedulerPass, recordSchedulerStart, toPassSummary } from "./heartbeat";
 import { getPaperScheduler } from "./runtime";
 
-const INTERVAL_MS = 10 * 60 * 1000;
 const FIRST_RUN_DELAY_MS = 90 * 1000;
 const blockedUntil = new Map<string, number>();
 
@@ -24,11 +25,14 @@ export async function runPaperBackgroundPass(): Promise<void> {
   } catch (cause) {
     console.error(JSON.stringify({ event: "house_agents.ensure_failed", message: describe(cause) }));
   }
+  const startedAtMs = Date.now();
   try {
     const response = await (await getPaperScheduler()).runInProcess();
     if (response.status >= 500) console.error(JSON.stringify({ event: "paper_background.pass_partial", status: response.status }));
+    recordSchedulerPass(toPassSummary(response.status, await response.clone().json().catch(() => null)), startedAtMs);
   } catch (cause) {
     console.error(JSON.stringify({ event: "paper_background.pass_failed", message: describe(cause) }));
+    recordSchedulerPass(toPassSummary(0, null), startedAtMs);
   }
 }
 
@@ -38,12 +42,13 @@ export function startPaperBackgroundScheduler(): void {
   const schedule = (delay: number): NodeJS.Timeout => {
     const timer = setTimeout(() => {
       void runPaperBackgroundPass().finally(() => {
-        if (scope.__optraPaperBackground) scope.__optraPaperBackground.timer = schedule(INTERVAL_MS);
+        if (scope.__optraPaperBackground) scope.__optraPaperBackground.timer = schedule(BACKGROUND_INTERVAL_MS);
       });
     }, delay);
     timer.unref();
     return timer;
   };
+  recordSchedulerStart();
   scope.__optraPaperBackground = { timer: schedule(FIRST_RUN_DELAY_MS) };
-  console.info(JSON.stringify({ event: "paper_background.started", intervalMs: INTERVAL_MS }));
+  console.info(JSON.stringify({ event: "paper_background.started", intervalMs: BACKGROUND_INTERVAL_MS }));
 }

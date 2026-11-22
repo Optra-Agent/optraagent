@@ -353,10 +353,34 @@ export const PublicHouseAgentDetailSchema = PublicHouseAgentSchema.extend({
   backtestRun: z.record(z.string(), z.unknown()).nullable(),
 }).strict();
 export const PublicAgentsResponseSchema = z.object({ agents: z.array(PublicHouseAgentSchema), executionMode: z.literal("PAPER") }).strict();
+export const PublicSchedulerStatusSchema = z.object({
+  intervalMinutes: z.number().int().positive(),
+  finalizationGraceMinutes: z.number().int().nonnegative(),
+  checkedAt: IsoDateTimeSchema,
+  marketOpen: z.boolean(),
+  marketClosedReason: z.enum(["weekend", "holiday", "before_open", "after_close"]).nullable(),
+  /** End of the next hourly candle inside the regular US session, which is the next candle a House Agent can evaluate. */
+  nextEligibleCandleEndAt: IsoDateTimeSchema.nullable(),
+  /** The earliest instant that candle is finalized; the next background pass at or after it records the decision. */
+  nextEvaluationNotBeforeAt: IsoDateTimeSchema.nullable(),
+  /** This server instance's most recent background pass. Null right after a restart, until the first pass completes. */
+  heartbeat: z.object({
+    startedAt: IsoDateTimeSchema,
+    lastPassAt: IsoDateTimeSchema.nullable(),
+    lastPassDurationMs: z.number().nonnegative().nullable(),
+    lastPass: z.object({
+      status: z.enum(["complete", "partial", "failed"]),
+      agentsConsidered: z.number().int().nonnegative(), evaluated: z.number().int().nonnegative(), opened: z.number().int().nonnegative(),
+      skipped: z.number().int().nonnegative(), duplicates: z.number().int().nonnegative(), deferred: z.number().int().nonnegative(),
+      dataErrors: z.number().int().nonnegative(), failures: z.number().int().nonnegative(),
+    }).strict().nullable(),
+  }).strict().nullable(),
+}).strict();
 export const PublicTapeResponseSchema = z.object({
   decisions: z.array(AgentDecisionSchema.extend({ agentName: z.string().optional(), underlyingSymbol: z.string().optional(), templateId: HouseAgentTemplateIdSchema.optional() }).strict()),
   orders: z.array(PaperOrderSchema).default([]),
   executionMode: z.literal("PAPER"),
+  scheduler: PublicSchedulerStatusSchema.optional(),
 }).strict();
 export const PublicClaimSchema = z.object({
   id: z.string().min(1),
@@ -494,6 +518,7 @@ export type PublicAgentsResponse = z.infer<typeof PublicAgentsResponseSchema>;
 export type PublicHouseAgent = z.infer<typeof PublicHouseAgentSchema>;
 export type PublicHouseAgentDetail = z.infer<typeof PublicHouseAgentDetailSchema>;
 export type StrategyStats = z.infer<typeof StrategyStatsSchema>;
+export type PublicSchedulerStatus = z.infer<typeof PublicSchedulerStatusSchema>;
 export type PublicTapeResponse = z.infer<typeof PublicTapeResponseSchema>;
 export type PublicClaim = z.infer<typeof PublicClaimSchema>;
 export type PublicVerification = z.infer<typeof PublicVerificationSchema>;

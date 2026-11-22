@@ -149,8 +149,16 @@ export function DecisionTrace({ decision }: { decision: AgentDecision }) {
   );
 }
 
-export function actionTone(action: AgentDecision["action"]): Tone {
+export function actionTone(action: DecisionOutcome): Tone {
   if (action === "open") return "azure";
   if (action === "close") return "ember";
+  if (action === "error") return "loss";
   return "neutral";
+}
+
+/** The five Tape outcomes. `error` is a skip whose evaluation could not run on valid data (a hook reported status `error`). */
+export type DecisionOutcome = AgentDecision["action"] | "error";
+
+export function decisionOutcome(decision: Pick<AgentDecision, "action" | "hookResults">): DecisionOutcome {
+  return decision.hookResults.some((result) => result.status === "error") ? "error" : decision.action;
 }

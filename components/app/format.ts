@@ -56,8 +56,13 @@ export function formatPct(value: string, digits = 2): string {
   return `${parsed > 0 ? "+" : ""}${text === `-${(0).toFixed(digits)}` ? (0).toFixed(digits) : text}%`;
 }
 
-export function formatPoints(value: string, digits = 2): string {
+export function formatPoints(value: string, digits = 2, unit = "pp"): string {
   const parsed = Number(value);
-  if (!Number.isFinite(parsed)) return `${value} pp`;
-  return `${parsed > 0 ? "+" : ""}${parsed.toFixed(digits)} pp`;
+  if (!Number.isFinite(parsed)) return `${value} ${unit}`;
+  return `${parsed > 0 ? "+" : ""}${parsed.toFixed(digits)} ${unit}`;
+}
+
+/** A difference between two percentages is in percentage points, never "%": `+4.55 pts`. */
+export function formatPts(value: string, digits = 2): string {
+  return formatPoints(value, digits, "pts");
 }

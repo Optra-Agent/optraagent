@@ -12,7 +12,7 @@ describe("versioned public proof API", () => {
 
     expect(agents.status).toBe(200);
     expect(bodies[1]).toEqual({ agents: [], executionMode: "PAPER" });
-    expect(bodies[2]).toEqual({ decisions: [], orders: [], executionMode: "PAPER" });
+    expect(bodies[2]).toMatchObject({ decisions: [], orders: [], executionMode: "PAPER" });
     expect(serialized).not.toContain("ownerId");
     expect(serialized).not.toContain('"session":');
     expect(serialized).not.toContain("tokenHash");

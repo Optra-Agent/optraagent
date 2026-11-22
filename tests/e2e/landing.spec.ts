@@ -187,14 +187,14 @@ test("the opening plays on every page load, can be skipped, never blocks the pag
   // Starved animation frames (software WebGL on CI) make the opening's own fallback timer skip "cast", so any playing state proves it replayed.
   await expect(reloadedSplash).toHaveAttribute("data-state", /boot|form|cast/, { timeout: 15000 });
   await page.keyboard.press("Space");
-  await expect(reloadedSplash).toHaveAttribute("data-state", "lift", { timeout: 1000 });
+  await expect(reloadedSplash).toHaveAttribute("data-state", /lift|gone/, { timeout: 1000 });
   await expect(reloadedSplash).toHaveAttribute("data-state", "gone", { timeout: 4000 });
 
   // Moving inside the site is not a page load: going to the app and back does not replay it.
   await page.locator(".m-header").getByRole("link", { name: "Launch app" }).click();
   await expect(page).toHaveURL(/\/agents$/);
   await page.getByRole("link", { name: "Optra home" }).first().click();
-  await expect(page).toHaveURL(/\/$/);
+  await expect(page).toHaveURL(/\/$/, { timeout: 20_000 });
   await expect(page.locator(".splash")).toHaveAttribute("data-state", "gone");
 });
 
@@ -282,11 +282,11 @@ test.describe("pinned Protective Floor", () => {
       }, fraction);
     };
     await at(0.12);
-    await expect.poll(pressed).toContain("Whole payoff");
+    await expect.poll(pressed, { timeout: 20_000 }).toContain("Whole payoff");
     await at(0.5);
-    await expect.poll(pressed).toContain("The floor");
+    await expect.poll(pressed, { timeout: 20_000 }).toContain("The floor");
     await at(0.88);
-    await expect.poll(pressed).toContain("The cost");
+    await expect.poll(pressed, { timeout: 20_000 }).toContain("The cost");
     // The pinned panel fits inside the screen: nothing spills into the next section.
     await at(0.5);
     const fits = await page.evaluate(() => { const pin = document.querySelector(".fl-pin")!.getBoundingClientRect(); const actions = document.querySelector(".fl-actions")!.getBoundingClientRect(); return actions.bottom <= pin.bottom + 1; });

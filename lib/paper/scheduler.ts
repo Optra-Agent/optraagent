@@ -2,18 +2,19 @@ import { timingSafeEqual } from "node:crypto";
 import { MarketCandleSchema } from "../domain/contracts";
 import type { AgentDecision, MarketCandle } from "../domain/contracts";
 import { runTick } from "../engine/run-tick";
-import { runStrategyTick } from "../engine/strategy/run-strategy-tick";
+import { evaluationErrorDecision } from "../engine/evaluation-error";
+import { initialStrategyAccount, runStrategyTick } from "../engine/strategy/run-strategy-tick";
 import { isHouseStrategyTemplate } from "../hooks/house-specs";
 import type { EarningsSnapshot } from "../market/earnings";
 import { isRegularEquitySession } from "../engine/us-market-session";
 import { canonicalRecipeHash, validateRecipe } from "../hooks/recipe-validator";
 import type { MarketHistoryResult } from "../market/crius-history";
 import { PaperTickStateError } from "./drizzle-repository";
+import { CANDLE_FINALIZATION_GRACE_MS } from "./schedule-constants";
 import { StrategyTickStateError } from "./strategy-persistence";
 import type { DrizzlePaperRepository } from "./drizzle-repository";
 
 const HOUR_MS = 60 * 60 * 1000;
-const FINALIZATION_GRACE_MS = 5 * 60 * 1000;
 const MAX_CANDLE_AGE_MS = 2 * HOUR_MS;
 const REQUIRED_PRIOR_CANDLES = 721;
 
@@ -42,6 +43,8 @@ type SchedulerSummary = {
   skipped: number;
   duplicates: number;
   deferred: number;
+  /** Scheduled evaluations recorded on the Tape as ERROR because the candle history failed an integrity check. */
+  dataErrors: number;
   failures: number;
 };
 
@@ -103,8 +106,22 @@ function completeEvaluationWindow(candles: MarketCandle[], index: number, symbol
   return true;
 }
 
+/** Which integrity check the evaluation window failed, in words that name the offending hour. */
+function windowProblem(candles: MarketCandle[], index: number, symbol: string, nowMs: number): string {
+  if (index < REQUIRED_PRIOR_CANDLES) return `only ${index} prior hourly candles exist and ${REQUIRED_PRIOR_CANDLES} are required.`;
+  const window = candles.slice(index - REQUIRED_PRIOR_CANDLES, index + 1);
+  const invalid = window.find((candle) => !validCandle(candle, symbol, nowMs));
+  if (invalid) return `the hourly candle ${invalid.startAt} to ${invalid.endAt} is missing, synthetic, has no trades or fails provenance checks, so the ${REQUIRED_PRIOR_CANDLES + 1}-candle window is incomplete.`;
+  for (let position = 1; position < window.length; position += 1) {
+    if (window[position - 1]!.endAt !== window[position]!.startAt) return `the hourly candles are not contiguous between ${window[position - 1]!.endAt} and ${window[position]!.startAt}.`;
+  }
+  return "the hourly history failed validation.";
+}
+
+const reportedStale = new Set<string>();
+
 function blankSummary(): SchedulerSummary {
-  return { status: "complete", agentsConsidered: 0, evaluated: 0, opened: 0, skipped: 0, duplicates: 0, deferred: 0, failures: 0 };
+  return { status: "complete", agentsConsidered: 0, evaluated: 0, opened: 0, skipped: 0, duplicates: 0, deferred: 0, dataErrors: 0, failures: 0 };
 }
 
 function tickIdFor(candle: MarketCandle): string {
@@ -114,7 +131,7 @@ function tickIdFor(candle: MarketCandle): string {
 export function createPaperScheduler(options: PaperSchedulerOptions) {
   const now = options.now ?? (() => new Date());
   const log = options.log ?? ((entry) => console.info(JSON.stringify(entry)));
-  const finalizationGraceMs = options.finalizationGraceMs ?? FINALIZATION_GRACE_MS;
+  const finalizationGraceMs = options.finalizationGraceMs ?? CANDLE_FINALIZATION_GRACE_MS;
   const maxCandleAgeMs = options.maxCandleAgeMs ?? MAX_CANDLE_AGE_MS;
 
   return {
@@ -232,7 +249,13 @@ export function createPaperScheduler(options: PaperSchedulerOptions) {
               if (!staleCandleReported) {
                 summary.deferred += 1;
                 staleCandleReported = true;
-                emit(log, { event: "paper_scheduler.agent_deferred", agentId: agent.id, symbol, candleEndAt: candle.endAt, reason: "finalized_candle_stale" });
+                // Logged once per agent and candle: a missed window does not repeat every ten minutes until the next decision.
+                const staleKey = `${agent.id}:${candle.endAt}`;
+                if (!reportedStale.has(staleKey)) {
+                  if (reportedStale.size > 5000) reportedStale.clear();
+                  reportedStale.add(staleKey);
+                  emit(log, { event: "paper_scheduler.agent_deferred", agentId: agent.id, symbol, candleEndAt: candle.endAt, reason: "finalized_candle_stale" });
+                }
               }
               continue;
             }
@@ -241,6 +264,43 @@ export function createPaperScheduler(options: PaperSchedulerOptions) {
                 summary.deferred += 1;
                 invalidWindowReported = true;
                 emit(log, { event: "paper_scheduler.agent_deferred", agentId: agent.id, symbol, candleEndAt: candle.endAt, reason: "hourly_history_incomplete_or_invalid" });
+              }
+              // A fresh, in-session candle that cannot be evaluated is an ERROR outcome on the Tape, not a silent gap.
+              try {
+                const problem = validCandle(candle, symbol, startedAtMs) ? windowProblem(candles, index, symbol, startedAtMs) : `the ${candle.startAt} to ${candle.endAt} candle is missing, synthetic, has no trades or fails provenance checks.`;
+                const errorTickId = tickIdFor(candle);
+                const decision = evaluationErrorDecision({
+                  agentId: agent.id, tickId: errorTickId, occurredAt: candle.endAt, recipeHash: agent.recipeHash, problem,
+                  source: typeof candle.source === "string" ? candle.source : "unavailable", dataRefs: [`candle:${candle.endAt}`, `history:${symbol}`],
+                });
+                const recorded = strategyAgent
+                  ? await options.repository.persistStrategyTick({
+                    ownerId: agent.ownerId, agentId: agent.id, tickId: errorTickId, occurredAt: candle.endAt, snapshot: null,
+                    evaluate: (context) => {
+                      const account = context.account ?? initialStrategyAccount(context.agent.recipe, candle.endAt);
+                      if (!account) throw new Error("The paper account is unavailable, so the error outcome cannot be recorded.");
+                      return { decision, orderIntents: [], portfolio: { account, changes: [] } };
+                    },
+                  })
+                  : await options.repository.persistTick({
+                    ownerId: agent.ownerId, agentId: agent.id, tickId: errorTickId, occurredAt: candle.endAt, snapshot: null,
+                    evaluate: (context) => {
+                      if (!context.account) throw new Error("The paper account is unavailable, so the error outcome cannot be recorded.");
+                      return { decision, orderIntents: [], portfolio: { account: context.account, position: context.position, positionAction: "unchanged" as const } };
+                    },
+                  });
+                if (!recorded.duplicate) {
+                  summary.dataErrors += 1;
+                  emit(log, { event: "paper_scheduler.error_recorded", agentId: agent.id, symbol, candleEndAt: candle.endAt, problem });
+                }
+              } catch (cause) {
+                if (cause instanceof PaperTickStateError || cause instanceof StrategyTickStateError) {
+                  emit(log, { event: "paper_scheduler.agent_deferred", agentId: agent.id, symbol, candleEndAt: candle.endAt, reason: "agent_lifecycle_changed" });
+                  break;
+                }
+                summary.failures += 1;
+                emit(log, { event: "paper_scheduler.agent_failed", agentId: agent.id, symbol, candleEndAt: candle.endAt, stage: "record_error", message: safeMessage(cause) });
+                break;
               }
               continue;
             }

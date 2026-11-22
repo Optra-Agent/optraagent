@@ -6,7 +6,7 @@ import { ApiErrorSchema, PublicHouseAgentDetailSchema } from "../../../lib/domai
 import type { PublicHouseAgentDetail } from "../../../lib/domain/contracts";
 import { buttonVariants } from "@/components/ui/button";
 import { AgentCharacter } from "../../marketing/characters";
-import { errorText, formatPct, formatUsd, formatUtc, shortHash, signedTone, titleCase } from "../format";
+import { errorText, formatPct, formatPts, formatUsd, formatUtc, shortHash, signedTone, titleCase } from "../format";
 import { OrdersTable, PositionGrid, TapeList } from "../paper";
 import { Chip, Panel, StateBlock } from "../ui";
 import { modelAssumptions, stageSummaries, strategyLine, type HouseTemplateId } from "./house-meta";
@@ -83,11 +83,11 @@ export function HouseAgentDetail({ agentId }: { agentId: string }) {
           <div className="panel-head"><div><p className="eyebrow">LAUNCH BACKTEST</p><h2>30 days before launch</h2></div><Chip tone="ember">Modeled premiums</Chip></div>
           <dl className="metric-row">
             <Stat label="Strategy return" value={formatPct(backtest.totalReturnPct)} tone={signedTone(backtest.totalReturnPct)} />
-            {backtest.vsHoldingPct !== null ? <Stat label="Versus holding" value={`${formatPct(backtest.vsHoldingPct)} pts`} tone={signedTone(backtest.vsHoldingPct)} /> : null}
-            {backtest.vsCashPct !== null ? <Stat label="Versus flat USD" value={`${formatPct(backtest.vsCashPct)} pts`} tone={signedTone(backtest.vsCashPct)} /> : null}
+            {backtest.vsHoldingPct !== null ? <Stat label="Versus holding" value={formatPts(backtest.vsHoldingPct)} tone={signedTone(backtest.vsHoldingPct)} /> : null}
+            {backtest.vsCashPct !== null ? <Stat label="Versus flat USD" value={formatPts(backtest.vsCashPct)} tone={signedTone(backtest.vsCashPct)} /> : null}
             <Stat label="Max drawdown" value={formatPct(`-${backtest.maxDrawdownPct}`)} tone="loss" />
           </dl>
-          <p className="panel-note">{formatUtc(backtest.startAt)} to {formatUtc(backtest.endAt)}. Losses are shown as they happened. The model includes no venue fees and no earnings volatility premium.</p>
+          <p className="panel-note">Candles read {formatUtc(backtest.startAt)} to {formatUtc(backtest.endAt)}, including the 30-day volatility warm-up; the 30 scored days are the last 720 hours. Losses are shown as they happened. The model includes no venue fees and no earnings volatility premium.</p>
         </Panel>
       ) : null}
 

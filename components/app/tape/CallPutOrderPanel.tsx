@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import { useAccount, usePublicClient, useWalletClient } from "wagmi";
+import { useAccount, usePublicClient, useSwitchChain, useWalletClient } from "wagmi";
 import { getAddress, isAddress, parseUnits, type Address, type Hex, type PublicClient } from "viem";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -37,7 +37,8 @@ import {
   listCallPutOrderIntents,
 } from "@/lib/venue/callput-order-ledger-client";
 import type { CallPutOrderIntentRecord } from "@/lib/venue/callput-order-ledger";
-import { formatUtc } from "../format";
+import { findUnresolvedDuplicate } from "@/lib/venue/callput-order-lifecycle";
+import { formatUtc, shortAddress } from "../format";
 import { Chip, Panel } from "../ui";
 
 /** Off by default. Wallet signing from this panel only exists when the build explicitly enables it. */
@@ -57,6 +58,8 @@ type StoredCallPutOrderIntent = CallPutOrderIntent & {
   serverOrderId?: string;
   requestKeyEventId?: string;
   requestKeySynced?: boolean;
+  /** The last reconciled keeper outcome read from the chain; used by the duplicate-request guard. */
+  lastState?: string;
   pendingTransaction?: {
     kind: CallPutPreparedTransaction["kind"];
     txHash: Hex;
@@ -193,6 +196,48 @@ function legLabel(option: CallPutRobinhoodOptionMark): string {
   return `${option.instrument} · mark ${option.markPriceRaw.toFixed(4)}`;
 }
 
+const TERMINAL_STATES = new Set(["cancelled", "executed-balance-confirmed"]);
+
+/** Which wallet is connected, whether it is on Robinhood Mainnet, and a one-click switch when it is not. */
+function WalletNetworkStatus() {
+  const { address, chainId, isConnected, connector } = useAccount();
+  const { switchChainAsync } = useSwitchChain();
+  const [switching, setSwitching] = useState(false);
+  const [note, setNote] = useState("");
+
+  // wagmi asks the wallet to switch and, when the wallet does not know the chain (error 4902), adds Robinhood Mainnet from the app config.
+  async function switchNetwork() {
+    setSwitching(true); setNote("");
+    try {
+      await switchChainAsync({ chainId: CALLPUT_ROBINHOOD_CHAIN_ID });
+    } catch (failure) {
+      setNote(reason(failure, "The network could not be switched."));
+    } finally {
+      setSwitching(false);
+    }
+  }
+
+  if (!isConnected || !address) {
+    return <p role="status" className="mb-4 text-sm text-muted-foreground" data-testid="wallet-network-status">No wallet connected. Use the wallet button at the top of the page to connect MetaMask or Phantom (EVM). Preparing and reviewing an order needs a connected wallet on Robinhood Mainnet.</p>;
+  }
+  const onNetwork = chainId === CALLPUT_ROBINHOOD_CHAIN_ID;
+  return (
+    <div className="mb-4 grid gap-2 rounded-md border border-border p-3 text-sm" data-testid="wallet-network-status" data-network={onNetwork ? "ok" : "wrong"}>
+      <div className="flex flex-wrap items-center gap-2">
+        <Chip tone={onNetwork ? "gain" : "ember"}>{onNetwork ? `Robinhood Mainnet · ${CALLPUT_ROBINHOOD_CHAIN_ID}` : `Wrong network${chainId ? ` · chain ${chainId}` : ""}`}</Chip>
+        <span className="mono text-xs">{connector?.name ?? "Wallet"} · {shortAddress(address)}</span>
+      </div>
+      {!onNetwork ? (
+        <>
+          <p role="status" className="text-[var(--ember-text)]">Orders can only be prepared and signed on Robinhood Mainnet (chain {CALLPUT_ROBINHOOD_CHAIN_ID}). Signing is blocked until the wallet is on that network.</p>
+          <div><Button type="button" variant="outline" disabled={switching} onClick={() => void switchNetwork()}>{switching ? "Waiting for wallet…" : "Switch to Robinhood Mainnet"}</Button></div>
+        </>
+      ) : null}
+      {note ? <p role="status" className="text-xs text-muted-foreground">{note}</p> : null}
+    </div>
+  );
+}
+
 export function CallPutOrderPanel() {
   const { address, chainId, isConnected } = useAccount();
   const publicClient = usePublicClient({ chainId: CALLPUT_ROBINHOOD_CHAIN_ID });
@@ -219,6 +264,16 @@ export function CallPutOrderPanel() {
     .filter((item) => address && item.account.toLowerCase() === address.toLowerCase()), [intentsRaw, address]);
   const intent = accountIntents[0] ?? null;
   const pendingTransactionIntent = accountIntents.find((item) => item.pendingTransaction?.status === "submitted") ?? null;
+  const duplicateOf = (current: { clientIntentId: string | null; strategy: string; longOptionId: string; shortOptionId: string; sizeRaw: string; account: string }) => findUnresolvedDuplicate(
+    accountIntents.map((item) => ({
+      clientIntentId: item.clientIntentId,
+      account: item.account, strategy: item.strategy, longOptionId: item.longOptionId, shortOptionId: item.shortOptionId, sizeRaw: item.sizeRaw, createdAtMs: item.createdAtMs,
+      submitted: Boolean(item.requestKey || item.txHash || item.pendingTransaction?.kind === "open-spread"),
+      terminal: Boolean((item.lastState && TERMINAL_STATES.has(item.lastState)) || (item.pendingTransaction?.kind === "open-spread" && item.pendingTransaction.status === "reverted")),
+    })),
+    current,
+    nowMs(),
+  );
   const [reconciliation, setReconciliation] = useState<CallPutReconciliation | null>(null);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
@@ -350,6 +405,10 @@ export function CallPutOrderPanel() {
     }
     const tx = plan.transactions[index];
     if (!tx || done.includes(tx.kind)) return;
+    if (tx.kind === "open-spread" && duplicateOf({ clientIntentId, account: plan.intent.account, strategy: plan.intent.strategy, longOptionId: plan.intent.longOptionId, shortOptionId: plan.intent.shortOptionId, sizeRaw: plan.intent.sizeRaw })) {
+      setError("An identical order for this wallet is still unresolved. Refresh its status below and wait for an outcome before sending another; a second request would open a second position.");
+      return;
+    }
     if (tx.kind === "open-spread" && nowMs() - preparedAt > QUOTE_MAX_AGE_MS) {
       resetPlan();
       setError("This quote is older than 60 seconds. Prepare the order again before signing.");
@@ -556,7 +615,9 @@ export function CallPutOrderPanel() {
         });
         balance = balances[0] ?? 0n;
       }
-      setReconciliation(reconcileCallPutOpen({ intent: currentIntent, request, optionTokenBalanceRaw: balance, nowMs: nowMs() }));
+      const reconciled = reconcileCallPutOpen({ intent: currentIntent, request, optionTokenBalanceRaw: balance, nowMs: nowMs() });
+      saveIntent({ ...currentIntent, lastState: reconciled.state });
+      setReconciliation(reconciled);
     } catch (failure) {
       setError(reason(failure, "The request could not be read."));
     } finally {
@@ -579,6 +640,7 @@ export function CallPutOrderPanel() {
       <p className="mb-4 text-sm text-muted-foreground">
         Direct wallet route: your wallet is the account and signs every transaction. CallPut supports two-leg spreads here; single-leg opens, the CallPut Account relay, and automated agent orders are not enabled. Quotes are indicative estimates; the venue keeper sets the executed price.
       </p>
+      <WalletNetworkStatus />
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         <div className="grid gap-1.5">
           <label htmlFor="cp-underlying" className="text-sm font-medium">Underlying</label>

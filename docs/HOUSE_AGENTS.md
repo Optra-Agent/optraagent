@@ -46,12 +46,39 @@ turn it off. `POST /api/cron/house-agents` (bearer `CRON_SECRET`) runs provision
 Public read API: `GET /api/public/v1/agents`, `GET /api/public/v1/agents/{id}`, `GET /api/public/v1/tape`. Only agents with
 `kind = 'house'` and `visibility = 'public'` are returned. UI: the "Live House Agents" panel on `/agents` and `/house/{id}`.
 
+## Decision Tape: when it is empty, when it fills, what is recorded
+
+An agent evaluates a candle only when all of these hold (`lib/paper/scheduler.ts`): the candle ends inside the regular US session
+(09:30–16:00 ET, early closes and holidays honored, so the in-session candle ends are 10:00–15:00 ET, six a day), it ended more than five
+minutes ago, it is no more than two hours old, it is newer than the agent's last decision or launch, and the previous 721 hourly candles
+are all present, non-synthetic and contiguous. The ten-minute in-process pass therefore records a decision for each in-session hour
+shortly after that hour's candle closes. A House Agent launched on a Saturday has nothing to evaluate until the next session: **an empty
+Tape on a weekend, a holiday or outside 09:30–16:00 ET is expected, not a fault.**
+
+Outcomes persisted per evaluation: `OPEN`, `CLOSE`, `HOLD`, `SKIP` (the stored `action`) and `ERROR`. ERROR is a skip whose trace carries
+a hook with status `error`: the engine's own integrity failures (`system.recipe_hash`, `system.paper_account`) and the scheduler's
+data-integrity failure (`system.market_data`), recorded when a fresh in-session candle cannot be evaluated because its 722-candle window
+is incomplete, synthetic or non-contiguous. It creates no order and changes no position or account. A candle that is stale because the
+process was down is logged once per agent and candle and is not recorded as a decision.
+
+`GET /api/public/v1/tape` also returns `scheduler`: whether the market is open and why not, the next eligible candle end and the earliest
+instant it is finalized, and this server instance's last pass (null after a restart until the first pass finishes; the decisions
+themselves are the persisted evidence). Public responses drop the raw 721-candle array stored inside a Protective Put decision and keep
+the history hash, window and observed candle. The Tape page (`/tape`, signed out) renders this record with agent, strategy, UTC
+timestamp, outcome, rule trace, source, history hash and recipe hash.
+
+Evidence without waiting for a session: `tests/integration/house-tape-persistence.test.ts` provisions the four agents in an isolated
+PGlite database, steps the real scheduler across every in-session hour of the archived real 2026-11-21 capture, injects one synthetic
+candle to produce ERROR records, closes and reopens the data directory (a process restart) and asserts the public Tape is identical and
+the scheduler resumes without duplicates. Those rows live in a throwaway directory; none is a production record.
+
 ## Tests
 
 - `tests/engine/strategy-tick.test.ts`, `strategy-helpers.test.ts`: open, close, roll, settle, collateral, cover, earnings gating, breakers.
 - `tests/engine/strategy-real-data.test.ts`: 30-day backtests on captured Robinhood Chain candles and earnings (`tests/fixtures/market-capture-20261121.json`).
 - `tests/hooks/house-specs.test.ts`: recipe bounds, tamper cases.
 - `tests/integration/house-agents.test.ts`: persisted tick = pure tick, restart recovery, idempotency, provisioning, public API isolation.
+- `tests/integration/house-tape-persistence.test.ts`: isolated-database Tape persistence, ERROR outcome, restart consistency, scheduler status.
 - `tests/e2e/house-agents-flow.spec.ts` (`OPTRA_E2E_HOUSE=1 bunx playwright test --project=house`): choose → configure → validate →
   backtest → launch → tick → position → Tape in a real browser against the real backend and the captured market data.
 
