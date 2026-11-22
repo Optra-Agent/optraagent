@@ -135,30 +135,70 @@ export function Story({ rails }: { rails: RiskRail[] }) {
 
 /* ─────────────────────────── Proof ─────────────────────────── */
 
-/** Three capabilities in three different states: available now, available and wallet-signed, and built but not activated. */
-function ExecutionModes() {
-  const paper = ["Virtual capital", "Supported rule configuration", "Backtesting", "Agent launch", "Automated evaluation", "Explainable decisions in Optra Tape"];
+/**
+ * Three capabilities in three different states, as an asymmetric Bento: Paper Trading and Manual CallPut stack on the left,
+ * the Autonomous Agent Engine runs the full height on the right. DOM order is the mobile stacking order.
+ */
+function Steps({ label, items }: { label: string; items: readonly string[] }) {
+  return (
+    <ol className="xm-flow" aria-label={label}>
+      {items.map((item, index) => <li key={item}><span aria-hidden="true">{index + 1}</span>{item}</li>)}
+    </ol>
+  );
+}
+
+function ExecutionModes({ running }: { running: number | null }) {
+  const agentDots = Array.from({ length: Math.min(running ?? 0, 8) });
   return (
     <div className="xm reveal-stagger" role="group" aria-label="Execution modes">
-      <article className="xm-card" data-mode="paper" style={at(0)}>
-        <header><h3>Paper Trading</h3><Chip tone="azure">Available now</Chip></header>
+      <article className="xm-card" data-mode="paper" style={at(0)} aria-labelledby="xm-paper-title">
+        <header>
+          <div><p className="xm-eyebrow mono">01 · PAPER</p><h3 id="xm-paper-title">Paper Trading</h3></div>
+          <Chip tone="azure">Available now</Chip>
+        </header>
         <p>Run an agent against virtual capital with modeled premiums. The full path works end to end.</p>
-        <ul>{paper.map((item) => <li key={item}>{item}</li>)}</ul>
-        <Link className={cn(buttonVariants())} href="/agents">Launch an agent</Link>
+        {running !== null && running > 0 ? (
+          <p className="xm-live"><span className="xm-dots" aria-hidden="true">{agentDots.map((_, index) => <i key={index} />)}</span><strong>{running}</strong> House Agents running on paper</p>
+        ) : null}
+        <Steps label="Paper agent path" items={["Configure rules", "Backtest", "Evaluate hourly", "Read the Tape"]} />
+        <ul className="xm-list">
+          <li>Strategy configuration from readable rules</li>
+          <li>Backtesting on verified hourly candles</li>
+          <li>Automated paper evaluation</li>
+          <li>Explainable decisions in Optra Tape</li>
+        </ul>
+        <Link className={cn(buttonVariants(), "xm-cta")} href="/agents">Launch an Agent</Link>
       </article>
-      <article className="xm-card" data-mode="manual" style={at(1)}>
-        <header><h3>Manual CallPut</h3><Chip tone="azure">Available now</Chip></header>
+      <article className="xm-card" data-mode="manual" style={at(1)} aria-labelledby="xm-manual-title">
+        <header>
+          <div><p className="xm-eyebrow mono">02 · MANUAL</p><h3 id="xm-manual-title">Manual CallPut</h3></div>
+          <Chip tone="azure">Available now</Chip>
+        </header>
         <p><strong>Wallet-signed.</strong> Direct-wallet CallPut spread orders are quoted, reviewed and signed in your own wallet, one transaction at a time, with an exact funding check before you sign. Close and settle work the same way, each with its own review and wallet confirmation.</p>
-        <p>Close and settle passed 23 of 23 checks against the real contracts on a Mainnet fork. OPTRA has not yet verified a live open, close or settle.</p>
+        <div className="xm-trio" role="list" aria-label="Wallet-signed actions"><span role="listitem">Open</span><span role="listitem">Close</span><span role="listitem">Settle</span></div>
+        <ul className="xm-proof" aria-label="Manual CallPut evidence">
+          <li data-state="done">Implemented in production, each transaction confirmed in your wallet</li>
+          <li data-state="done">Fork-tested: close and settle passed 23 of 23 checks on the real contracts</li>
+          <li data-state="todo">Live Mainnet fill: not yet demonstrated</li>
+        </ul>
+        <p className="xm-note">OPTRA has not yet verified a live open, close or settle.</p>
+        <Link className={cn(buttonVariants({ variant: "outline" }), "xm-cta")} href="/tape">Open Trading Panel</Link>
       </article>
-      <article className="xm-card" data-mode="engine" style={at(2)}>
-        <header><h3>Autonomous Agent Engine</h3><Chip tone="neutral">{LIVE_ENGINE_STATUS}</Chip></header>
+      <article className="xm-card" data-mode="engine" style={at(2)} aria-labelledby="xm-engine-title">
+        <header>
+          <div><p className="xm-eyebrow mono">03 · AUTONOMOUS</p><h3 id="xm-engine-title">Autonomous Agent Engine</h3></div>
+          <Chip tone="neutral">{LIVE_ENGINE_STATUS}</Chip>
+        </header>
         <p>OPTRA&apos;s automated execution infrastructure includes strategy evaluation, risk controls, transaction tracking, and emergency-stop mechanisms. Real-money execution requires an authorized trading session and successful production acceptance.</p>
-        <p>Built and passed 25 of 25 checks on a Mainnet fork:</p>
-        <ul>{LIVE_ENGINE_BUILT.map((item) => <li key={item}>{item}</li>)}</ul>
-        <p>No OPTRA agent places a real-money order today. Live activation requires:</p>
+        <div className="xm-meter" role="img" aria-label="Mainnet-fork acceptance: 25 of 25 checks passed"><span><b>25</b> / 25</span><i aria-hidden="true" /><small>Mainnet-fork acceptance checks</small></div>
+        <p className="xm-sub">Built</p>
+        <ul className="xm-list">{LIVE_ENGINE_BUILT.map((item) => <li key={item}>{item}</li>)}</ul>
+        <p className="xm-sub">No OPTRA agent places a real-money order today. Live activation requires</p>
         <ul className="xm-todo">{LIVE_REQUIREMENTS.map((item) => <li key={item.title}>{item.title}</li>)}</ul>
-        <Link className="xm-link" href="/verify">See the activation checklist</Link>
+        <div className="xm-actions">
+          <Link className={cn(buttonVariants(), "xm-cta")} href="/tape#live-agent">Explore Live Agent</Link>
+          <Link className="xm-link" href="/verify">See the activation checklist</Link>
+        </div>
       </article>
     </div>
   );
@@ -168,7 +208,7 @@ const CLAIM_TITLE: Record<string, string> = { market_data: "Market data", hook_c
 const CLAIM_LABEL: Record<string, string> = { verified: "Verified", limited: "Limited", preview: "Preview", unavailable: "Unavailable", disabled: "Disabled" };
 
 /** What is built and what is not, read from the server's own verification response. One real public call sits beside it. */
-export function Proof({ verification, docs }: { verification: PublicVerification; docs: ApiDoc[] }) {
+export function Proof({ verification, docs, houseAgentsRunning = null }: { verification: PublicVerification; docs: ApiDoc[]; houseAgentsRunning?: number | null }) {
   const sample = docs.find((doc) => doc.id === "hooks") ?? docs[0];
   return (
     <section className="m-section" id="proof" aria-labelledby="proof-title">
@@ -195,7 +235,7 @@ export function Proof({ verification, docs }: { verification: PublicVerification
             <Link className={buttonVariants({ variant: "outline" })} href="/verify">Open the Verify page</Link>
           </aside>
         </div>
-        <ExecutionModes />
+        <ExecutionModes running={houseAgentsRunning} />
       </div>
     </section>
   );

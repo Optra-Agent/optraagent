@@ -62,7 +62,7 @@ export function LiveAgentControls() {
 
   const active = data?.grants.filter((grant) => grant.status === "active") ?? [];
   return (
-    <Panel aria-label="Live Agent controls">
+    <Panel id="live-agent" aria-label="Live Agent controls" className="scroll-mt-20">
       <div className="panel-head">
         <div><p className="eyebrow">AUTOMATED CALLPUT AGENT</p><h2>Agent controls</h2></div>
         <Chip tone={data && !data.control.stopped && active.length > 0 ? "ember" : "neutral"}>{data && !data.control.stopped && active.length > 0 ? "Armed" : "Stopped"}</Chip>

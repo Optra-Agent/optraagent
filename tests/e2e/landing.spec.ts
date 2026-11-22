@@ -325,13 +325,15 @@ test("Paper, manual CallPut, and autonomous execution are represented truthfully
   await modes.scrollIntoViewIfNeeded();
   await expect(modes.getByRole("heading", { name: "Paper Trading" })).toBeVisible();
   await expect(modes.locator('[data-mode="paper"]').getByText("Available now", { exact: true })).toBeVisible();
-  await expect(modes.getByRole("link", { name: "Launch an agent" })).toHaveAttribute("href", "/agents");
+  await expect(modes.getByRole("link", { name: "Launch an Agent" })).toHaveAttribute("href", "/agents");
 
   const manual = modes.locator('[data-mode="manual"]');
   await expect(manual.getByRole("heading", { name: "Manual CallPut" })).toBeVisible();
   await expect(manual.getByText("Available now", { exact: true })).toBeVisible();
   await expect(manual.getByText(/CallPut spread orders are quoted, reviewed and signed in your own wallet/i)).toBeVisible();
   await expect(manual.getByText(/Close and settle work the same way/i)).toBeVisible();
+  await expect(manual.getByText("Live Mainnet fill: not yet demonstrated", { exact: true })).toBeVisible();
+  await expect(manual.getByRole("link", { name: "Open Trading Panel" })).toHaveAttribute("href", "/tape");
   await expect(manual.getByText(/has not yet verified a live open, close or settle/i)).toBeVisible();
 
   // The engine is presented as built, not as "Unavailable", and is never called live, active or operational.
@@ -347,6 +349,7 @@ test("Paper, manual CallPut, and autonomous execution are represented truthfully
   await expect(engine.getByText("Owner account grant and confirmed signer model", { exact: true })).toBeVisible();
   await expect(engine.getByRole("button")).toHaveCount(0);
   await expect(engine.getByRole("link", { name: /See the activation checklist/ })).toHaveAttribute("href", "/verify");
+  await expect(engine.getByRole("link", { name: "Explore Live Agent" })).toHaveAttribute("href", "/tape#live-agent");
 });
 
 test("the opening causes no hydration mismatch on a first load or a reload", async ({ page }) => {
@@ -361,4 +364,73 @@ test("the opening causes no hydration mismatch on a first load or a reload", asy
   await expect(page.locator(".splash")).toHaveAttribute("data-state", /boot|form|cast|lift|gone/, { timeout: 15000 });
   await page.waitForTimeout(800);
   expect(problems.filter((text) => /hydrat|did not match|didn't match|script tag/i.test(text))).toEqual([]);
+});
+
+test("the execution modes are a three-card Bento: 7/5 on desktop with the Engine spanning both rows, stacked below 1100 px, no overflow", async ({ page, request }) => {
+  const api = await request.get("/api/public/v1/agents");
+  const running = ((await api.json()) as { agents: Array<{ status: string }> }).agents.filter((agent) => agent.status === "running").length;
+  // The scroll-driven reveal nudges each card by a few pixels depending on scroll position; measure the settled layout.
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  for (const width of [320, 390, 768, 1280, 1440]) {
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto("/?splash=off");
+    const modes = page.getByRole("group", { name: "Execution modes" });
+    await modes.scrollIntoViewIfNeeded();
+    await expect(modes.locator(".xm-card")).toHaveCount(3);
+    const box = async (mode: string) => (await modes.locator(`[data-mode="${mode}"]`).boundingBox())!;
+    const [paper, manual, engine] = [await box("paper"), await box("manual"), await box("engine")];
+    if (width >= 1280) {
+      expect(Math.abs(paper.x - manual.x), `left column aligned @${width}`).toBeLessThan(2);
+      expect(Math.abs(paper.width - manual.width)).toBeLessThan(2);
+      expect(engine.x, "engine is the right column").toBeGreaterThan(paper.x + paper.width);
+      expect(manual.y, "manual is below paper").toBeGreaterThan(paper.y + paper.height - 2);
+      expect(Math.abs(engine.y - paper.y), "engine starts on the top row").toBeLessThan(2);
+      expect(Math.abs(engine.y + engine.height - (manual.y + manual.height)), "engine spans both rows").toBeLessThan(2);
+      expect(paper.width / engine.width, "7 to 5 columns").toBeGreaterThan(1.25);
+      expect(paper.width / engine.width).toBeLessThan(1.55);
+    } else {
+      for (const other of [manual, engine]) expect(Math.abs(other.x - paper.x), `stacked @${width}`).toBeLessThan(2);
+      expect(manual.y).toBeGreaterThan(paper.y + paper.height - 2);
+      expect(engine.y).toBeGreaterThan(manual.y + manual.height - 2);
+    }
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), `no overflow @${width}`).toBe(true);
+    // Nothing inside a card pokes out of it (clipped or overlapping text).
+    const escaped = await modes.locator(".xm-card").evaluateAll((cards) => cards.flatMap((card) => {
+      const outer = card.getBoundingClientRect();
+      return Array.from(card.querySelectorAll("*")).filter((node) => { const r = node.getBoundingClientRect(); return r.width > 0 && (r.right > outer.right + 0.5 || r.left < outer.left - 0.5); }).map((node) => node.tagName);
+    }));
+    expect(escaped, `content inside its card @${width}`).toEqual([]);
+    if (running > 0) await expect(modes.locator(".xm-live strong")).toHaveText(String(running));
+  }
+});
+
+test("Bento CTAs go where they say, are keyboard reachable, and motion is removed for reduced-motion users", async ({ page }) => {
+  await page.goto("/?splash=off");
+  const modes = page.getByRole("group", { name: "Execution modes" });
+  for (const [name, href] of [["Launch an Agent", "/agents"], ["Open Trading Panel", "/tape"], ["Explore Live Agent", "/tape#live-agent"], ["See the activation checklist", "/verify"]] as const) {
+    const link = modes.getByRole("link", { name });
+    await link.focus();
+    await expect(link).toBeFocused();
+    await expect(link).toHaveAttribute("href", href);
+  }
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await modes.locator('[data-mode="paper"]').hover();
+  const motion = await modes.evaluate((node) => {
+    const card = node.querySelector<HTMLElement>('[data-mode="paper"]')!;
+    const dot = node.querySelector<HTMLElement>(".xm-dots i");
+    return { transform: getComputedStyle(card).transform, animation: dot ? getComputedStyle(dot).animationName : "none" };
+  });
+  expect(motion.transform === "none" || motion.transform === "matrix(1, 0, 0, 1, 0, 0)").toBe(true);
+  expect(motion.animation).toBe("none");
+
+  await page.emulateMedia({ reducedMotion: "no-preference" });
+  await modes.getByRole("link", { name: "Explore Live Agent" }).click();
+  await expect(page).toHaveURL(/\/tape#live-agent$/);
+  await expect(page.getByRole("region", { name: "Live Agent controls" })).toBeVisible();
+  await page.goto("/?splash=off");
+  await page.getByRole("group", { name: "Execution modes" }).getByRole("link", { name: "Open Trading Panel" }).click();
+  await expect(page).toHaveURL(/\/tape$/);
+  await page.goto("/?splash=off");
+  await page.getByRole("group", { name: "Execution modes" }).getByRole("link", { name: "Launch an Agent" }).click();
+  await expect(page).toHaveURL(/\/agents$/);
 });

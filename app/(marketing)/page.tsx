@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { PublicTapeResponseSchema, PublicVerificationSchema } from "../../lib/domain/contracts";
+import { PublicAgentsResponseSchema, PublicTapeResponseSchema, PublicVerificationSchema } from "../../lib/domain/contracts";
 import { createPublicHandlers } from "../../lib/public/handlers";
 import { getPublicHandlers } from "../../lib/public/runtime";
 import { getLandingFacts } from "../../components/marketing/data";
@@ -42,7 +42,11 @@ export default async function LandingPage() {
   // The ledger renders the server's own claims, read through the same handler the public API uses.
   const verification = PublicVerificationSchema.parse(await publicHandlers.verify().then((response) => response.json()));
   const read = async (response: Promise<Response>) => (await response).json() as Promise<unknown>;
-  const docs = getApiDocs({ templates: await read(publicHandlers.templates()), verify: verification, agents: await read(publicHandlers.agents()), tape: await read(publicHandlers.tape()) });
+  const agentsBody = await read(publicHandlers.agents());
+  const docs = getApiDocs({ templates: await read(publicHandlers.templates()), verify: verification, agents: agentsBody, tape: await read(publicHandlers.tape()) });
+  // The same database-backed rows the public API returns; null (not 0) when the response cannot be read.
+  const parsedAgents = PublicAgentsResponseSchema.safeParse(agentsBody);
+  const houseAgentsRunning = parsedAgents.success ? parsedAgents.data.agents.filter((agent) => agent.status === "running").length : null;
   const graph = getGraphData();
   // When the public Tape has a record, the graph can replay it. Today the public Tape is empty, so only the labeled illustrative examples show.
   const tape = PublicTapeResponseSchema.parse(await publicHandlers.tape().then((response) => response.json()));
@@ -60,7 +64,7 @@ export default async function LandingPage() {
       <HouseAgents facts={facts} graph={graph} recorded={recorded} />
       <AgentShowcase facts={facts} graph={graph} />
       <Story rails={getRiskRails()} />
-      <Proof verification={verification} docs={docs} />
+      <Proof verification={verification} docs={docs} houseAgentsRunning={houseAgentsRunning} />
       <Faq facts={facts} />
       <FinalCta />
     </>
