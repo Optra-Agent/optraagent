@@ -10,6 +10,11 @@ import { SignatureStage } from "../../components/marketing/SignatureStage";
 import { StageRail } from "../../components/marketing/StageRail";
 import { AgentShowcase, Faq, FinalCta, Hero, HeroPreview, HouseAgents, Proof, Story } from "../../components/marketing/sections";
 
+// The ledger below reads the database-backed public records (running House Agents, Decision Tape). A statically
+// prerendered page froze the build-time answer (0 agents, no decisions) behind a one-year CDN cache while Verify,
+// which reads the same handlers in the browser, showed the live count. Render per request instead.
+export const dynamic = "force-dynamic";
+
 export const metadata: Metadata = {
   title: { absolute: "Optra Agent | No-Code Options Trading Agents" },
   description:

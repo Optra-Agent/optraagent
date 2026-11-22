@@ -86,7 +86,7 @@ export function PublicHouseTape() {
           <Button variant="outline" type="button" disabled={state.status === "loading"} onClick={() => { setState({ status: "loading" }); setRefreshCount((count) => count + 1); }}>Refresh</Button>
         </div>
       </div>
-      <p className="panel-lede">Every decision the four OPTRA House Agents have persisted: the hourly candle it read, the rule trace, the outcome and the data provenance. Premiums are modeled and no order is a venue fill. These are OPTRA-owned agents, not community adoption.</p>
+      <p className="panel-lede">Every decision the OPTRA House Agents have persisted: the hourly candle it read, the rule trace, the outcome and the data provenance. Premiums are modeled and no order is a venue fill. These are OPTRA-owned agents, not community adoption.</p>
       {state.status === "loading" ? <div role="status"><Skeleton lines={4} /><span className="sr-only">Loading the public Tape…</span></div> : null}
       {state.status === "error" ? <StateBlock kind="error" title="Public Tape could not be loaded"><p>{state.message}</p></StateBlock> : null}
       {state.status === "ready" ? (

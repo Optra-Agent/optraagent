@@ -27,8 +27,8 @@ test("landing capability claims match the catalog and roadmap items are not pres
   await expect(proof.getByText("Live execution")).toBeVisible();
   await expect(proof.getByText("Disabled", { exact: true })).toBeVisible();
   await expect(proof.getByText("An MCP server and pay-per-call endpoints are planned, not built.", { exact: false })).toBeVisible();
-  await expect(proof.locator('.xm-card[data-mode="live"]').getByText("Wallet-signed", { exact: true })).toBeVisible();
-  await expect(proof.locator('.xm-card[data-mode="live"]').getByText("Planned", { exact: true })).toHaveCount(0);
+  await expect(proof.locator('.xm-card[data-mode="manual"]').getByText("Wallet-signed.", { exact: false }).first()).toBeVisible();
+  await expect(proof.locator('.xm-card[data-mode="engine"]').getByText("Planned", { exact: true })).toHaveCount(0);
   await expect(page.locator("#agents .pn-agents").getByText("Paper ready", { exact: true })).toHaveCount(4);
   await expect(page.locator("#agents .pn-agents").getByText("Preview", { exact: true })).toHaveCount(0);
 });
@@ -317,22 +317,29 @@ test("Paper, manual CallPut, and autonomous execution are represented truthfully
   const modes = page.getByRole("group", { name: "Execution modes" });
   await modes.scrollIntoViewIfNeeded();
   await expect(modes.getByRole("heading", { name: "Paper Trading" })).toBeVisible();
-  await expect(modes.getByText("Working today")).toBeVisible();
+  await expect(modes.locator('[data-mode="paper"]').getByText("Available now", { exact: true })).toBeVisible();
   await expect(modes.getByRole("link", { name: "Launch an agent" })).toHaveAttribute("href", "/agents");
-  const restricted = modes.locator('[data-mode="live"]');
-  await expect(restricted.getByRole("heading", { name: "Manual CallPut" })).toBeVisible();
-  await expect(restricted.getByText("Wallet-signed", { exact: true })).toBeVisible();
-  await expect(restricted.getByText(/CallPut spread orders are quoted, reviewed and signed in your own wallet/i)).toBeVisible();
-  await expect(restricted.getByText(/Close and settle are available on the same terms/i)).toBeVisible();
-  await expect(restricted.getByText(/has not yet verified a live open, close or settle/i)).toBeVisible();
-  await expect(restricted.getByText("Autonomous agents", { exact: true })).toBeVisible();
-  await expect(restricted.getByText("Unavailable", { exact: true })).toBeVisible();
-  await expect(restricted.getByText(/agents do not submit CallPut requests/i)).toBeVisible();
-  await expect(restricted.getByText("Live Trading", { exact: true })).toHaveCount(0);
-  await expect(restricted.getByText("Planned", { exact: true })).toHaveCount(0);
-  await expect(restricted.getByText("Owner account grant and confirmed signer model", { exact: true })).toBeVisible();
-  await expect(restricted.getByRole("button")).toHaveCount(0);
-  await expect(restricted.getByRole("link", { name: /What autonomous trading still needs/ })).toHaveAttribute("href", "/verify");
+
+  const manual = modes.locator('[data-mode="manual"]');
+  await expect(manual.getByRole("heading", { name: "Manual CallPut" })).toBeVisible();
+  await expect(manual.getByText("Available now", { exact: true })).toBeVisible();
+  await expect(manual.getByText(/CallPut spread orders are quoted, reviewed and signed in your own wallet/i)).toBeVisible();
+  await expect(manual.getByText(/Close and settle work the same way/i)).toBeVisible();
+  await expect(manual.getByText(/has not yet verified a live open, close or settle/i)).toBeVisible();
+
+  // The engine is presented as built, not as "Unavailable", and is never called live, active or operational.
+  const engine = modes.locator('[data-mode="engine"]');
+  await expect(engine.getByRole("heading", { name: "Autonomous Agent Engine" })).toBeVisible();
+  await expect(engine.getByText("Engine built · Live activation required", { exact: true })).toBeVisible();
+  await expect(engine.getByText(/automated execution infrastructure includes strategy evaluation, risk controls, transaction tracking, and emergency-stop mechanisms/i)).toBeVisible();
+  await expect(engine.getByText(/Real-money execution requires an authorized trading session and successful production acceptance/i)).toBeVisible();
+  await expect(engine.getByText("Emergency stop and grant revocation", { exact: true })).toBeVisible();
+  await expect(engine.getByText(/No OPTRA agent places a real-money order today/i)).toBeVisible();
+  await expect(engine.getByText("Unavailable", { exact: true })).toHaveCount(0);
+  await expect(engine.getByText(/^(Live|Active|Operational)$/)).toHaveCount(0);
+  await expect(engine.getByText("Owner account grant and confirmed signer model", { exact: true })).toBeVisible();
+  await expect(engine.getByRole("button")).toHaveCount(0);
+  await expect(engine.getByRole("link", { name: /See the activation checklist/ })).toHaveAttribute("href", "/verify");
 });
 
 test("the opening causes no hydration mismatch on a first load or a reload", async ({ page }) => {

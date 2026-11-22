@@ -6,9 +6,9 @@ export default function AppLayout({ children }: Readonly<{ children: React.React
     <AppShell
       footer={
         <footer className="app-footer">
-          <p>Paper trading only. Modeled Black–Scholes premiums, 50 bp slippage, venue fees not modeled. Not investment advice.</p>
+          <p>Agents run on paper with modeled Black–Scholes premiums, 50 bp slippage, venue fees not modeled. Real-money orders exist only as wallet-signed CallPut actions you confirm yourself. Not investment advice.</p>
           <p>
-            Live trading disabled · Hooks inspired by Uniswap v4, none deployed onchain · <Link href="/verify">Verify claims</Link>
+            No OPTRA agent places real-money orders · Hooks inspired by Uniswap v4; one experimental guard is deployed, unaudited and uninitialized · <Link href="/verify">Verify claims</Link>
           </p>
         </footer>
       }

@@ -14,7 +14,7 @@ import { HeroStage } from "./HeroStage";
 import { AgentPhones } from "./AgentPhones";
 import { AgentEnsemble } from "./AgentEnsemble";
 import { FinaleCast } from "./FinaleCast";
-import { LIVE_REQUIREMENTS } from "../app/live-requirements";
+import { LIVE_ENGINE_BUILT, LIVE_ENGINE_STATUS, LIVE_REQUIREMENTS } from "../app/live-requirements";
 import { STAGE_ORDER, STAGE_QUESTION, getLandingFacts, stageLabel } from "./data";
 
 type Facts = ReturnType<typeof getLandingFacts>;
@@ -135,31 +135,36 @@ export function Story({ rails }: { rails: RiskRail[] }) {
 
 /* ─────────────────────────── Proof ─────────────────────────── */
 
-/** Keep paper, manual venue actions, and autonomous execution as separate capabilities. */
+/** Three capabilities in three different states: available now, available and wallet-signed, and built but not activated. */
 function ExecutionModes() {
   const paper = ["Virtual capital", "Supported rule configuration", "Backtesting", "Agent launch", "Automated evaluation", "Explainable decisions in Optra Tape"];
   return (
     <div className="xm reveal-stagger" role="group" aria-label="Execution modes">
       <article className="xm-card" data-mode="paper" style={at(0)}>
-        <header><h3>Paper Trading</h3><Chip tone="azure">Working today</Chip></header>
+        <header><h3>Paper Trading</h3><Chip tone="azure">Available now</Chip></header>
         <p>Run an agent against virtual capital with modeled premiums. The full path works end to end.</p>
         <ul>{paper.map((item) => <li key={item}>{item}</li>)}</ul>
         <Link className={cn(buttonVariants())} href="/agents">Launch an agent</Link>
       </article>
-      <article className="xm-card" data-mode="live" style={at(1)}>
-        <header><h3>Manual CallPut</h3><Chip tone="neutral">Wallet-signed</Chip></header>
-        <p>Direct-wallet CallPut spread orders are quoted, reviewed and signed in your own wallet, one transaction at a time. Close and settle are available on the same terms, each with its own review and wallet confirmation. They passed 23 of 23 checks against the real contracts on a Mainnet fork. OPTRA has not yet verified a live open, close or settle.</p>
-        <p><strong>Autonomous agents</strong> <Chip tone="ember">Unavailable</Chip></p>
-        <p>OPTRA agents do not submit CallPut requests. No owner-specific automation grant or connected order worker exists.</p>
-        <p>Before agent-initiated orders:</p>
-        <ul>{LIVE_REQUIREMENTS.map((item) => <li key={item.title}>{item.title}</li>)}</ul>
-        <Link className="xm-link" href="/verify">What autonomous trading still needs</Link>
+      <article className="xm-card" data-mode="manual" style={at(1)}>
+        <header><h3>Manual CallPut</h3><Chip tone="azure">Available now</Chip></header>
+        <p><strong>Wallet-signed.</strong> Direct-wallet CallPut spread orders are quoted, reviewed and signed in your own wallet, one transaction at a time, with an exact funding check before you sign. Close and settle work the same way, each with its own review and wallet confirmation.</p>
+        <p>Close and settle passed 23 of 23 checks against the real contracts on a Mainnet fork. OPTRA has not yet verified a live open, close or settle.</p>
+      </article>
+      <article className="xm-card" data-mode="engine" style={at(2)}>
+        <header><h3>Autonomous Agent Engine</h3><Chip tone="neutral">{LIVE_ENGINE_STATUS}</Chip></header>
+        <p>OPTRA&apos;s automated execution infrastructure includes strategy evaluation, risk controls, transaction tracking, and emergency-stop mechanisms. Real-money execution requires an authorized trading session and successful production acceptance.</p>
+        <p>Built and passed 25 of 25 checks on a Mainnet fork:</p>
+        <ul>{LIVE_ENGINE_BUILT.map((item) => <li key={item}>{item}</li>)}</ul>
+        <p>No OPTRA agent places a real-money order today. Live activation requires:</p>
+        <ul className="xm-todo">{LIVE_REQUIREMENTS.map((item) => <li key={item.title}>{item.title}</li>)}</ul>
+        <Link className="xm-link" href="/verify">See the activation checklist</Link>
       </article>
     </div>
   );
 }
 
-const CLAIM_TITLE: Record<string, string> = { market_data: "Market data", hook_catalog: "Hook catalog", house_agents: "House Agents", historical_backtest: "Historical backtest", live_execution: "Live execution", v4_claim_level: "Uniswap v4 claim level" };
+const CLAIM_TITLE: Record<string, string> = { market_data: "Market data", hook_catalog: "Hook catalog", house_agents: "House Agent templates", public_house_agents: "Running House Agents", decision_tape: "Decision Tape", historical_backtest: "Historical backtest", live_execution: "Live execution", v4_claim_level: "Uniswap v4 claim level" };
 const CLAIM_LABEL: Record<string, string> = { verified: "Verified", limited: "Limited", preview: "Preview", unavailable: "Unavailable", disabled: "Disabled" };
 
 /** What is built and what is not, read from the server's own verification response. One real public call sits beside it. */
@@ -199,7 +204,8 @@ export function Proof({ verification, docs }: { verification: PublicVerification
 /* ─────────────────────────── FAQ and final CTA ─────────────────────────── */
 
 const faqStatic = [
-  ["Is this real money?", "No. Everything runs on paper with virtual USDG. Live execution is disabled in this build, and no deposit is requested."],
+  ["Is this real money?", "Agents run on paper with virtual USDG and need no deposit. Real money is involved only when you place a wallet-signed CallPut order yourself on Tape, where you confirm every transaction in your own wallet. No OPTRA agent places a real-money order."],
+  ["Can an agent trade for me with real money?", "Not yet. The autonomous execution engine is built and passed its Mainnet-fork acceptance, but it stays off until you authorize a trading session, all seven live gates pass and production acceptance is complete. Verify shows each requirement."],
   ["What are synthetic options?", "Calls and puts priced from Robinhood Chain stock-token prices. They are not shares, and they are not tokenized stock ownership."],
   ["What is a modeled premium?", "A theoretical Black–Scholes price, using 30-day realized volatility × 1.1. It is not a recorded option quote, a listed contract or a real fill, and venue fees are not included."],
   ["Why does a backtest need 1,441 candles?", "721 hourly candles warm up the volatility estimate and 720 candles are decisions. Gaps or a missing corporate-action check block the run instead of filling in data."],
@@ -239,7 +245,7 @@ export function FinalCta() {
           <div className="m-wrap m-final-inner">
             <p className="m-eyebrow">START HERE</p>
             <h2 id="final-title">Launch your first agent.</h2>
-            <p>Pick Protective Put, backtest it on past prices, launch it with virtual money, and read why it acted on the Tape. Nothing here needs a deposit or touches real money.</p>
+            <p>Pick Protective Put, backtest it on past prices, launch it with virtual money, and read why it acted on the Tape. Paper agents need no deposit and never touch real money.</p>
             <div className="m-actions">
               <Link className={buttonVariants({ size: "lg" })} href="/agents">Launch an agent</Link>
               <Link className={buttonVariants({ variant: "outline", size: "lg" })} href="/verify">See what is verified</Link>

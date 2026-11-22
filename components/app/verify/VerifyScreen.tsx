@@ -6,6 +6,7 @@ import type { PublicClaim, PublicVerification } from "../../../lib/domain/contra
 import { Chip, PageHeader, StateBlock, Panel } from "../ui";
 import type { Tone } from "../ui";
 import { errorText } from "../format";
+import { LIVE_ENGINE_BUILT, LIVE_ENGINE_STATUS, LIVE_REQUIREMENTS } from "../live-requirements";
 import { MAINNET_CHAIN_ID, MAINNET_CONTRACTS, MAINNET_EXTERNAL_CONTRACTS, explorerAddressUrl, explorerTxUrl } from "../../../lib/chain/mainnet-contracts";
 
 const statusLabel: Record<PublicClaim["status"], { label: string; tone: Tone }> = {
@@ -19,20 +20,48 @@ const statusLabel: Record<PublicClaim["status"], { label: string; tone: Tone }> 
 const claimTitle: Record<string, string> = {
   market_data: "Market data",
   hook_catalog: "Hook catalog",
-  house_agents: "House Agents",
+  house_agents: "House Agent templates",
   public_house_agents: "Running House Agents",
   decision_tape: "Decision Tape",
   historical_backtest: "Historical backtest",
   live_execution: "Live execution",
 };
 
-const roadmap = [
-  ["AI strategy composition", "Planned", "No AI provider is configured. Rules decide; recipes are built by clicking."],
-  ["Community public agents", "Planned", "Only OPTRA's own House Agents are public. A user's agent and its Tape stay private to the wallet that owns them."],
-  ["Live options trading", "Wallet-signed only", "Needs a verified options execution venue, explicit wallet authorization, enforced risk and transaction limits, and a real order lifecycle with settlement records. A wallet-signed CallPut spread order panel can open, close and settle positions from your own wallet, one confirmed transaction at a time. Close and settle were rehearsed on a mainnet fork and have not yet run against a live keeper fill. No OPTRA agent can submit a real-money order."],
-  ["Onchain Uniswap v4 hooks", "Deployed, inactive", "Hooks are inspired by Uniswap v4. One experimental spot-swap guard, OptraGuardHook, is deployed to Robinhood Chain Mainnet (see Mainnet contracts above). It is unaudited, has no pool, holds no funds and is not part of options execution (claim level L0)."],
-  ["Listing, Floor, MCP, x402", "Planned", "Roadmap items with no route or service yet."],
-] as const;
+type Capability = { title: string; label: string; tone: Tone; text: string; evidence?: string };
+
+/** What is true today, grouped by product state. These are different states, not one list of missing features. */
+const availableNow: readonly Capability[] = [
+  { title: "Paper trading with House Agents", label: "Available now", tone: "azure", text: "OPTRA-owned House Agents evaluate recorded Robinhood Chain prices every hour with virtual capital and modeled premiums. Users backtest, launch and run their own paper agents. The running count is in the claims below, read from the database." },
+  { title: "Decision Tape", label: "Available now", tone: "azure", text: "Every evaluation, including holds and skips, is persisted with its candle, rule trace and data provenance. It stays empty while the US market is closed; no decision is generated outside the regular session." },
+  { title: "Manual CallPut trading", label: "Wallet-signed", tone: "azure", text: "Spread orders are quoted, reviewed and signed in your own wallet, one confirmed transaction at a time, with an exact funding preflight. Close and settle work the same way. Close and settle passed 23 of 23 checks on a Mainnet fork; no live open, close or settle has been verified yet." },
+];
+
+const builtUnderAcceptance: readonly Capability[] = [
+  { title: "Autonomous Agent Engine", label: LIVE_ENGINE_STATUS, tone: "neutral", text: `Built: ${LIVE_ENGINE_BUILT.join("; ").toLowerCase()}. It passed 25 of 25 checks on a Mainnet fork (repository evidence: docs/evidence/callput/live-agent-fork-acceptance-20261122.log). Production real-money execution is inactive and no OPTRA agent places an order. Activation needs: ${LIVE_REQUIREMENTS.map((item) => item.title.charAt(0).toLowerCase() + item.title.slice(1)).join("; ")}.` },
+  { title: "OptraGuardHook (Uniswap v4-inspired spot-swap guard)", label: "Deployed, unaudited", tone: "neutral", text: "One experimental guard is deployed to Robinhood Chain Mainnet (see Mainnet contracts below). It is unaudited, uninitialized with no pool, holds no funds and is not part of options execution. The Uniswap v4 claim level is L0." },
+];
+
+const roadmap: readonly Capability[] = [
+  { title: "AI strategy composition", label: "Planned", tone: "neutral", text: "No AI provider is configured. Rules decide; recipes are built by clicking." },
+  { title: "Community public agents", label: "Planned", tone: "neutral", text: "Only OPTRA's own House Agents are public. A user's agent and its Tape stay private to the wallet that owns them." },
+  { title: "Listing, Floor, MCP, x402", label: "Planned", tone: "neutral", text: "Roadmap items with no route or service yet." },
+];
+
+function CapabilityPanel({ name, heading, items }: { name: string; heading: string; items: readonly Capability[] }) {
+  return (
+    <Panel aria-label={name}>
+      <div className="panel-head"><h2>{heading}</h2></div>
+      <ul className="claim-list">
+        {items.map((item) => (
+          <li key={item.title} className="claim">
+            <div className="claim-head"><h3>{item.title}</h3><Chip tone={item.tone}>{item.label}</Chip></div>
+            <p>{item.text}</p>
+          </li>
+        ))}
+      </ul>
+    </Panel>
+  );
+}
 
 export function VerifyScreen() {
   const [verification, setVerification] = useState<PublicVerification | null>(null);
@@ -68,11 +97,16 @@ export function VerifyScreen() {
       <PageHeader
         eyebrow="BUILT, NOT PROMISED"
         title="Verify"
-        description="Every statement below comes from the server's public verification payload, with a link to the evidence behind it. Nothing here is hand-written marketing."
+        description="The capability summary is written by OPTRA. Every claim under Technical verification comes from the server's public verification payload, with a link to the evidence behind it."
       />
 
       {status === "loading" ? <StateBlock kind="loading" title="Loading verification claims…" /> : null}
       {status === "error" ? <StateBlock kind="error" title="Claims unavailable"><p>{error}</p></StateBlock> : null}
+      <CapabilityPanel name="Available now" heading="Available now" items={availableNow} />
+      <CapabilityPanel name="Built and under acceptance" heading="Built and under acceptance" items={builtUnderAcceptance} />
+      <CapabilityPanel name="Roadmap" heading="Roadmap" items={roadmap} />
+      <div className="panel-head"><h2>Technical verification</h2></div>
+
       {verification ? (
         <>
           <dl className="metric-row" aria-label="Safety switches">
@@ -140,17 +174,6 @@ export function VerifyScreen() {
         </ul>
       </Panel>
 
-      <Panel  aria-label="Not yet shipped">
-        <div className="panel-head"><h2>Not shipped yet</h2></div>
-        <ul className="claim-list">
-          {roadmap.map(([title, label, text]) => (
-            <li key={title} className="claim">
-              <div className="claim-head"><h3>{title}</h3><Chip>{label}</Chip></div>
-              <p>{text}</p>
-            </li>
-          ))}
-        </ul>
-      </Panel>
     </main>
   );
 }

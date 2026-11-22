@@ -78,7 +78,7 @@ export function LiveAgentControls() {
             <div className="metric"><dt>Submission route</dt><dd>{data.submissionRoute === "not-configured" ? "Not configured" : data.submissionRoute}</dd></div>
             <div className="metric"><dt>State</dt><dd>{data.control.stopped ? `Stopped${data.control.reason ? `: ${data.control.reason}` : ""}` : "Running"}</dd></div>
           </dl>
-          <p className="panel-note">Autonomous execution is not available. Every real order is approved by you in your own wallet, one transaction at a time (open, close and settle on this page).</p>
+          <p className="panel-note">The autonomous execution engine is built and inactive: it can place an order only with an authorized session grant, all seven live gates passing and production acceptance. Until then every real order is approved by you in your own wallet, one transaction at a time (open, close and settle on this page).</p>
           {data.accountGates?.status === "ok" ? (
             <p className="panel-note" aria-label="CallPut account gates">
               {accountBlockReason(data.accountGates) === null

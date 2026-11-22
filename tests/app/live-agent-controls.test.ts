@@ -36,7 +36,7 @@ describe("Live Agent controls", () => {
     ];
     fetchMock.mockResolvedValue(Response.json(status({ venueDelegation: { status: "ok", fetchedAt: "2026-11-22T06:00:00.000Z", findings } })));
     render(createElement(LiveAgentControls));
-    expect(await screen.findByText(/Autonomous execution is not available/)).toBeTruthy();
+    expect(await screen.findByText(/autonomous execution engine is built and inactive/)).toBeTruthy();
     expect(screen.getByText(/What CallPut says it enforces for delegated sessions/)).toBeTruthy();
     expect(screen.getByText(/execution route callput_account on robinhood/)).toBeTruthy();
     expect(screen.getByText(/not an OPTRA permission/)).toBeTruthy();

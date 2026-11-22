@@ -35,7 +35,7 @@ export function LiveHouseAgents() {
       <div className="panel-head">
         <div><p className="eyebrow">BY OPTRA · RUNNING ON PAPER</p><h2>Live House Agents</h2></div>
       </div>
-      <p className="panel-lede">Four OPTRA-owned agents evaluate recorded Robinhood Chain prices every hour with virtual capital and modeled premiums. Every decision, including holds and skips, is on the public Tape. They are not community agents and are never counted as adoption.</p>
+      <p className="panel-lede">{state.status === "ready" ? `${state.agents.length} OPTRA-owned ${state.agents.length === 1 ? "agent evaluates" : "agents evaluate"}` : "OPTRA-owned agents evaluate"} recorded Robinhood Chain prices every hour with virtual capital and modeled premiums. Every decision, including holds and skips, is on the public Tape. They are not community agents and are never counted as adoption.</p>
       {state.status === "loading" ? <div role="status"><Skeleton lines={4} /></div> : null}
       {state.status === "ready" && state.agents.length === 0 ? <p className="empty-line">The House Agents are being provisioned. Check back shortly.</p> : null}
       {state.status === "ready" && state.agents.length > 0 ? (
