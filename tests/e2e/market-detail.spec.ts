@@ -28,14 +28,22 @@ const chain = () => ({
   spotIndexRaw: { AAPL: 300 }, futuresIndexRaw: {}, options: [315, 300, 285].flatMap((strike) => [mark(strike, "call"), mark(strike, "put")]),
 });
 
-async function mock(page: Page, options: { candles?: "ok" | "empty" | "fail"; count?: number } = {}) {
+type Live = { extra: number; lastClose: number; fail: boolean; hits: number };
+async function mock(page: Page, options: { candles?: "ok" | "empty" | "fail"; count?: number; live?: Live } = {}) {
   await page.route("**/api/markets", (route) => route.fulfill({ json: { markets: [adobe, apple] } }));
   await page.route(/\/api\/markets\/(AAPL|ADBE)$/, (route) => route.fulfill({ json: quote(route.request().url().endsWith("AAPL") ? "AAPL" : "ADBE") }));
   await page.route(/\/api\/markets\/(AAPL|ADBE)\/candles/, (route) => {
     const url = new URL(route.request().url());
     if (options.candles === "fail") return route.fulfill({ status: 503, json: { error: { code: "UPSTREAM_UNAVAILABLE", message: "Candle provider is down.", retryable: true } } });
     const interval = url.searchParams.get("interval") ?? "1h";
-    return route.fulfill({ json: series(url.pathname.includes("AAPL") ? "AAPL" : "ADBE", interval, options.candles === "empty" ? 0 : options.count ?? 200) });
+    const live = options.live;
+    if (live) {
+      live.hits += 1;
+      if (live.fail) return route.fulfill({ status: 503, json: { error: { code: "UPSTREAM_UNAVAILABLE", message: "Candle provider is down.", retryable: true } } });
+    }
+    const body = series(url.pathname.includes("AAPL") ? "AAPL" : "ADBE", interval, (options.candles === "empty" ? 0 : options.count ?? 200) + (live?.extra ?? 0));
+    if (live && live.lastClose) body.candles[body.candles.length - 1]!.c = live.lastClose;
+    return route.fulfill({ json: body });
   });
   await page.route("**/api/venue/callput/market?underlying=AAPL", (route) => route.fulfill({ json: chain() }));
 }
@@ -53,15 +61,18 @@ test("Markets opens a stock's market page from the list", async ({ page }) => {
   await expect(page.getByText("Tokenized stock · Robinhood Chain")).toBeVisible();
 });
 
-test("a CallPut-listed stock shows a real chart with volume, indicators and a hover readout", async ({ page }) => {
+test("a CallPut-listed stock opens on candles and volume, and indicators are opt-in", async ({ page }) => {
   await mock(page);
   const requests: string[] = [];
   page.on("request", (request) => { const url = new URL(request.url()); if (url.pathname.endsWith("/candles")) requests.push(`${url.searchParams.get("interval")}:${url.searchParams.get("limit")}`); });
   await page.goto("/market/AAPL");
   const chart = page.getByRole("img", { name: /AAPL candlestick and volume chart, 1 hour candles, 200 candles/ });
   await expect(chart).toBeVisible();
-  // The newest 120 of the 200 genuine candles are in view; panning reveals the rest. Nothing is generated.
-  await expect(chart.locator(".mc-candle")).toHaveCount(120);
+  // Candles are the default mode, with volume on and the moving averages off. The newest 90 of the 200 genuine candles are in view.
+  await expect(page.getByRole("group", { name: "Chart type" }).getByRole("button", { name: "Candles" })).toHaveAttribute("aria-pressed", "true");
+  await expect(chart.locator(".mc-candle")).toHaveCount(90);
+  await expect(chart.locator(".mc-vol")).toHaveCount(90);
+  await expect(page.getByLabel("Last traded price")).toHaveText(/^\$\d+\.\d+/);
   await expect(page.getByText(/Source Crius · Robinhood Chain token trades · 200 candles \(1 hour\) with trades/)).toBeVisible();
   expect(requests).toContain("1h:500");
 
@@ -69,17 +80,72 @@ test("a CallPut-listed stock shows a real chart with volume, indicators and a ho
   await expect(page.locator(".cc-readout")).toContainText(/UTC/);
   await expect(page.locator(".cc-readout")).toContainText(/Vol \$/);
 
+  await page.getByRole("button", { name: /^Indicators/ }).click();
+  await expect(page.getByRole("button", { name: "Volume" })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByRole("button", { name: "SMA 20/50" })).toHaveAttribute("aria-pressed", "false");
   await page.getByRole("button", { name: "RSI 14" }).click();
   await page.getByRole("button", { name: "MACD" }).click();
+  await page.getByRole("button", { name: "SMA 20/50" }).click();
   await expect(chart).toContainText("RSI 14");
   await expect(chart).toContainText("MACD 12/26/9");
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("group", { name: "Indicators" })).toHaveCount(0);
   await page.getByRole("button", { name: "Zoom in" }).click();
-  expect(await chart.locator(".mc-candle").count()).toBeLessThan(120);
+  expect(await chart.locator(".mc-candle").count()).toBeLessThan(90);
   await page.getByRole("button", { name: "Latest" }).click();
+  await expect(chart.locator(".mc-candle")).toHaveCount(90);
+  await page.getByRole("group", { name: "Chart type" }).getByRole("button", { name: "Line" }).click();
+  await expect(chart.locator(".mc-candle")).toHaveCount(0);
 
   await page.getByRole("button", { name: "4 hour" }).click();
   await expect(page.getByRole("img", { name: /4 hour candles/ })).toBeVisible();
   expect(requests).toContain("4h:500");
+});
+
+test("the chart refreshes with real provider data, keeps the user's view and never polls a hidden tab", async ({ page }) => {
+  const live: Live = { extra: 0, lastClose: 0, fail: false, hits: 0 };
+  await page.clock.install();
+  await mock(page, { live });
+  await page.goto("/market/AAPL");
+  await expect(page.getByRole("img", { name: /200 candles/ })).toBeVisible();
+  const chart = page.locator(".mc-svg"); // its accessible name carries the candle count, which changes on refresh
+  await expect(chart.locator(".mc-candle")).toHaveCount(90);
+  await expect(page.getByText("Live", { exact: true })).toBeVisible();
+  const before = await page.getByLabel("Last traded price").innerText();
+  const baseline = live.hits; // dev mode may run the first effect twice; only relative counts matter
+
+  // A new real bucket arrives and the forming candle's close moves: the headline, the candle count and the chip follow.
+  live.extra = 1; live.lastClose = 123.45;
+  await page.clock.runFor(31_000);
+  await expect(page.getByRole("img", { name: /201 candles/ })).toBeVisible();
+  await expect(page.getByLabel("Last traded price")).toHaveText("$123.45");
+  expect(await page.getByLabel("Last traded price").innerText()).not.toBe(before);
+  await expect(chart.locator(".mc-candle")).toHaveCount(90);
+  expect(live.hits).toBe(baseline + 1);
+
+  // Zoom in, then another refresh: the zoom survives and no second request overlaps.
+  await page.getByRole("button", { name: "Zoom in" }).click();
+  const zoomed = await chart.locator(".mc-candle").count();
+  live.extra = 2;
+  await page.clock.runFor(31_000);
+  await expect(page.getByRole("img", { name: /202 candles/ })).toBeVisible();
+  expect(await chart.locator(".mc-candle").count()).toBe(zoomed);
+
+  // A hidden tab makes no requests.
+  await page.evaluate(() => { Object.defineProperty(document, "hidden", { configurable: true, get: () => true }); });
+  const hitsBeforeHidden = live.hits;
+  await page.clock.runFor(95_000);
+  expect(live.hits).toBe(hitsBeforeHidden);
+  await page.evaluate(() => { Object.defineProperty(document, "hidden", { configurable: true, get: () => false }); document.dispatchEvent(new Event("visibilitychange")); });
+  await expect.poll(() => live.hits).toBeGreaterThan(hitsBeforeHidden);
+
+  // A failed refresh keeps the last real data and says it is delayed instead of inventing anything.
+  live.fail = true;
+  await page.clock.runFor(31_000);
+  await expect(page.getByText("Delayed", { exact: true })).toBeVisible();
+  await expect(page.getByText(/Refresh failed · showing data from/)).toBeVisible();
+  await expect(page.getByRole("img", { name: /202 candles/ })).toBeVisible();
+  await expect(page.getByLabel("Last traded price")).toHaveText("$123.45");
 });
 
 test("the live option chain feeds the real order form, which stays unsigned", async ({ page }) => {
@@ -91,7 +157,7 @@ test("the live option chain feeds the real order form, which stays unsigned", as
   await page.getByRole("button", { name: /Pick as short leg: AAPL-27NOV26-285-P/ }).click();
   await expect(page.getByLabel("Selected legs")).toContainText("Long AAPL-27NOV26-300-P");
   await expect(page.getByLabel("Selected legs")).toContainText("Short AAPL-27NOV26-285-P");
-  await page.getByRole("link", { name: "Go to the order form" }).click();
+  await page.getByLabel("Selected legs").getByRole("link", { name: "Go to the order form" }).click();
   const trade = page.getByRole("region", { name: "Trade AAPL options" });
   await expect(trade.locator("#cp-underlying")).toHaveValue("AAPL");
   await expect(trade.locator("#cp-underlying")).toBeDisabled();
@@ -144,7 +210,7 @@ test("a thin provider response draws exactly the genuine candles, and an empty o
   await page.reload();
   await expect(page.getByText(/No AAPL token trades were recorded in the provider's 1 hour window/)).toBeVisible();
   await expect(page.locator(".mc-candle")).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Try 1 day" })).toBeVisible();
+  await expect(page.getByRole("group", { name: "Chart timeframe" }).getByRole("button", { name: "1 day" })).toBeVisible();
 });
 
 test("an unlisted symbol shows a clear empty state with a way back", async ({ page }) => {
@@ -161,6 +227,7 @@ for (const width of [320, 390, 768, 1280, 1440]) {
     for (const symbol of ["AAPL", "ADBE"]) {
       await page.goto(`/market/${symbol}`);
       await expect(page.locator(".mc-candle").first()).toBeVisible();
+      await page.getByRole("button", { name: /^Indicators/ }).click();
       await page.getByRole("button", { name: "RSI 14" }).click();
       expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(0);
     }

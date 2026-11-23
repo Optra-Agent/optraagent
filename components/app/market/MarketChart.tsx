@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { ReactNode } from "react";
 import { macd, rsi, sma } from "@/lib/market/indicators";
 import type { ChartCandle, ChartInterval } from "@/lib/market/crius-candles";
 import { cn } from "@/lib/utils";
@@ -10,12 +11,13 @@ const DOWN = "#ff5d73";
 const MA20 = "#ffb020";
 const MA50 = "#8ab4ff";
 const AXIS = "#868c97";
-const GRID = "rgba(255,255,255,0.06)";
+const GRID = "rgba(255,255,255,0.07)";
 const PAD_R = 66;
-const PAD_T = 8;
-const AXIS_H = 22;
+const PAD_T = 10;
+const AXIS_H = 24;
 const MIN_BARS = 12;
 const RIGHT_ROOM = 3;
+const INITIAL_BARS = 90;
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 const two = (value: number) => String(value).padStart(2, "0");
@@ -37,6 +39,8 @@ function volume(value: number): string {
 }
 
 type Pane = "rsi" | "macd";
+/** The view is stored as "how many candles, how far behind the newest, anchored to which candle", so a refresh that appends a candle never resets zoom or pan. */
+type ViewState = { visible: number; back: number; anchorT: number | null };
 
 /**
  * Candlestick chart for already-validated provider candles. It draws exactly what it is given: no smoothing, no gap
@@ -45,28 +49,40 @@ type Pane = "rsi" | "macd";
  * Interaction: drag to pan, Ctrl/Cmd + wheel (or a click first, then wheel) to zoom, +/- and arrows from the keyboard,
  * double press to return to the latest candles. Pan/zoom adapted from the BOURSE terminal chart; its data is not used.
  */
-export function MarketChart({ candles, interval, label, baseHeight = 360 }: { candles: readonly ChartCandle[]; interval: ChartInterval; label: string; baseHeight?: number }) {
+export function MarketChart({ candles, interval, label, timeframes, baseHeight = 440 }: { candles: readonly ChartCandle[]; interval: ChartInterval; label: string; timeframes?: ReactNode; baseHeight?: number }) {
   const N = candles.length;
   const wrap = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(720);
   const [mode, setMode] = useState<"candles" | "line">("candles");
   const [showVolume, setShowVolume] = useState(true);
-  const [showMa, setShowMa] = useState(true);
+  const [showMa, setShowMa] = useState(false);
   const [panes, setPanes] = useState<Pane[]>([]);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menu = useRef<HTMLDivElement>(null);
 
-  const initialCount = Math.min(N, 120);
-  const clamp = useCallback((start: number, count: number) => {
-    const c = Math.min(N + RIGHT_ROOM, Math.max(Math.min(MIN_BARS, N), count));
-    return { start: Math.min(Math.max(0, N - c + RIGHT_ROOM), Math.max(0, start)), count: c };
-  }, [N]);
-  const [view, setViewState] = useState(() => ({ start: N - initialCount, count: initialCount + RIGHT_ROOM }));
+  // View math. `count` is slots including a little empty room to the right of the newest candle.
+  const [vs, setVs] = useState<ViewState>({ visible: Math.min(N, INITIAL_BARS), back: 0, anchorT: null });
+  const view = useMemo(() => {
+    const visible = Math.min(N, Math.max(Math.min(MIN_BARS, N), vs.visible));
+    const maxBack = Math.max(0, N - visible);
+    let back = vs.back;
+    if (back > 0 && vs.anchorT !== null) {
+      const anchorIndex = candles.findIndex((candle) => candle.t === vs.anchorT);
+      if (anchorIndex >= 0) back += N - 1 - anchorIndex;
+    }
+    back = Math.min(maxBack, Math.max(0, back));
+    return { start: maxBack - back, count: visible + RIGHT_ROOM };
+  }, [vs, candles, N]);
   const viewRef = useRef(view);
+  useEffect(() => { viewRef.current = view; }, [view]);
   const setView = useCallback((next: { start: number; count: number }) => {
-    const v = clamp(next.start, next.count);
-    viewRef.current = v;
-    setViewState(v);
-  }, [clamp]);
-  const latest = useCallback(() => setView({ start: N - initialCount, count: initialCount + RIGHT_ROOM }), [N, initialCount, setView]);
+    const slots = Math.min(N + RIGHT_ROOM, Math.max(Math.min(MIN_BARS, N) + RIGHT_ROOM, next.count));
+    const maxStart = N + RIGHT_ROOM - slots;
+    const start = Math.min(maxStart, Math.max(0, next.start));
+    const back = maxStart - start;
+    setVs({ visible: slots - RIGHT_ROOM, back: back < 0.5 ? 0 : back, anchorT: candles[N - 1]?.t ?? null });
+  }, [N, candles]);
+  const latest = useCallback(() => setVs({ visible: Math.min(N, INITIAL_BARS), back: 0, anchorT: null }), [N]);
 
   const [hover, setHover] = useState<{ x: number; y: number } | null>(null);
   const [dragging, setDragging] = useState(false);
@@ -81,6 +97,13 @@ export function MarketChart({ candles, interval, label, baseHeight = 360 }: { ca
     observer.observe(el);
     return () => observer.disconnect();
   }, []);
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onDown = (event: PointerEvent) => { if (menu.current && !menu.current.contains(event.target as Node)) setMenuOpen(false); };
+    const onKey = (event: KeyboardEvent) => { if (event.key === "Escape") setMenuOpen(false); };
+    document.addEventListener("pointerdown", onDown); document.addEventListener("keydown", onKey);
+    return () => { document.removeEventListener("pointerdown", onDown); document.removeEventListener("keydown", onKey); };
+  }, [menuOpen]);
 
   const closes = useMemo(() => candles.map((candle) => candle.c), [candles]);
   const ma20 = useMemo(() => sma(closes, 20), [closes]);
@@ -88,18 +111,19 @@ export function MarketChart({ candles, interval, label, baseHeight = 360 }: { ca
   const rsiSeries = useMemo(() => rsi(closes, 14), [closes]);
   const macdSeries = useMemo(() => macd(closes, 12, 26, 9), [closes]);
 
-  // Layout: price pane, optional volume pane, optional indicator panes, time axis.
-  // Indicator panes add height instead of squeezing the price pane.
-  const volH = showVolume ? Math.round(baseHeight * 0.17) : 0;
+  // Layout: price pane, optional volume pane, optional indicator panes, time axis. Panes add height instead of squeezing the price pane.
+  const priceHeight = width < 520 ? Math.min(baseHeight, 340) : baseHeight;
+  const volH = showVolume ? Math.round(priceHeight * 0.17) : 0;
   const paneH = 84;
-  const height = baseHeight + panes.length * (paneH + 6);
-  const mainH = baseHeight - PAD_T - AXIS_H - volH - (showVolume ? 6 : 0);
+  const height = priceHeight + panes.length * (paneH + 6);
+  const mainH = priceHeight - PAD_T - AXIS_H - volH - (showVolume ? 6 : 0);
   const plotW = width - PAD_R;
   const step = plotW / view.count;
   const xOf = (index: number) => (index - view.start + 0.5) * step;
   const i0 = Math.max(0, Math.floor(view.start));
   const i1 = Math.min(N - 1, Math.ceil(view.start + view.count));
 
+  // Price range of what is on screen only (overlays only widen it when shown), so candles fill the pane.
   let lo = Infinity; let hi = -Infinity; let vMax = 0;
   for (let index = i0; index <= i1; index += 1) {
     const candle = candles[index]!;
@@ -107,11 +131,11 @@ export function MarketChart({ candles, interval, label, baseHeight = 360 }: { ca
     if (showMa) for (const series of [ma20, ma50]) { const value = series[index]; if (value != null) { lo = Math.min(lo, value); hi = Math.max(hi, value); } }
   }
   if (!Number.isFinite(lo)) { lo = 0; hi = 1; }
-  const pad = ((hi - lo) || hi * 0.01 || 1) * 0.08;
+  const pad = ((hi - lo) || hi * 0.01 || 1) * 0.05;
   const domLo = lo - pad; const domHi = hi + pad;
   const y = (value: number) => PAD_T + (1 - (value - domLo) / (domHi - domLo)) * mainH;
   const priceAt = (py: number) => domLo + (1 - (py - PAD_T) / mainH) * (domHi - domLo);
-  const ticks = [0, 0.25, 0.5, 0.75, 1].map((fraction) => domLo + (domHi - domLo) * fraction);
+  const ticks = [0, 0.2, 0.4, 0.6, 0.8, 1].map((fraction) => domLo + (domHi - domLo) * fraction);
   const volTop = PAD_T + mainH + 6;
   const paneTop = (index: number) => volTop + volH + (showVolume ? 6 : 0) + index * (paneH + 6);
   const bottom = height - AXIS_H;
@@ -121,15 +145,15 @@ export function MarketChart({ candles, interval, label, baseHeight = 360 }: { ca
   const last = candles[N - 1];
   const lastUp = last ? last.c >= last.o : true;
   const lastY = last ? Math.min(PAD_T + mainH, Math.max(PAD_T, y(last.c))) : 0;
-  const barW = Math.max(1.5, Math.min(16, step * 0.64));
-  const xTickCount = Math.max(2, Math.min(7, Math.floor(plotW / 110)));
+  const barW = Math.max(2, Math.min(14, step * 0.68));
+  const xTickCount = Math.max(2, Math.min(7, Math.floor(plotW / 120)));
   const xTicks = Array.from({ length: xTickCount }, (_, k) => Math.round(view.start + (view.count * (k + 0.5)) / xTickCount - 0.5)).filter((index) => index >= 0 && index < N);
 
   const zoomAt = useCallback((factor: number, px: number) => {
     const v = viewRef.current;
     const anchor = v.start + px / (plotW / v.count);
-    const count = Math.min(N + RIGHT_ROOM, Math.max(Math.min(MIN_BARS, N), v.count * factor));
-    setView({ start: anchor - px / (plotW / count), count });
+    const count = v.count * factor;
+    setView({ start: anchor - px / (plotW / Math.min(N + RIGHT_ROOM, Math.max(Math.min(MIN_BARS, N) + RIGHT_ROOM, count))), count });
   }, [N, plotW, setView]);
 
   useEffect(() => {
@@ -187,6 +211,7 @@ export function MarketChart({ candles, interval, label, baseHeight = 360 }: { ca
     event.preventDefault();
   };
   const togglePane = (pane: Pane) => setPanes((current) => (current.includes(pane) ? current.filter((item) => item !== pane) : [...current, pane]));
+  const indicatorCount = Number(showVolume) + Number(showMa) + panes.length;
 
   /** Polyline over the visible candles for a series that is null until enough real closes exist. */
   const plot = (series: ReadonlyArray<number | null>, toY: (value: number) => number) => {
@@ -207,15 +232,23 @@ export function MarketChart({ candles, interval, label, baseHeight = 360 }: { ca
   return (
     <div className="mc">
       <div className="mc-bar">
+        <div className="mc-ind" ref={menu}>
+          <button type="button" className="mc-ind-btn" aria-haspopup="true" aria-expanded={menuOpen} onClick={() => setMenuOpen((open) => !open)}>
+            Indicators <span className="mc-badge" aria-label={`${indicatorCount} active`}>{indicatorCount}</span>
+          </button>
+          {menuOpen ? (
+            <div className="mc-menu" role="group" aria-label="Indicators">
+              <button type="button" aria-pressed={showVolume} onClick={() => setShowVolume((v) => !v)}>Volume</button>
+              <button type="button" aria-pressed={showMa} onClick={() => setShowMa((v) => !v)}>SMA 20/50</button>
+              <button type="button" aria-pressed={panes.includes("rsi")} onClick={() => togglePane("rsi")}>RSI 14</button>
+              <button type="button" aria-pressed={panes.includes("macd")} onClick={() => togglePane("macd")}>MACD</button>
+            </div>
+          ) : null}
+        </div>
         <div className="oc-exp" role="group" aria-label="Chart type">
-          {(["candles", "line"] as const).map((value) => <button type="button" key={value} aria-pressed={mode === value} onClick={() => setMode(value)}>{value === "candles" ? "Candles" : "Line"}</button>)}
+          {(["line", "candles"] as const).map((value) => <button type="button" key={value} aria-pressed={mode === value} onClick={() => setMode(value)}>{value === "candles" ? "Candles" : "Line"}</button>)}
         </div>
-        <div className="oc-exp" role="group" aria-label="Chart overlays">
-          <button type="button" aria-pressed={showVolume} onClick={() => setShowVolume((v) => !v)}>Volume</button>
-          <button type="button" aria-pressed={showMa} onClick={() => setShowMa((v) => !v)}>SMA 20/50</button>
-          <button type="button" aria-pressed={panes.includes("rsi")} onClick={() => togglePane("rsi")}>RSI 14</button>
-          <button type="button" aria-pressed={panes.includes("macd")} onClick={() => togglePane("macd")}>MACD</button>
-        </div>
+        {timeframes}
         <div className="oc-exp mc-zoom" role="group" aria-label="Zoom">
           <button type="button" aria-label="Zoom out" onClick={() => zoomAt(1.3, plotW / 2)}>−</button>
           <button type="button" aria-label="Zoom in" onClick={() => zoomAt(0.77, plotW / 2)}>+</button>
@@ -251,13 +284,14 @@ export function MarketChart({ candles, interval, label, baseHeight = 360 }: { ca
       >
         <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} role="img" aria-label={label} className="mc-svg">
           <defs><clipPath id="mc-clip"><rect x="0" y="0" width={plotW} height={height} /></clipPath></defs>
+          {xTicks.map((index) => <line key={`g${index}`} x1={xOf(index)} x2={xOf(index)} y1={PAD_T} y2={bottom} stroke={GRID} strokeDasharray="2 4" />)}
           {ticks.map((tick) => (
             <g key={tick}>
               <line x1={0} x2={plotW} y1={y(tick)} y2={y(tick)} stroke={GRID} />
               <text x={plotW + 8} y={y(tick) + 3.5} fill={AXIS} fontSize="10.5" className="mono">{price(tick)}</text>
             </g>
           ))}
-          {xTicks.map((index) => <text key={index} x={xOf(index)} y={height - 6} textAnchor="middle" fill={AXIS} fontSize="10.5" className="mono">{axisTime(candles[index]!.t, interval)}</text>)}
+          {xTicks.map((index) => <text key={index} x={xOf(index)} y={height - 7} textAnchor="middle" fill={AXIS} fontSize="10.5" className="mono">{axisTime(candles[index]!.t, interval)}</text>)}
 
           <g clipPath="url(#mc-clip)">
             {mode === "candles" ? candles.slice(i0, i1 + 1).map((candle, offset) => {
@@ -265,18 +299,18 @@ export function MarketChart({ candles, interval, label, baseHeight = 360 }: { ca
               const top = y(Math.max(candle.o, candle.c)); const bot = y(Math.min(candle.o, candle.c));
               return (
                 <g key={candle.t} className="mc-candle" data-dir={candle.c >= candle.o ? "up" : "down"}>
-                  <line x1={xOf(index)} x2={xOf(index)} y1={y(candle.h)} y2={y(candle.l)} stroke={color} strokeWidth={1} />
+                  <line x1={xOf(index)} x2={xOf(index)} y1={y(candle.h)} y2={y(candle.l)} stroke={color} strokeWidth={1.2} />
                   <rect x={xOf(index) - barW / 2} y={top} width={barW} height={Math.max(1.5, bot - top)} fill={color} />
                 </g>
               );
             }) : linePts ? <polyline points={linePts} fill="none" stroke={lastUp ? UP : DOWN} strokeWidth={1.8} strokeLinejoin="round" /> : null}
-            {ma20Pts ? <polyline points={ma20Pts} fill="none" stroke={MA20} strokeWidth={1.3} /> : null}
-            {ma50Pts ? <polyline points={ma50Pts} fill="none" stroke={MA50} strokeWidth={1.3} /> : null}
+            {ma20Pts ? <polyline points={ma20Pts} fill="none" stroke={MA20} strokeWidth={1.1} opacity={0.8} /> : null}
+            {ma50Pts ? <polyline points={ma50Pts} fill="none" stroke={MA50} strokeWidth={1.1} opacity={0.8} /> : null}
             <line x1={0} x2={plotW} y1={lastY} y2={lastY} stroke={lastUp ? UP : DOWN} strokeDasharray="1 3" opacity={0.85} />
 
             {showVolume ? candles.slice(i0, i1 + 1).map((candle, offset) => {
               const hgt = Math.max(1, (candle.v / (vMax || 1)) * (volH - 4));
-              return <rect key={`v${candle.t}`} x={xOf(i0 + offset) - barW / 2} y={volTop + volH - hgt} width={barW} height={hgt} fill={candle.c >= candle.o ? UP : DOWN} opacity={0.45} />;
+              return <rect key={`v${candle.t}`} className="mc-vol" x={xOf(i0 + offset) - barW / 2} y={volTop + volH - hgt} width={barW} height={hgt} fill={candle.c >= candle.o ? UP : DOWN} opacity={0.4} />;
             }) : null}
 
             {panes.map((pane, slot) => {
@@ -321,7 +355,7 @@ export function MarketChart({ candles, interval, label, baseHeight = 360 }: { ca
           ))}
 
           {last ? (
-            <g transform={`translate(0 ${lastY})`}>
+            <g transform={`translate(0 ${lastY})`} className="mc-last">
               <rect x={plotW + 2} y={-9} width={PAD_R - 4} height={18} rx={4} fill={lastUp ? UP : DOWN} />
               <text x={plotW + 2 + (PAD_R - 4) / 2} y={3.5} textAnchor="middle" fontSize="10.5" fontWeight={700} fill="#0b0c0e" className="mono">{price(last.c)}</text>
             </g>
@@ -334,7 +368,7 @@ export function MarketChart({ candles, interval, label, baseHeight = 360 }: { ca
                   <text x={plotW + 2 + (PAD_R - 4) / 2} y={3.5} textAnchor="middle" fontSize="10.5" fontWeight={600} fill="#0b0c0e" className="mono">{price(priceAt(hover.y))}</text>
                 </g>
               ) : null}
-              <g transform={`translate(${Math.min(plotW - 40, Math.max(40, xOf(hoverIndex)))} ${height - 11})`}>
+              <g transform={`translate(${Math.min(plotW - 40, Math.max(40, xOf(hoverIndex)))} ${height - 12})`}>
                 <rect x={-40} y={-9} width={80} height={18} rx={4} fill="#f3f4f6" opacity={0.92} />
                 <text x={0} y={3.5} textAnchor="middle" fontSize="10" fontWeight={600} fill="#0b0c0e" className="mono">{axisTime(candles[hoverIndex]!.t, interval)}</text>
               </g>
