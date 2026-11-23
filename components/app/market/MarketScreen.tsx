@@ -7,6 +7,7 @@ import { ApiErrorSchema, BacktestCoverageSchema, MarketListSchema, MarketSnapsho
 import type { BacktestCoverage, MarketAsset, MarketSnapshot } from "../../../lib/domain/contracts";
 import { formatUtc, errorText, shortAddress } from "../format";
 import { Chip, PageHeader, Skeleton, StateBlock } from "../ui";
+import { callPutUnderlyingFor } from "../../../lib/market/callput-support";
 import { AssetLogo } from "./AssetLogo";
 import { buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -151,7 +152,7 @@ export function MarketScreen() {
       <PageHeader
         eyebrow="ROBINHOOD CHAIN · STOCK TOKENS"
         title="Markets"
-        description="Every stock token the app can read. Open one for its quote, candlestick chart and options: real CallPut contracts where the venue lists them, a clearly labeled demo everywhere else."
+        description="Every stock token the app can read. Open one for its quote, candlestick and volume chart, and its real CallPut options where the venue lists them."
       />
 
       {listStatus === "loading" ? (
@@ -165,7 +166,7 @@ export function MarketScreen() {
       {markets.length > 0 ? (
         <>
           <div className="mk-notes" aria-label="About these prices">
-            <span className="ag-chip" data-tone="azure">Chart and options on every market</span>
+            <span className="ag-chip" data-tone="azure">Real candles on every market</span>
             <span className="ag-chip">Robinhood Chain stock tokens</span>
             <span className="ag-chip">Token quotes, never option prices</span>
           </div>
@@ -203,7 +204,7 @@ export function MarketScreen() {
                   {results.slice(0, shown).map((market) => (
                     <li key={market.symbol}>
                       <button type="button" className="mk-row" aria-pressed={market.symbol === selected} aria-label={`${market.symbol}, ${cleanName(market.name)}. Open details`} onClick={() => open(market.symbol)}>
-                        <span className="mk-asset"><AssetLogo symbol={market.symbol} /><span className="mk-asset-text"><b>{market.symbol}</b><span>{cleanName(market.name)}</span></span></span>
+                        <span className="mk-asset"><AssetLogo symbol={market.symbol} /><span className="mk-asset-text"><b>{market.symbol}{callPutUnderlyingFor(market.symbol) ? <i className="mk-opt">Options</i> : null}</b><span>{cleanName(market.name)}</span></span></span>
                         <span className="mk-mult mono">{Number(market.currentMultiplier).toFixed(4)}{adjusted(market) ? <Chip tone="ember">≠ 1</Chip> : null}</span>
                         <span className="mk-token mono">{market.tokenAddress ? shortAddress(market.tokenAddress) : "n/a"}</span>
                         <ChevronRight aria-hidden />
@@ -270,7 +271,7 @@ export function MarketScreen() {
                   </div>
                   {!canBuild ? <p className="mk-why" id="mk-why">{buildReason}</p> : <p className="mk-why">Opens the configure form with {asset.symbol} chosen. Wallet sign-in, a backtest and validation still come first.</p>}
 
-                  <p className="mk-note"><Info aria-hidden />Quotes here are underlying and token prices, not option premiums or fills. The market page adds a candlestick chart and the options for {asset.symbol}.</p>
+                  <p className="mk-note"><Info aria-hidden />Quotes here are underlying and token prices, not option premiums or fills. The market page adds the candlestick and volume chart{callPutUnderlyingFor(asset.symbol) ? ` and the live CallPut options for ${asset.symbol}` : `. CallPut has no options market for ${asset.symbol}`}.</p>
                 </>
               ) : <StateBlock kind="info" title="Select a market">Choose an asset to load its quote and backtest coverage.</StateBlock>}
             </aside>

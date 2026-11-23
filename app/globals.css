@@ -959,3 +959,27 @@ a.ag-pill:hover svg { transform: translateX(3px); }
   .md-grid, .md-panel { padding: 14px; border-radius: 18px; }
   .dm-ticket-grid { grid-template-columns: minmax(0, 1fr); }
 }
+
+/* Market chart panes, picked option legs and the no-options state */
+.mc { display: grid; gap: 8px; min-width: 0; }
+.mc-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; }
+.mc-zoom { margin-left: auto; }
+.mc-wrap { position: relative; width: 100%; min-width: 0; overflow: hidden; border: 1px solid var(--line-soft); border-radius: 14px; background: var(--bg); cursor: crosshair; outline: none; user-select: none; }
+.mc-wrap:focus-visible { box-shadow: 0 0 0 2px var(--azure-line); }
+.mc-wrap.mc-drag { cursor: grabbing; }
+.mc-svg { display: block; max-width: 100%; }
+.mc-help { margin: 0; }
+.oc-pick { position: relative; }
+.oc-pick i { position: absolute; top: -6px; right: -6px; display: grid; place-items: center; width: 16px; height: 16px; border-radius: 50%; background: var(--azure); color: var(--azure-ink); font-size: 10px; font-style: normal; font-weight: 700; }
+.oc-pick[data-leg="short"] i { background: var(--loss); }
+.oc-sub { display: block; margin-top: 3px; color: var(--dim, var(--muted)); font-size: 10.5px; text-align: center; white-space: nowrap; }
+.oc-table tbody td { text-align: center; }
+.oc-legs { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; padding: 12px 14px; border: 1px solid var(--azure-line); border-radius: 14px; background: var(--azure-wash); font-size: 12.5px; }
+.oc-legs a { color: var(--azure-hover); }
+.oc-none { display: grid; gap: 8px; padding: 18px; border: 1px dashed var(--line); border-radius: 14px; color: var(--muted); font-size: 13.5px; line-height: 1.55; }
+.oc-none p { margin: 0; }
+.oc-none a { color: var(--azure-hover); }
+.md-foot { align-items: center; }
+.md-note { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.55; }
+.md-note time { white-space: nowrap; }
+.mk-opt { margin-left: 8px; padding: 1px 7px; border: 1px solid var(--azure-line); border-radius: 999px; background: var(--azure-wash); color: var(--azure-hover); font-family: var(--font-data); font-size: 10px; font-style: normal; font-weight: 500; letter-spacing: 0.04em; vertical-align: 2px; }

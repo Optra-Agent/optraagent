@@ -10,8 +10,12 @@ import type { createRobinhoodMarketFeed } from "./robinhood-feed";
 export const CHART_INTERVALS = ["15m", "1h", "4h", "1d"] as const;
 export type ChartInterval = (typeof CHART_INTERVALS)[number];
 export const CHART_INTERVAL_MS: Record<ChartInterval, number> = { "15m": 900_000, "1h": 3_600_000, "4h": 14_400_000, "1d": 86_400_000 };
-export const DEFAULT_CHART_CANDLES = 120;
-export const MAX_CHART_CANDLES = 240;
+/**
+ * `limit` is the provider's bucket window, not a candle count: buckets without trades are omitted, so a thinly traded token
+ * returns few candles (or none) from a small window. A deep window is requested and whatever real candles exist are shown.
+ */
+export const DEFAULT_CHART_CANDLES = 500;
+export const MAX_CHART_CANDLES = 1500;
 
 export const ChartCandleSchema = z.object({
   /** Bucket start, epoch milliseconds. */
@@ -47,6 +51,7 @@ export class CandleFeedError extends Error {
   }
 }
 
+class UpstreamStatusError extends Error { constructor(readonly status: number) { super(`status ${status}`); } }
 const SERIES_CACHE_MS = 60_000;
 const DEFAULT_CRIUS_BASE_URL = "https://api.crius.sh/v1/robinhood/token";
 type MarketFeed = ReturnType<typeof createRobinhoodMarketFeed>;
@@ -70,7 +75,8 @@ export function parseCriusCandles(payload: unknown, interval: ChartInterval, mul
   const arrays = [t, o, h, l, c, n, v];
   if (!arrays.every(Array.isArray)) return null;
   const count = (t as unknown[]).length;
-  if (count === 0 || arrays.some((array) => (array as unknown[]).length !== count)) return null;
+  // A window without trades arrives as equal-length empty arrays: a valid, factual "no candles", not a provider fault.
+  if (arrays.some((array) => (array as unknown[]).length !== count)) return null;
   const width = CHART_INTERVAL_MS[interval];
   const out: ChartCandle[] = [];
   let previous = 0;
@@ -140,12 +146,17 @@ export function createCriusCandleFeed(options: CriusCandleFeedOptions) {
       url.searchParams.set("continuous", "false");
       url.searchParams.set("currency", "usd");
       let payload: unknown;
-      try {
-        const response = await fetcher(url.toString(), { method: "GET", headers: { accept: "application/json" }, cache: "no-store", signal: AbortSignal.timeout(timeoutMs) });
-        if (!response.ok) throw new Error("status");
-        payload = await response.json();
-      } catch {
-        throw new CandleFeedError("UPSTREAM_UNAVAILABLE", "The candle provider is temporarily unavailable.", true);
+      // One retry for a fast upstream error (5xx or a dropped connection). A timeout is not retried: it would double the wait.
+      for (let attempt = 1; ; attempt += 1) {
+        try {
+          const response = await fetcher(url.toString(), { method: "GET", headers: { accept: "application/json" }, cache: "no-store", signal: AbortSignal.timeout(timeoutMs) });
+          if (!response.ok) throw new UpstreamStatusError(response.status);
+          payload = await response.json();
+          break;
+        } catch (error) {
+          const retryable = error instanceof UpstreamStatusError ? error.status >= 500 : !(error instanceof DOMException && error.name === "TimeoutError");
+          if (attempt >= 2 || !retryable) throw new CandleFeedError("UPSTREAM_UNAVAILABLE", "The candle provider is temporarily unavailable.", true);
+        }
       }
       const receivedAt = now();
       const candles = parseCriusCandles(payload, interval, multiplier, receivedAt.getTime());

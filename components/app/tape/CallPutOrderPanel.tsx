@@ -247,19 +247,25 @@ function WalletNetworkStatus() {
   );
 }
 
-/** `underlying` preselects a market (the market page passes the stock being viewed); `lockUnderlying` pins it there. */
-export function CallPutOrderPanel({ underlying: initialUnderlying = "AAPL", lockUnderlying = false }: { underlying?: CallPutUnderlyingSymbol; lockUnderlying?: boolean } = {}) {
+/**
+ * `underlying` preselects a market (the market page passes the stock being viewed); `lockUnderlying` pins it there.
+ * `initialMarket` and `initialSelection` let the market page hand over the option chain it already loaded and the legs the
+ * user clicked. They only prefill the form: nothing is prepared, approved or signed until the owner uses the buttons below,
+ * and Prepare still refuses a feed older than the quote freshness limit.
+ */
+export type CallPutOrderSelection = { strategy: CallPutSpreadStrategy; expiry: string; longId: string; shortId: string };
+export function CallPutOrderPanel({ underlying: initialUnderlying = "AAPL", lockUnderlying = false, initialMarket = null, initialSelection }: { underlying?: CallPutUnderlyingSymbol; lockUnderlying?: boolean; initialMarket?: CallPutRobinhoodMarketData | null; initialSelection?: CallPutOrderSelection } = {}) {
   const { address, chainId, isConnected } = useAccount();
   const publicClient = usePublicClient({ chainId: CALLPUT_ROBINHOOD_CHAIN_ID });
   const { data: walletClient } = useWalletClient({ chainId: CALLPUT_ROBINHOOD_CHAIN_ID });
   const busy = useRef(false);
 
   const [underlying, setUnderlying] = useState<CallPutUnderlyingSymbol>(initialUnderlying);
-  const [strategy, setStrategy] = useState<CallPutSpreadStrategy>("BuyPutSpread");
-  const [market, setMarket] = useState<CallPutRobinhoodMarketData | null>(null);
-  const [expiry, setExpiry] = useState("");
-  const [longId, setLongId] = useState("");
-  const [shortId, setShortId] = useState("");
+  const [strategy, setStrategy] = useState<CallPutSpreadStrategy>(initialSelection?.strategy ?? "BuyPutSpread");
+  const [market, setMarket] = useState<CallPutRobinhoodMarketData | null>(initialMarket);
+  const [expiry, setExpiry] = useState(initialSelection?.expiry ?? "");
+  const [longId, setLongId] = useState(initialSelection?.longId ?? "");
+  const [shortId, setShortId] = useState(initialSelection?.shortId ?? "");
   const [size, setSize] = useState("1");
   const [maxCollateral, setMaxCollateral] = useState("5");
   const [plan, setPlan] = useState<CallPutOpenSpreadPlan | null>(null);
