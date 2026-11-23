@@ -181,6 +181,29 @@ describe("scheduled Protective Put paper evaluation", () => {
     }
   });
 
+  it("does not request candle history when no in-session candle is due for the agent", async () => {
+    const { createPaperScheduler } = await import("../../lib/paper/scheduler");
+    const now = new Date("2026-10-12T14:42:00.000Z");
+    const feed = makeFeed(now);
+    const { connection, owner, repository, agent } = await setup();
+    try {
+      // The 14:00 candle is already recorded; the next one closes at 15:00, so a pass at 14:42 has nothing to evaluate.
+      await seedLastDecision(repository, owner.id, agent.id, agent.recipeHash, "2026-10-12T14:00:00.000Z");
+      let historyCalls = 0;
+      const handler = createPaperScheduler({
+        repository, secret: CRON_SECRET,
+        getHistory: (symbol: string) => { historyCalls += 1; return feed.getHistory(symbol); },
+        acquireLock: async () => ({ release: async () => undefined }),
+        now: () => now, log: () => undefined,
+      });
+      const response = await handler.run(cronRequest());
+      await expect(response.json()).resolves.toMatchObject({ evaluated: 0, opened: 0, skipped: 0, failures: 0 });
+      expect(historyCalls).toBe(0);
+    } finally {
+      await connection.close();
+    }
+  });
+
   it("persists a risk-gated skip from a finalized in-session candle without an order", async () => {
     const schedulerModule = await import("../../lib/paper/scheduler").catch(() => null);
     expect(schedulerModule, "the protected paper scheduler handler is implemented").not.toBeNull();

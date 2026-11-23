@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { MarketCandleSchema, MarketHistoryCoverageSchema } from "../domain/contracts";
 import type { MarketCandle, MarketHistoryCoverage } from "../domain/contracts";
+import { createCriusClient, type CriusClient } from "./crius-client";
 import { createRobinhoodMarketFeed } from "./robinhood-feed";
 
 const DEFAULT_CRIUS_BASE_URL = "https://api.crius.sh/v1/robinhood/token";
@@ -50,6 +51,9 @@ export type CriusHistoryOptions = {
   requiredCandles?: number;
   requestedCandles?: number;
   requestTimeoutMs?: number;
+  /** Shared Crius client (API key, retry, limit handling); one is created from fetcher and apiKey when omitted. */
+  client?: CriusClient;
+  apiKey?: string;
   listMarkets?: () => Promise<Array<{ symbol: string; currentMultiplier: string; tokenAddress?: string; pendingMultiplier?: string }>>;
 };
 
@@ -158,6 +162,9 @@ export function createCriusHistoryFeed(options: CriusHistoryOptions = {}) {
   const requiredCandles = options.requiredCandles ?? 1440;
   const timeoutMs = options.requestTimeoutMs ?? 8000;
   const listMarkets = options.listMarkets ?? (() => createRobinhoodMarketFeed({ fetcher, now, baseUrl: robinhoodBaseUrl }).listMarkets());
+  const client = options.client ?? createCriusClient({ fetcher, now, timeoutMs, ...(options.apiKey ? { apiKey: options.apiKey } : {}) });
+  // Overlapping callers (Lab, scheduler, backtest) share one provider request per symbol; nothing is kept after it settles.
+  const inflight = new Map<string, Promise<MarketHistoryResult>>();
 
   async function getJson(url: string): Promise<unknown | null> {
     try {
@@ -174,7 +181,20 @@ export function createCriusHistoryFeed(options: CriusHistoryOptions = {}) {
   }
 
   return {
-    async getHistory(symbolInput: string): Promise<MarketHistoryResult> {
+    getHistory(symbolInput: string): Promise<MarketHistoryResult> {
+      const key = symbolInput.trim().toUpperCase();
+      const pending = inflight.get(key);
+      if (pending) return pending;
+      const started = load(symbolInput);
+      inflight.set(key, started);
+      const clear = () => { if (inflight.get(key) === started) inflight.delete(key); };
+      started.then(clear, clear);
+      return started;
+    },
+  };
+
+  async function load(symbolInput: string): Promise<MarketHistoryResult> {
+    {
       const symbol = symbolInput.trim().toUpperCase();
       if (!/^[A-Z0-9.]{1,16}$/.test(symbol)) throw new MarketHistoryError("A supported market symbol is required.");
       const market = (await listMarkets()).find((candidate) => candidate.symbol === symbol);
@@ -188,7 +208,7 @@ export function createCriusHistoryFeed(options: CriusHistoryOptions = {}) {
       candleUrl.searchParams.set("continuous", "false");
       candleUrl.searchParams.set("currency", "usd");
       const [rawCandles, rawActions] = await Promise.all([
-        getJson(candleUrl.toString()),
+        client.getJson(candleUrl.toString()).catch(() => null),
         getJson(`${robinhoodBaseUrl}/rhj/corporate-actions`),
       ]);
       const response = readArrays(rawCandles);
@@ -259,6 +279,6 @@ export function createCriusHistoryFeed(options: CriusHistoryOptions = {}) {
       }
 
       return { candles, corporateActionDates, coverage: calculateCoverage({ symbol, tokenAddress: market.tokenAddress, requestedCandles, candles, requiredCandles, multiplierStatus: verifiedMultiplierStatus }) };
-    },
-  };
+    }
+  }
 }

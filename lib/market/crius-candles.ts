@@ -5,6 +5,7 @@
  * comparable with option strikes. This feed is for charts only; backtests keep using lib/market/crius-history.ts.
  */
 import { z } from "zod";
+import { createCriusClient, criusFailureMessage, type CriusClient } from "./crius-client";
 import type { createRobinhoodMarketFeed } from "./robinhood-feed";
 
 export const CHART_INTERVALS = ["15m", "1h", "4h", "1d"] as const;
@@ -38,6 +39,8 @@ export const CandleSeriesSchema = z.object({
   multiplierPending: z.boolean(),
   requested: z.number().int().positive(),
   receivedAt: z.string(),
+  /** Present and true only when the provider could not answer and this is the last series that was verified, with its original receivedAt. */
+  stale: z.boolean().optional(),
   candles: z.array(ChartCandleSchema),
 }).strict();
 export type ChartCandle = z.infer<typeof ChartCandleSchema>;
@@ -51,8 +54,9 @@ export class CandleFeedError extends Error {
   }
 }
 
-class UpstreamStatusError extends Error { constructor(readonly status: number) { super(`status ${status}`); } }
 const SERIES_CACHE_MS = 60_000;
+/** The last verified series is kept this long to cover a provider outage; it is always served with its original receivedAt and stale: true. */
+const LAST_GOOD_MAX_MS = 6 * 60 * 60_000;
 const DEFAULT_CRIUS_BASE_URL = "https://api.crius.sh/v1/robinhood/token";
 type MarketFeed = ReturnType<typeof createRobinhoodMarketFeed>;
 type RawNumbers = Array<number | string>;
@@ -104,6 +108,9 @@ export type CriusCandleFeedOptions = {
   now?: () => Date;
   criusBaseUrl?: string;
   requestTimeoutMs?: number;
+  /** Shared client (API key, retry and limit handling); one is created from fetcher and apiKey when omitted. */
+  client?: CriusClient;
+  apiKey?: string;
   listMarkets: MarketFeed["listMarkets"];
 };
 
@@ -113,17 +120,28 @@ export function createCriusCandleFeed(options: CriusCandleFeedOptions) {
   const base = (options.criusBaseUrl ?? DEFAULT_CRIUS_BASE_URL).replace(/\/$/, "");
   // The provider answers daily candles for busy tokens in 6 to 7 seconds, so the cutoff leaves room for that.
   const timeoutMs = options.requestTimeoutMs ?? 20_000;
+  const client = options.client ?? createCriusClient({ fetcher, now, timeoutMs, ...(options.apiKey ? { apiKey: options.apiKey } : {}) });
   // Short-lived cache with in-flight sharing, so repeated timeframe switches do not re-query a slow provider. Failures are never cached.
   const cache = new Map<string, { at: number; series: Promise<CandleSeries> }>();
+  const lastGood = new Map<string, { at: number; series: CandleSeries }>();
 
   return {
     getSeries(symbolInput: string, interval: ChartInterval, limit = DEFAULT_CHART_CANDLES): Promise<CandleSeries> {
       const key = `${symbolInput.trim().toUpperCase()}:${interval}:${limit}`;
       const hit = cache.get(key);
       if (hit && now().getTime() - hit.at < SERIES_CACHE_MS) return hit.series;
-      const series = load(symbolInput, interval, limit);
+      const series = load(symbolInput, interval, limit).then((fresh) => {
+        lastGood.set(key, { at: now().getTime(), series: fresh });
+        return fresh;
+      }, (error: unknown) => {
+        // A failed refresh serves the last verified series, unchanged and marked stale, instead of an empty chart.
+        const kept = lastGood.get(key);
+        if (kept && error instanceof CandleFeedError && error.code === "UPSTREAM_UNAVAILABLE" && now().getTime() - kept.at <= LAST_GOOD_MAX_MS) return { ...kept.series, stale: true };
+        throw error;
+      });
       cache.set(key, { at: now().getTime(), series });
-      series.catch(() => { if (cache.get(key)?.series === series) cache.delete(key); });
+      // A failure, and a stale answer, are not cached: the next request asks the provider again (the client pauses a limited key).
+      series.then((value) => { if (value.stale && cache.get(key)?.series === series) cache.delete(key); }, () => { if (cache.get(key)?.series === series) cache.delete(key); });
       if (cache.size > 200) for (const [oldKey, entry] of cache) { if (now().getTime() - entry.at >= SERIES_CACHE_MS) cache.delete(oldKey); }
       return series;
     },
@@ -146,17 +164,10 @@ export function createCriusCandleFeed(options: CriusCandleFeedOptions) {
       url.searchParams.set("continuous", "false");
       url.searchParams.set("currency", "usd");
       let payload: unknown;
-      // One retry for a fast upstream error (5xx or a dropped connection). A timeout is not retried: it would double the wait.
-      for (let attempt = 1; ; attempt += 1) {
-        try {
-          const response = await fetcher(url.toString(), { method: "GET", headers: { accept: "application/json" }, cache: "no-store", signal: AbortSignal.timeout(timeoutMs) });
-          if (!response.ok) throw new UpstreamStatusError(response.status);
-          payload = await response.json();
-          break;
-        } catch (error) {
-          const retryable = error instanceof UpstreamStatusError ? error.status >= 500 : !(error instanceof DOMException && error.name === "TimeoutError");
-          if (attempt >= 2 || !retryable) throw new CandleFeedError("UPSTREAM_UNAVAILABLE", "The candle provider is temporarily unavailable.", true);
-        }
+      try {
+        payload = await client.getJson(url.toString());
+      } catch (error) {
+        throw new CandleFeedError("UPSTREAM_UNAVAILABLE", criusFailureMessage(error), true);
       }
       const receivedAt = now();
       const candles = parseCriusCandles(payload, interval, multiplier, receivedAt.getTime());

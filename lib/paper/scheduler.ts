@@ -96,6 +96,14 @@ function validCandle(value: MarketCandle, symbol: string, nowMs: number): boolea
     receivedMs <= nowMs;
 }
 
+/** True when an in-session hourly candle newer than the agent's last decision has finalized and is not yet too old to evaluate. */
+function hasDueCandle(startedAtMs: number, lastProcessedAt: number, graceMs: number, maxAgeMs: number): boolean {
+  for (let end = Math.floor((startedAtMs - graceMs) / HOUR_MS) * HOUR_MS; end > lastProcessedAt && startedAtMs - end <= maxAgeMs; end -= HOUR_MS) {
+    if (isRegularEquitySession(new Date(end).toISOString())) return true;
+  }
+  return false;
+}
+
 function completeEvaluationWindow(candles: MarketCandle[], index: number, symbol: string, nowMs: number): boolean {
   if (index < REQUIRED_PRIOR_CANDLES) return false;
   const window = candles.slice(index - REQUIRED_PRIOR_CANDLES, index + 1);
@@ -206,9 +214,28 @@ export function createPaperScheduler(options: PaperSchedulerOptions) {
           let earnings: EarningsSnapshot | null = null;
           const strategyAgent = isHouseStrategyTemplate(agent.templateId);
           try {
-            [history, latest, earnings] = await Promise.all([
+            latest = await options.repository.listTape(agent.ownerId, agent.id, 1);
+          } catch (cause) {
+            summary.failures += 1;
+            emit(log, { event: "paper_scheduler.agent_failed", agentId: agent.id, symbol, stage: "market_data", message: safeMessage(cause) });
+            continue;
+          }
+
+          const latestDecisionAt = latest[0] ? Date.parse(latest[0].createdAt) : Number.NEGATIVE_INFINITY;
+          const agentActivatedAt = Date.parse(agent.updatedAt);
+          const lastProcessedAt = Math.max(latestDecisionAt, agentActivatedAt);
+          if (!Number.isFinite(lastProcessedAt)) {
+            summary.deferred += 1;
+            emit(log, { event: "paper_scheduler.agent_deferred", agentId: agent.id, symbol, reason: "agent_timeline_invalid" });
+            continue;
+          }
+          // Candle history is a metered provider call. Fetch it only when an in-session candle that finalized after this agent's
+          // last decision could still be evaluated; otherwise nothing could change and the request would only burn the allowance.
+          if (!hasDueCandle(startedAtMs, lastProcessedAt, finalizationGraceMs, maxCandleAgeMs)) continue;
+
+          try {
+            [history, earnings] = await Promise.all([
               getHistory(symbol),
-              options.repository.listTape(agent.ownerId, agent.id, 1),
               strategyAgent ? getEarnings(symbol) : Promise.resolve(null),
             ]);
           } catch (cause) {
@@ -225,15 +252,6 @@ export function createPaperScheduler(options: PaperSchedulerOptions) {
           ) {
             summary.deferred += 1;
             emit(log, { event: "paper_scheduler.agent_deferred", agentId: agent.id, symbol, reason: "market_history_provenance_unverified" });
-            continue;
-          }
-
-          const latestDecisionAt = latest[0] ? Date.parse(latest[0].createdAt) : Number.NEGATIVE_INFINITY;
-          const agentActivatedAt = Date.parse(agent.updatedAt);
-          const lastProcessedAt = Math.max(latestDecisionAt, agentActivatedAt);
-          if (!Number.isFinite(lastProcessedAt)) {
-            summary.deferred += 1;
-            emit(log, { event: "paper_scheduler.agent_deferred", agentId: agent.id, symbol, reason: "agent_timeline_invalid" });
             continue;
           }
 

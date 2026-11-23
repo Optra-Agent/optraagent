@@ -192,10 +192,10 @@ export function MarketDetailScreen({ symbol }: { symbol: string }) {
             <div>
               <p className="md-last mono" aria-label="Last traded price">{lastText ? `$${lastText}` : "—"}</p>
               <p className="md-change mono" data-dir={change ? (change.abs >= 0 ? "up" : "down") : "none"}>
-                {change ? `${change.abs >= 0 ? "+" : ""}${change.pct.toFixed(2)}% 24h` : last ? "24h change needs a full day of candles" : "No trades in this window"}
+                {change ? `${change.abs >= 0 ? "+" : ""}${change.pct.toFixed(2)}% 24h` : last ? "24h change needs a full day of candles" : chartStatus === "loading" ? "Loading candles…" : chartStatus === "error" ? "Provider unavailable" : "No trades in this window"}
               </p>
             </div>
-            <DataFreshness lastOkAt={lastOkAt} lastFailedAt={lastFailedAt} pollMs={POLL_MS[interval]} interval={interval} last={last} receivedAt={series?.receivedAt ?? null} />
+            <DataFreshness lastOkAt={lastOkAt} lastFailedAt={lastFailedAt} pollMs={POLL_MS[interval]} interval={interval} last={last} receivedAt={series?.receivedAt ?? null} chartStatus={chartStatus} servedStale={series?.stale === true} />
           </div>
           {chartStatus === "loading" ? <div role="status" className="cc-loading"><Skeleton lines={6} /><p className="mk-why">Loading {ticker} candles… daily candles can take several seconds.</p></div> : null}
           {chartStatus === "error" ? <div className="cc-state" role="alert"><p>{chartError}</p><div className="mk-actions"><button type="button" className={buttonVariants({ variant: "outline" })} onClick={retryChart}>Retry</button></div></div> : null}
@@ -316,14 +316,15 @@ export function MarketDetailScreen({ symbol }: { symbol: string }) {
  * Says how current the chart is, from what actually happened: when the last refresh succeeded, whether the newest one failed,
  * and whether the token simply has not traded lately. It ticks once a second but never makes a request itself.
  */
-function DataFreshness({ lastOkAt, lastFailedAt, pollMs, interval, last, receivedAt }: { lastOkAt: number; lastFailedAt: number; pollMs: number; interval: ChartInterval; last: { t: number } | undefined; receivedAt: string | null }) {
+function DataFreshness({ lastOkAt, lastFailedAt, pollMs, interval, last, receivedAt, chartStatus, servedStale }: { lastOkAt: number; lastFailedAt: number; pollMs: number; interval: ChartInterval; last: { t: number } | undefined; receivedAt: string | null; chartStatus: Status; servedStale: boolean }) {
   const [now, setNow] = useState(() => Date.now());
   const timer = useRef<number | undefined>(undefined);
   useEffect(() => {
     timer.current = window.setInterval(() => { if (!document.hidden) setNow(Date.now()); }, 1000);
     return () => window.clearInterval(timer.current);
   }, []);
-  if (!lastOkAt) return <div className="md-fresh" aria-live="polite"><Chip>Loading</Chip></div>;
+  if (!lastOkAt) return <div className="md-fresh" aria-live="polite">{chartStatus === "error" ? <Chip tone="ember">Provider unavailable</Chip> : <Chip>Loading</Chip>}</div>;
+  if (servedStale) return <div className="md-fresh" aria-live="polite"><Chip tone="ember">Delayed</Chip><span className="mono">Provider unavailable · showing the last verified candles{receivedAt ? ` received ${formatUtc(receivedAt)}` : ""}</span></div>;
   const state = freshness({ lastOkAt, lastFailedAt, now, pollMs });
   const age = Math.max(0, Math.round((now - lastOkAt) / 1000));
   const quiet = quietMarket(last, interval, now);

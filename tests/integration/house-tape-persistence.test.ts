@@ -118,7 +118,11 @@ describe("House Agent Decision Tape persistence (isolated database, archived rea
     const verifyBody = await (await createPublicHandlers({ repository: new DrizzlePublicRepository(connection.db), now: () => new Date("2026-11-22T00:20:00.000Z"), heartbeat: () => null }).verify()).json() as { claims: Array<{ id: string; status: string; statement: string; evidencePath: string }> };
     const tapeClaim = verifyBody.claims.find((claim) => claim.id === "decision_tape")!;
     expect(tapeClaim).toMatchObject({ status: "verified", evidencePath: "/api/public/v1/tape" });
-    expect(tapeClaim.statement).toContain(`${sessionEnds.length * 4} House Agent decisions are persisted`);
+    // Evaluated decisions and data-error records are reported separately and add up to every persisted record.
+    const counted = /^(\d+) House Agent decisions are persisted.* (\d+) further records? (?:are|is) data-error outcomes/.exec(tapeClaim.statement);
+    expect(counted, tapeClaim.statement).not.toBeNull();
+    expect(Number(counted![1]) + Number(counted![2])).toBe(sessionEnds.length * 4);
+    expect(Number(counted![2])).toBeGreaterThan(0);
 
     // Process restart: close the connection and open the same data directory again. Nothing changes.
     await connection.close();
@@ -138,6 +142,22 @@ describe("House Agent Decision Tape persistence (isolated database, archived rea
       expect(await response.json()).toMatchObject({ evaluated: 4, duplicates: 0, failures: 0 });
       expect((await readTape(connection.db)).decisions).toHaveLength(sessionEnds.length * 4 + 4);
     }
+  });
+
+  it("does not describe data-error records as evaluated decisions on the Verify payload", async () => {
+    const claimFor = async (stats: { decisions: number; latestAt: string | null; errors?: number; evaluated?: number; latestEvaluatedAt?: string | null }) => {
+      const repository = { listHouseAgents: async () => [], getHouseAgent: async () => null, listPublicTape: async () => ({ decisions: [], orders: [] }), tapeStats: async () => stats };
+      const body = await (await createPublicHandlers({ repository, now: () => new Date("2026-11-23T16:20:00.000Z"), heartbeat: () => null }).verify()).json() as { claims: Array<{ id: string; status: string; statement: string }> };
+      return body.claims.find((item) => item.id === "decision_tape")!;
+    };
+    const onlyErrors = await claimFor({ decisions: 4, latestAt: "2026-11-23T15:00:00.000Z", errors: 4, evaluated: 0, latestEvaluatedAt: null });
+    expect(onlyErrors.status).toBe("preview");
+    expect(onlyErrors.statement).toContain("No House Agent has evaluated a candle yet");
+    expect(onlyErrors.statement).not.toContain("decisions are persisted");
+    const mixed = await claimFor({ decisions: 6, latestAt: "2026-11-23T16:00:00.000Z", errors: 4, evaluated: 2, latestEvaluatedAt: "2026-11-23T16:00:00.000Z" });
+    expect(mixed.status).toBe("verified");
+    expect(mixed.statement).toContain("2 House Agent decisions are persisted");
+    expect(mixed.statement).toContain("4 further records are data-error outcomes");
   });
 
   it("explains an empty persisted Tape on the Verify payload instead of implying activity", async () => {

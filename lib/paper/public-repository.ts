@@ -1,4 +1,4 @@
-import { and, count, desc, eq, inArray, max } from "drizzle-orm";
+import { and, count, desc, eq, inArray, max, sql } from "drizzle-orm";
 import type { AppDatabase } from "../db/client";
 import {
   AgentDecisionSchema, BacktestRunSchema, PaperOrderSchema, PaperPositionSchema, PublicHouseAgentDetailSchema, PublicHouseAgentSchema, RecipeV1Schema,
@@ -157,11 +157,22 @@ export class DrizzlePublicRepository {
     });
   }
 
-  /** How many decisions the public House Agents have persisted, and when the latest was recorded. */
-  async tapeStats(): Promise<{ decisions: number; latestAt: string | null }> {
-    const [row] = await this.db.select({ decisions: count(), latestAt: max(paperDecisions.createdAt) }).from(paperDecisions)
+  /**
+   * How many records the public House Agents have persisted, how many of those are data-error outcomes (the candle could not be
+   * evaluated, so no strategy rule ran), and the latest evaluated (non-error) candle.
+   */
+  async tapeStats(): Promise<{ decisions: number; latestAt: string | null; errors?: number; evaluated?: number; latestEvaluatedAt?: string | null }> {
+    const isError = sql`${paperDecisions.hookResults} @> '[{"status":"error"}]'::jsonb`;
+    const [row] = await this.db.select({
+      decisions: count(), latestAt: max(paperDecisions.createdAt),
+      errors: sql<number>`count(*) filter (where ${isError})`.mapWith(Number),
+      latestEvaluatedAt: sql<Date | string | null>`max(${paperDecisions.createdAt}) filter (where not (${isError}))`,
+    }).from(paperDecisions)
       .innerJoin(agents, eq(paperDecisions.agentId, agents.id)).where(and(eq(agents.kind, "house"), eq(agents.visibility, "public")));
-    return { decisions: row?.decisions ?? 0, latestAt: row?.latestAt ? row.latestAt.toISOString() : null };
+    const decisions = row?.decisions ?? 0;
+    const errors = row?.errors ?? 0;
+    const evaluatedAt = row?.latestEvaluatedAt ? new Date(row.latestEvaluatedAt).toISOString() : null;
+    return { decisions, latestAt: row?.latestAt ? row.latestAt.toISOString() : null, errors, evaluated: decisions - errors, latestEvaluatedAt: evaluatedAt };
   }
 
   /** The newest public decisions across every House Agent, or one agent's, with the agent's name for the Tape row. */

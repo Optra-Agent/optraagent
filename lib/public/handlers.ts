@@ -138,8 +138,15 @@ export function createPublicHandlers(options: PublicHandlerOptions = {}) {
         try {
           const stats = await repository.tapeStats();
           const schedule = schedulerStatus();
-          tapeClaim = stats.decisions > 0
-            ? { status: "verified", statement: `${stats.decisions} House Agent decisions are persisted in PostgreSQL; the latest was recorded for the candle closing ${stats.latestAt}. Each stores its hourly candle, rule trace and data hash.` }
+          const errors = stats.errors ?? 0;
+          const evaluated = stats.evaluated ?? stats.decisions - errors;
+          tapeClaim = evaluated > 0
+            ? {
+              status: "verified",
+              statement: `${evaluated} House Agent decisions are persisted in PostgreSQL; the latest was recorded for the candle closing ${stats.latestEvaluatedAt ?? stats.latestAt}. Each stores its hourly candle, rule trace and data hash.${errors > 0 ? ` ${errors} further record${errors === 1 ? "" : "s"} are data-error outcomes: the candle could not be verified, no rule ran and no order was created.` : ""}`,
+            }
+            : stats.decisions > 0
+              ? { status: "preview", statement: `No House Agent has evaluated a candle yet. ${stats.decisions} data-error record${stats.decisions === 1 ? " is" : "s are"} persisted (the latest for the candle closing ${stats.latestAt}): the hourly candle could not be verified, so no rule ran and no order was created.` }
             : {
               status: "preview",
               statement: schedule.marketOpen
