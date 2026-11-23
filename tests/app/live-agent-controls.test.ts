@@ -65,6 +65,20 @@ describe("Live Agent controls", () => {
     await waitFor(() => expect(fetchMock).toHaveBeenCalledWith(`/api/venue/callput/live-agent/grants/${GRANT.id}/revoke`, expect.objectContaining({ method: "POST" })));
   });
 
+  it("explains each request state and offers a recovery action with the explorer link for a halted one", async () => {
+    const hash = `0x${"cd".repeat(32)}`;
+    fetchMock.mockResolvedValue(Response.json(status({ requests: [
+      { id: "r1", state: "unknown", collateralRaw: "5000000", transactionHash: hash, requestKey: null, createdAt: "2026-11-23T08:00:00.000Z" },
+      { id: "r2", state: "pending", collateralRaw: "5000000", transactionHash: null, requestKey: `0x${"ab".repeat(32)}`, createdAt: "2026-11-23T07:00:00.000Z" },
+    ] })));
+    render(createElement(LiveAgentControls));
+    expect(await screen.findByText("Unknown: agent halted")).toBeTruthy();
+    expect(screen.getByText(/never retried blindly/)).toBeTruthy();
+    expect((screen.getByRole("link", { name: "Open the transaction" }) as HTMLAnchorElement).href).toContain(`/tx/${hash}`);
+    expect(screen.getByText("Pending")).toBeTruthy();
+    expect(screen.getAllByRole("link", { name: "Open the transaction" })).toHaveLength(1);
+  });
+
   it("asks a signed-out visitor to connect and makes no request", () => {
     auth.status = "signed_out";
     render(createElement(LiveAgentControls));

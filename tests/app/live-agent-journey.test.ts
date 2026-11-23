@@ -44,6 +44,25 @@ describe("Live Agent journey", () => {
   });
 });
 
+describe("Live Agent journey: account position and stop reason", () => {
+  const ADDRESS = "0xC1B9970A69Ec2d630997A29fD54dD8E28C4dAA5c";
+  const detail = (input: JourneyInput, title: string) => liveAgentJourney(input).find((step) => step.title === title)?.detail ?? "";
+
+  it("states the owner's real Account position and never offers to sign for the owner", () => {
+    const proposed = { ...base, grants: [{ agentId: "a1", status: "proposed" as const, missingEvidence: ["x"] }] };
+    expect(detail({ ...proposed, account: { address: ADDRESS, created: false, registered: false } }, "Authorize scoped session")).toContain(`${ADDRESS} does not exist yet`);
+    expect(detail({ ...proposed, account: { address: ADDRESS, created: true, registered: false } }, "Authorize scoped session")).toContain("is not registered");
+    expect(detail({ ...proposed, account: { address: ADDRESS, created: true, registered: true } }, "Authorize scoped session")).toContain("is created and registered");
+    expect(detail({ ...proposed, account: null }, "Authorize scoped session")).toContain("could not be read");
+    expect(detail(proposed, "Authorize scoped session")).toContain("OPTRA never holds your wallet key");
+  });
+
+  it("shows why the agent is stopped", () => {
+    expect(detail({ ...base, control: { stopped: true, reason: "A tracked request is stale or unknown; reconcile on-chain before resuming." } }, "Emergency stop")).toContain("stale or unknown");
+    expect(detail({ ...base, control: { stopped: false } }, "Emergency stop")).toContain("Available at any time");
+  });
+});
+
 describe("Tape trading capability strip", () => {
   const fetchMock = vi.fn();
   beforeEach(() => { vi.stubGlobal("fetch", fetchMock); fetchMock.mockReset(); });

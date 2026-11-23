@@ -2,7 +2,9 @@ import { CheckCircle2, CircleAlert, CircleDashed } from "lucide-react";
 
 export type JourneyInput = {
   liveTradingEnabled: boolean;
-  control: { stopped: boolean };
+  control: { stopped: boolean; reason?: string | null };
+  /** The owner's CallPut Account as the factory reports it right now, or null when it could not be read. */
+  account?: { address: string; created: boolean; registered: boolean } | null;
   /** `accountUsable` false means CallPut's factory would refuse an open for this owner's Account today. */
   accountUsable: boolean | null;
   grants: Array<{ agentId: string; status: "proposed" | "active" | "revoked"; missingEvidence: string[] }>;
@@ -22,13 +24,22 @@ export function liveAgentJourney(input: JourneyInput): Step[] {
   const hasGrant = grants.length > 0;
   const armed = active.length > 0 && input.liveTradingEnabled && !input.control.stopped;
 
+  const account = input.account ?? null;
+  const accountSentence = account === null
+    ? "Your CallPut Account could not be read right now."
+    : !account.created
+      ? `Your CallPut Account ${account.address} does not exist yet: creating and funding it is an owner action in CallPut's Account flow.`
+      : !account.registered
+        ? `Your CallPut Account ${account.address} exists but is not registered with the factory; it registers when you fund it.`
+        : `Your CallPut Account ${account.address} is created and registered.`;
+
   const authorize: Step = active.length > 0
     ? { title: "Authorize scoped session", state: "done", detail: "A scoped grant is active with all evidence recorded." }
     : input.accountUsable === false
       ? { title: "Authorize scoped session", state: "blocked", detail: "CallPut's account factory would refuse an open for your Account today, so a session cannot be used yet." }
       : pending
-        ? { title: "Authorize scoped session", state: "next", detail: `${pending.missingEvidence.length} evidence items are still missing. The on-chain session is signed by you with CallPut's Account flow; OPTRA never holds your wallet key.` }
-        : { title: "Authorize scoped session", state: "waiting", detail: "Propose a grant first. Then you sign the scoped session yourself with CallPut's Account flow." };
+        ? { title: "Authorize scoped session", state: "next", detail: `${pending.missingEvidence.length} evidence items are still missing. ${accountSentence} The session is signed by you in CallPut's Account flow; OPTRA never holds your wallet key.` }
+        : { title: "Authorize scoped session", state: "waiting", detail: `Propose a grant first. ${accountSentence} Then you sign the scoped session yourself in CallPut's Account flow.` };
 
   const activate: Step = armed
     ? { title: "Activate when eligible", state: "done", detail: "The operator switch is on, a grant is active and the agent is running." }
@@ -41,7 +52,7 @@ export function liveAgentJourney(input: JourneyInput): Step[] {
     authorize,
     activate,
     { title: "Monitor", state: input.requests.length > 0 ? "done" : "waiting", detail: input.requests.length > 0 ? `${input.requests.length} agent request${input.requests.length === 1 ? "" : "s"} recorded below.` : "No agent order has been requested. Requests and their on-chain state appear here." },
-    { title: "Emergency stop", state: "done", detail: input.control.stopped ? "The agent is stopped and cannot place orders." : "Available at any time. It stops new orders immediately." },
+    { title: "Emergency stop", state: "done", detail: input.control.stopped ? `The agent is stopped and cannot place orders${input.control.reason ? `: ${input.control.reason}` : "."}` : "Available at any time. It stops new orders immediately." },
   ];
 }
 

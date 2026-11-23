@@ -6,6 +6,8 @@ import { Chip, Panel } from "../ui";
 import { Button } from "@/components/ui/button";
 import { LiveAgentConfigure } from "./LiveAgentConfigure";
 import { LiveAgentJourney } from "./LiveAgentJourney";
+import { describeLiveRequest } from "@/lib/venue/callput-live-agent-request-text";
+import { explorerTxUrl } from "@/lib/chain/mainnet-contracts";
 import { accountBlockReason, describeAccountGates, type AccountGateFacts } from "@/lib/venue/callput-account-gates-text";
 
 type LiveAgentStatus = {
@@ -80,7 +82,7 @@ export function LiveAgentControls() {
             <div className="metric"><dt>State</dt><dd>{data.control.stopped ? `Stopped${data.control.reason ? `: ${data.control.reason}` : ""}` : "Running"}</dd></div>
           </dl>
           <p className="panel-note">The autonomous execution engine is built and inactive: it can place an order only with an authorized session grant, all seven live gates passing and production acceptance. Until then every real order is approved by you in your own wallet, one transaction at a time (open, close and settle on this page).</p>
-          <LiveAgentJourney liveTradingEnabled={data.liveTradingEnabled} control={data.control} accountUsable={data.accountGates?.status === "ok" ? data.accountGates.accountUsable : null} grants={data.grants} requests={data.requests} />
+          <LiveAgentJourney liveTradingEnabled={data.liveTradingEnabled} control={data.control} account={data.accountGates?.status === "ok" ? { address: data.accountGates.account, created: data.accountGates.accountCreated, registered: data.accountGates.accountRegistered } : null} accountUsable={data.accountGates?.status === "ok" ? data.accountGates.accountUsable : null} grants={data.grants} requests={data.requests} />
           {data.accountGates?.status === "ok" ? (
             <p className="panel-note" aria-label="CallPut account gates">
               {accountBlockReason(data.accountGates) === null
@@ -115,9 +117,17 @@ export function LiveAgentControls() {
           )}
           {data.requests.length > 0 ? (
             <ul className="picker-list" aria-label="Agent requests">
-              {data.requests.slice(0, 5).map((request) => (
-                <li key={request.id}><span className="picker-name">{request.state}</span><span className="picker-meta mono">{usdg(request.collateralRaw)}{request.requestKey ? ` · ${short(request.requestKey)}` : ""}</span></li>
-              ))}
+              {data.requests.slice(0, 5).map((request) => {
+                const view = describeLiveRequest(request.state);
+                return (
+                  <li key={request.id} data-tone={view.tone}>
+                    <span className="picker-name">{view.title}</span>
+                    <span className="picker-meta mono">{usdg(request.collateralRaw)}{request.requestKey ? ` · ${short(request.requestKey)}` : ""}</span>
+                    <span className="picker-meta">{view.meaning}</span>
+                    {view.recovery ? <span className="picker-meta" role="note"><strong>What to do:</strong> {view.recovery}{request.transactionHash ? <> <a className="claim-link" href={explorerTxUrl(request.transactionHash)} target="_blank" rel="noreferrer">Open the transaction</a></> : null}</span> : null}
+                  </li>
+                );
+              })}
             </ul>
           ) : null}
           <LiveAgentConfigure tradingAddress={data.accountGates?.status === "ok" ? data.accountGates.account : null} accountUsable={data.accountGates?.status === "ok" ? data.accountGates.accountUsable : null} onProposed={() => setRefreshCount((count) => count + 1)} />
