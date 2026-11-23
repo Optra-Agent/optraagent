@@ -238,6 +238,9 @@ export function createPaperScheduler(options: PaperSchedulerOptions) {
           }
 
           const candles = history.candles;
+          // The history is fetched after the pass starts, so its candles are stamped with a later receipt time. Validate them
+          // against the clock now, not the pass start, or every freshly fetched candle looks like it arrived from the future.
+          const validationAtMs = Math.max(startedAtMs, now().getTime());
           let invalidWindowReported = false;
           let staleCandleReported = false;
           for (let index = 0; index < candles.length; index += 1) {
@@ -259,7 +262,7 @@ export function createPaperScheduler(options: PaperSchedulerOptions) {
               }
               continue;
             }
-            if (!validCandle(candle, symbol, startedAtMs) || !completeEvaluationWindow(candles, index, symbol, startedAtMs)) {
+            if (!validCandle(candle, symbol, validationAtMs) || !completeEvaluationWindow(candles, index, symbol, validationAtMs)) {
               if (!invalidWindowReported) {
                 summary.deferred += 1;
                 invalidWindowReported = true;
@@ -267,7 +270,7 @@ export function createPaperScheduler(options: PaperSchedulerOptions) {
               }
               // A fresh, in-session candle that cannot be evaluated is an ERROR outcome on the Tape, not a silent gap.
               try {
-                const problem = validCandle(candle, symbol, startedAtMs) ? windowProblem(candles, index, symbol, startedAtMs) : `the ${candle.startAt} to ${candle.endAt} candle is missing, synthetic, has no trades or fails provenance checks.`;
+                const problem = validCandle(candle, symbol, validationAtMs) ? windowProblem(candles, index, symbol, validationAtMs) : `the ${candle.startAt} to ${candle.endAt} candle is missing, synthetic, has no trades or fails provenance checks.`;
                 const errorTickId = tickIdFor(candle);
                 const decision = evaluationErrorDecision({
                   agentId: agent.id, tickId: errorTickId, occurredAt: candle.endAt, recipeHash: agent.recipeHash, problem,

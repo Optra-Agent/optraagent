@@ -142,6 +142,45 @@ describe("scheduled Protective Put paper evaluation", () => {
     }
   });
 
+  it("evaluates a fresh candle when the history is fetched after the pass starts (a real clock moves between the two)", async () => {
+    const { createPaperScheduler } = await import("../../lib/paper/scheduler");
+    const base = new Date("2026-10-12T14:15:00.000Z").getTime();
+    const candleEndAt = "2026-10-12T14:00:00.000Z";
+    let reads = 0;
+    const advancingClock = () => new Date(base + (reads++) * 1500);
+    const feed = makeFeed(new Date(base));
+    const advancingFeed = createCriusHistoryFeed({
+      fetcher: (async (input: string | URL | Request) => {
+        const url = new URL(typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url);
+        if (url.pathname === "/rhj/corporate-actions") return Response.json({ corpActions: CAPTURE.corpActions });
+        return Response.json(url.pathname.endsWith("/candles") ? CAPTURE.candles : { assets: [CAPTURE.asset] });
+      }) as typeof fetch,
+      now: advancingClock,
+      listMarkets: async () => [{ symbol: "AAPL", currentMultiplier: String(CAPTURE.asset.currentMultiplier), tokenAddress: "0xaF3D76f1834A1d425780943C99Ea8A608f8a93f9" }],
+    });
+    expect((await feed.getHistory("AAPL")).candles.some((item) => item.endAt === candleEndAt)).toBe(true);
+    const { connection, owner, repository, agent } = await setup();
+    try {
+      await seedLastDecision(repository, owner.id, agent.id, agent.recipeHash, "2026-10-12T13:00:00.000Z");
+      const logs: Record<string, unknown>[] = [];
+      const handler = createPaperScheduler({
+        repository,
+        secret: CRON_SECRET,
+        getHistory: (symbol: string) => advancingFeed.getHistory(symbol),
+        acquireLock: async () => ({ release: async () => undefined }),
+        now: advancingClock,
+        log: (entry) => logs.push(entry),
+      });
+      const response = await handler.run(cronRequest());
+      expect(response.status, JSON.stringify(logs)).toBe(200);
+      await expect(response.json()).resolves.toMatchObject({ opened: 1, dataErrors: 0, failures: 0 });
+      const tape = await repository.listTape(owner.id, agent.id, 10);
+      expect(tape[0]).toMatchObject({ tickId: `replay-${Date.parse(candleEndAt)}`, action: "open" });
+    } finally {
+      await connection.close();
+    }
+  });
+
   it("persists a risk-gated skip from a finalized in-session candle without an order", async () => {
     const schedulerModule = await import("../../lib/paper/scheduler").catch(() => null);
     expect(schedulerModule, "the protected paper scheduler handler is implemented").not.toBeNull();
