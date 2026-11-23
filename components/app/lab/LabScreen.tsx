@@ -36,6 +36,19 @@ const multiplierLabel: Record<NonNullable<BacktestCoverage["multiplierStatus"]>,
   unverified: "Unverified",
 };
 
+/** The saved draft's own settings (read from its recipe), so the strategy tested here is visibly the one that was saved. */
+function draftParameters(parameters: Record<string, unknown>): Array<[string, string]> {
+  const group = (key: string) => (parameters[key] ?? {}) as Record<string, unknown>;
+  const rows: Array<[string, unknown, string]> = [
+    ["Reference shares", parameters.protectedShares ?? parameters.referenceShares, ""],
+    ["Paper capital", parameters.initialCapitalUsd, " USD"],
+    ["Strike distance", group("percy").otmPct, "% OTM"],
+    ["Model expiry", group("tenora").targetDTE, " days"],
+    ["Max premium", group("capra").maxPremiumPctHolding, "% of holding"],
+  ];
+  return rows.flatMap(([label, value, unit]) => typeof value === "string" || typeof value === "number" ? [[label, `${value}${unit}`] as [string, string]] : []);
+}
+
 export function LabScreen({ initialAgentId = "" }: { initialAgentId?: string }) {
   const { status, setWalletMenuOpen } = useAuthSession();
   const [markets, setMarkets] = useState<MarketAsset[]>([]);
@@ -312,6 +325,15 @@ export function LabScreen({ initialAgentId = "" }: { initialAgentId?: string }) 
                 </div>
                 {!agentsLoading && agents.length === 0 && !launched ? (
                   <p className="form-hint">Backtests run against a saved draft. <Link href="/agents#configure">Create a paper agent draft</Link> first.</p>
+                ) : null}
+                {selectedAgent && selectedAgent.id === selectedAgentId && !launched ? (
+                  <div className="draft-summary" role="group" aria-label="Selected draft">
+                    <dl className="kv kv-tight">
+                      <div><dt>Strategy</dt><dd>{draftLabel} · {selectedAgent.recipe.underlyingSymbol}</dd></div>
+                      {draftParameters(selectedAgent.recipe.parameters).map(([label, value]) => <div key={label}><dt>{label}</dt><dd className="mono">{value}</dd></div>)}
+                    </dl>
+                    <Link className={buttonVariants({ variant: "outline" })} href={`/agents/${encodeURIComponent(selectedAgent.id)}`}>Back to this draft</Link>
+                  </div>
                 ) : null}
                 <div className="action-row">
                   <Button  type="button" aria-describedby={runBlockedReason ? "run-blocked" : undefined} disabled={busy !== "" || agentsLoading || Boolean(runBlockedReason) || Boolean(launched)} onClick={() => void createBacktest()}>

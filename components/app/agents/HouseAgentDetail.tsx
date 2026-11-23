@@ -17,6 +17,23 @@ function Stat({ label, value, tone }: { label: string; value: string; tone?: str
   return <div><dt>{label}</dt><dd className={`mono${tone ? ` pnl pnl-${tone}` : ""}`}>{value}</dd></div>;
 }
 
+function scalar(value: unknown): string | null {
+  return typeof value === "string" || typeof value === "number" || typeof value === "boolean" ? String(value) : null;
+}
+
+/** Real recipe values, one row per rule group, so the configuration shown is exactly what the agent runs. */
+function configurationRows(parameters: Record<string, unknown>): Array<[string, string]> {
+  const rows: Array<[string, string]> = [];
+  for (const [key, value] of Object.entries(parameters)) {
+    const single = scalar(value);
+    if (single !== null) { rows.push([titleCase(key.replace(/([A-Z])/g, " $1").toLowerCase()), single]); continue; }
+    if (!value || typeof value !== "object" || Array.isArray(value) || key === "paperModel") continue;
+    const parts = Object.entries(value as Record<string, unknown>).flatMap(([name, item]) => { const text = scalar(item); return text === null ? [] : [`${name} ${text}`]; });
+    if (parts.length) rows.push([titleCase(key), parts.join(" · ")]);
+  }
+  return rows;
+}
+
 /** A public, read-only view of one OPTRA House Agent: recipe, six stages, positions, orders and its Decision Tape. */
 export function HouseAgentDetail({ agentId }: { agentId: string }) {
   const [state, setState] = useState<State>({ status: "loading" });
@@ -51,6 +68,10 @@ export function HouseAgentDetail({ agentId }: { agentId: string }) {
   const account = detail.account;
   const strategy = detail.strategy;
   const backtest = detail.backtest;
+  const raw = detail.backtestRun;
+  const count = (value: unknown) => typeof value === "number" ? value : null;
+  const text = (value: unknown) => typeof value === "string" && value ? value : null;
+  const run = raw ? { sampleCount: count(raw.sampleCount), entryOrderCount: count(raw.entryOrderCount), exitOrderCount: count(raw.exitOrderCount), dataSource: text(raw.dataSource), historyDataHash: text(raw.historyDataHash) } : null;
   return (
     <main className="page-container">
       <div className="page-heading-row detail-head">
@@ -78,6 +99,20 @@ export function HouseAgentDetail({ agentId }: { agentId: string }) {
         {detail.launchedAt ? <p className="panel-note">Launched {formatUtc(detail.launchedAt)}.</p> : null}
       </Panel>
 
+      <Panel aria-label="Configuration and status">
+        <div className="panel-head"><div><p className="eyebrow">CONFIGURATION · RISK · STATUS</p><h2>What is configured and where it stands</h2></div><Chip>Paper</Chip></div>
+        <dl className="kv">
+          <div><dt>Strategy</dt><dd>{titleCase(template)} · {strategyLine[template]}</dd></div>
+          <div><dt>Underlying</dt><dd className="mono">{detail.underlyingSymbol}</dd></div>
+          <div><dt>Execution mode</dt><dd>{detail.executionMode} · modeled premiums, no venue order</dd></div>
+          <div><dt>Status</dt><dd className="mono">{detail.status}</dd></div>
+          <div><dt>Launched</dt><dd className="mono">{detail.launchedAt ? formatUtc(detail.launchedAt) : "Not launched"}</dd></div>
+          <div><dt>Last evaluation</dt><dd className="mono">{detail.latestDecision ? `${formatUtc(detail.latestDecision.createdAt)} · ${detail.latestDecision.action}` : "None recorded yet"}</dd></div>
+          {configurationRows(detail.recipe.parameters).map(([label, value]) => <div key={label}><dt>{label}</dt><dd className="mono">{value}</dd></div>)}
+        </dl>
+        {detail.latestDecision ? null : <p className="panel-note">No evaluation has been persisted for this agent yet. A decision is recorded after an hourly candle in the US session finalizes; a pass that is deferred or finds no eligible candle stores nothing, and none is invented here.</p>}
+      </Panel>
+
       {backtest ? (
         <Panel aria-label="Backtest">
           <div className="panel-head"><div><p className="eyebrow">LAUNCH BACKTEST</p><h2>30 days before launch</h2></div><Chip tone="ember">Modeled premiums</Chip></div>
@@ -87,6 +122,14 @@ export function HouseAgentDetail({ agentId }: { agentId: string }) {
             {backtest.vsCashPct !== null ? <Stat label="Versus flat USD" value={formatPts(backtest.vsCashPct)} tone={signedTone(backtest.vsCashPct)} /> : null}
             <Stat label="Max drawdown" value={formatPct(`-${backtest.maxDrawdownPct}`)} tone="loss" />
           </dl>
+          {run ? (
+            <dl className="kv kv-tight" aria-label="Backtest report">
+              {run.sampleCount !== null ? <div><dt>Decisions replayed</dt><dd className="mono">{run.sampleCount}</dd></div> : null}
+              {run.entryOrderCount !== null || run.exitOrderCount !== null ? <div><dt>Entries / exits</dt><dd className="mono">{run.entryOrderCount ?? 0} / {run.exitOrderCount ?? 0}</dd></div> : null}
+              {run.dataSource ? <div><dt>Source</dt><dd className="mono">{run.dataSource}</dd></div> : null}
+              {run.historyDataHash ? <div><dt>History hash</dt><dd className="mono" title={run.historyDataHash}>{shortHash(run.historyDataHash, 16, 8)}</dd></div> : null}
+            </dl>
+          ) : null}
           <p className="panel-note">Candles read {formatUtc(backtest.startAt)} to {formatUtc(backtest.endAt)}, including the 30-day volatility warm-up; the 30 scored days are the last 720 hours. Losses are shown as they happened. The model includes no venue fees and no earnings volatility premium.</p>
         </Panel>
       ) : null}
