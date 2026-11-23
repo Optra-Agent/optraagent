@@ -353,7 +353,7 @@ test.describe("section visuals", () => {
     await page.goto("/");
     const proof = page.locator("#proof");
     await proof.scrollIntoViewIfNeeded();
-    await expect(proof.getByRole("list", { name: "Claims from the server" }).getByRole("listitem")).toHaveCount(8);
+    await expect(proof.getByRole("list", { name: "Claims from the server" }).getByRole("listitem")).toHaveCount(10);
     await expect(proof.getByRole("link", { name: /Evidence: \/api\/public\/v1\/hooks/ })).toBeVisible();
     await expect(proof.getByText('curl -s "$OPTRA_URL/api/public/v1/hooks"')).toBeVisible();
     await expect(proof.getByText("An MCP server and pay-per-call endpoints are planned, not built.", { exact: false })).toBeVisible();
