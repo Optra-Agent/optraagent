@@ -15,6 +15,7 @@ import { LiveAgentControls } from "./LiveAgentControls";
 import { LiveGatesPanel } from "./LiveGatesPanel";
 import { CallPutWalletReadiness } from "./CallPutWalletReadiness";
 import { PublicHouseTape } from "./PublicHouseTape";
+import { TradingCapabilityStrip } from "./TradingCapabilityStrip";
 import { Chip, JourneyRail, PageHeader, Skeleton, StateBlock, Panel, decisionOutcome } from "../ui";
 import type { DecisionOutcome } from "../ui";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -147,6 +148,7 @@ export function TapeScreen({ agentId }: { agentId: string }) {
       />
       {agentId ? <JourneyRail step={6} /> : null}
 
+      <TradingCapabilityStrip />
       {!agentId ? <PublicHouseTape /> : null}
       {!agentId ? <AgentPicker /> : null}
       <CallPutWalletReadiness />

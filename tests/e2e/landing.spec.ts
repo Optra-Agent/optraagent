@@ -24,8 +24,15 @@ test("landing capability claims match the catalog and roadmap items are not pres
 
   await expect(page.getByText("26 of 36 hooks implemented", { exact: true })).toBeVisible();
   const proof = page.locator("#proof");
-  await expect(proof.getByText("Live execution")).toBeVisible();
-  await expect(proof.getByText("Disabled", { exact: true })).toBeVisible();
+  const claims = proof.getByLabel("Claims from the server");
+  // Three independent trading capabilities, none of them a bare "Disabled".
+  await expect(claims.getByText("Wallet-signed trading", { exact: true })).toBeVisible();
+  await expect(claims.getByText(/^(Available|Signing not enabled)$/)).toBeVisible();
+  await expect(claims.getByText("Autonomous Agent Engine", { exact: true })).toBeVisible();
+  await expect(claims.getByText("Engine built · Live activation required", { exact: true })).toBeVisible();
+  await expect(claims.getByText("Live execution", { exact: true })).toBeVisible();
+  await expect(claims.getByText("Acceptance required", { exact: true })).toBeVisible();
+  await expect(proof.getByText("Disabled", { exact: true })).toHaveCount(0);
   await expect(proof.getByText("An MCP server and pay-per-call endpoints are planned, not built.", { exact: false })).toBeVisible();
   await expect(proof.locator('.xm-card[data-mode="manual"]').getByText("Wallet-signed.", { exact: false }).first()).toBeVisible();
   await expect(proof.locator('.xm-card[data-mode="engine"]').getByText("Planned", { exact: true })).toHaveCount(0);

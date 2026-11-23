@@ -7,6 +7,7 @@ import { Chip, PageHeader, StateBlock, Panel } from "../ui";
 import type { Tone } from "../ui";
 import { errorText } from "../format";
 import { LIVE_ENGINE_BUILT, LIVE_ENGINE_STATUS, LIVE_REQUIREMENTS } from "../live-requirements";
+import { TRADING_CAPABILITY_CLAIM_IDS, TRADING_CAPABILITY_TITLES } from "../../../lib/public/trading-capabilities";
 import { MAINNET_CHAIN_ID, MAINNET_CONTRACTS, MAINNET_EXTERNAL_CONTRACTS, explorerAddressUrl, explorerTxUrl } from "../../../lib/chain/mainnet-contracts";
 
 const statusLabel: Record<PublicClaim["status"], { label: string; tone: Tone }> = {
@@ -24,7 +25,6 @@ const claimTitle: Record<string, string> = {
   public_house_agents: "Running House Agents",
   decision_tape: "Decision Tape",
   historical_backtest: "Historical backtest",
-  live_execution: "Live execution",
 };
 
 type Capability = { title: string; label: string; tone: Tone; text: string; evidence?: string };
@@ -109,8 +109,12 @@ export function VerifyScreen() {
 
       {verification ? (
         <>
-          <dl className="metric-row" aria-label="Safety switches">
-            <div className="metric"><dt>Live trading</dt><dd>{verification.liveTradingEnabled ? "Enabled" : "Disabled"}</dd></div>
+          <dl className="metric-row" aria-label="Trading status">
+            {TRADING_CAPABILITY_CLAIM_IDS.map((id) => {
+              const claim = verification.claims.find((entry) => entry.id === id);
+              return <div className="metric" key={id}><dt>{TRADING_CAPABILITY_TITLES[id]}</dt><dd className="status-text">{claim ? (claim.label ?? statusLabel[claim.status].label) : "Not reported"}</dd></div>;
+            })}
+            <div className="metric"><dt>Autonomous execution switch</dt><dd className="status-text">{verification.liveTradingEnabled ? "On" : "Off"}</dd></div>
             <div className="metric"><dt>Uniswap v4 claim level</dt><dd className="mono">{verification.v4ClaimLevel}</dd></div>
             <div className="metric"><dt>Claims reported</dt><dd className="mono">{verification.claims.length}</dd></div>
           </dl>
@@ -122,8 +126,8 @@ export function VerifyScreen() {
                 return (
                   <li key={claim.id} className="claim">
                     <div className="claim-head">
-                      <h3>{claimTitle[claim.id] ?? claim.id.replaceAll("_", " ")}</h3>
-                      <Chip tone={meta.tone}>{meta.label}</Chip>
+                      <h3>{claimTitle[claim.id] ?? TRADING_CAPABILITY_TITLES[claim.id] ?? claim.id.replaceAll("_", " ")}</h3>
+                      <Chip tone={meta.tone}>{claim.label ?? meta.label}</Chip>
                     </div>
                     <p>{claim.statement}</p>
                     <a className="claim-link mono" href={claim.evidencePath} target="_blank" rel="noreferrer">Evidence: {claim.evidencePath}</a>

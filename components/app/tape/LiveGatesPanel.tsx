@@ -67,7 +67,7 @@ export function LiveGatesPanel() {
   const passing = data?.gates.filter((gate) => gate.pass).length ?? 0;
   const everyChecked = data !== null && data.acknowledgement.statements.every((statement) => checked.includes(statement.id));
   return (
-    <Panel aria-label="Enable live">
+    <Panel id="enable-live" aria-label="Enable live" className="scroll-mt-20">
       <div className="panel-head">
         <div><p className="eyebrow">GUARDED LIVE BETA</p><h2>Enable live</h2></div>
         <Chip tone={data?.allPass ? "ember" : "neutral"}>{data ? `${passing} of ${data.gates.length} gates pass` : "Not evaluated"}</Chip>

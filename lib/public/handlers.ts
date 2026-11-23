@@ -15,6 +15,9 @@ import type { SchedulerHeartbeat } from "../paper/heartbeat";
 import type { DrizzlePublicRepository } from "../paper/public-repository";
 
 import { BACKGROUND_INTERVAL_MS, CANDLE_FINALIZATION_GRACE_MS } from "../paper/schedule-constants";
+import { readGateEnv } from "../live/gates";
+import { buildTradingCapabilityClaims, readSigningFlags, type SigningFlags } from "./trading-capabilities";
+import type { MainnetAcceptanceRecord } from "./mainnet-acceptance";
 
 const SCHEDULER_INTERVAL_MINUTES = BACKGROUND_INTERVAL_MS / 60_000;
 const SCHEDULER_GRACE_MINUTES = CANDLE_FINALIZATION_GRACE_MS / 60_000;
@@ -26,6 +29,12 @@ export type PublicHandlerOptions = {
   repository?: PublicRepository;
   now?: () => Date;
   heartbeat?: () => SchedulerHeartbeat | null;
+  /** Which wallet-signed actions this build enables. Defaults to the build-time flags the Tape panels read. */
+  signing?: SigningFlags;
+  /** Operator environment for the autonomous switch. Defaults to the process environment. */
+  env?: Record<string, string | undefined>;
+  /** Verified Mainnet acceptance records. Defaults to the repository's (currently empty) list. */
+  acceptance?: readonly MainnetAcceptanceRecord[];
 };
 
 function json(body: unknown, status = 200): Response {
@@ -42,6 +51,7 @@ export function createPublicHandlers(options: PublicHandlerOptions = {}) {
   const repository = options.repository;
   const now = options.now ?? (() => new Date());
   const heartbeat = options.heartbeat ?? readSchedulerHeartbeat;
+  const env = options.env ?? process.env;
 
   /** Whether zero decisions is expected right now, and when the next real evaluation can happen. Computed, never stored. */
   function schedulerStatus() {
@@ -142,9 +152,11 @@ export function createPublicHandlers(options: PublicHandlerOptions = {}) {
       }
       const implemented = hooks.definitions.filter((hook) => hook.availability === "implemented").length;
       const catalogOnly = hooks.definitions.filter((hook) => hook.availability === "catalog_only").length;
+      const signing = options.signing ?? readSigningFlags();
+      const autonomousSwitchOn = readGateEnv(env).globalSwitchOn;
       return json(PublicVerificationSchema.parse({
         v4ClaimLevel: "L0",
-        liveTradingEnabled: false,
+        liveTradingEnabled: autonomousSwitchOn,
         claims: [
           {
             id: "market_data",
@@ -179,12 +191,7 @@ export function createPublicHandlers(options: PublicHandlerOptions = {}) {
             statement: "Paper backtests use verified hourly Robinhood Chain candles and disclosed modeled Black–Scholes premiums; a run requires 1,441 consecutive closed candles and at least one modeled entry.",
             evidencePath: "/api/backtests/coverage",
           },
-          {
-            id: "live_execution",
-            status: "disabled",
-            statement: "No OPTRA agent, server or scheduler can place a real-money order. The only real-money paths are the wallet-signed CallPut open, close and settle flows on Tape, where the connected owner confirms every transaction in their own wallet.",
-            evidencePath: "/api/public/v1/verify",
-          },
+          ...buildTradingCapabilityClaims({ signing, autonomousSwitchOn, acceptance: options.acceptance }),
           {
             id: "v4_claim_level",
             status: "verified",

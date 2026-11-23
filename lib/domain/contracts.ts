@@ -385,12 +385,15 @@ export const PublicTapeResponseSchema = z.object({
 export const PublicClaimSchema = z.object({
   id: z.string().min(1),
   status: z.enum(["verified", "limited", "preview", "unavailable", "disabled"]),
+  /** Optional human-readable state shown instead of the generic status word (for example "Available"). */
+  label: z.string().min(1).optional(),
   statement: z.string().min(1),
   evidencePath: z.string().startsWith("/"),
 }).strict();
 export const PublicVerificationSchema = z.object({
   v4ClaimLevel: z.literal("L0"),
-  liveTradingEnabled: z.literal(false),
+  /** Autonomous (server-side) execution only. Manual wallet-signed trading is reported by the wallet_signed_trading claim. */
+  liveTradingEnabled: z.boolean(),
   claims: z.array(PublicClaimSchema),
 }).strict();
 

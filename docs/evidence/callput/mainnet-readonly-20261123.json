@@ -1,0 +1,92 @@
+{
+  "checkedAt": "2026-11-23T02:51:57.446435+00:00",
+  "kind": "read-only Mainnet check; nothing was signed or sent",
+  "rpc": "https://rpc.mainnet.chain.robinhood.com",
+  "chainId": 4663,
+  "latestBlock": 121089200,
+  "contractsWithoutCode": [],
+  "contracts": {
+    "optionsMarket": {
+      "address": "0x3271d35afAc70C0D4989F984Abb2d918bf672C7e",
+      "runtimeBytes": 2227
+    },
+    "optionsAuthority": {
+      "address": "0x85e00a193d5E340339484336dd9EA09f942A0b7B",
+      "runtimeBytes": 2227
+    },
+    "controller": {
+      "address": "0x0D240c1EbEeE7F74B40d6611326f5df98AB00e1B",
+      "runtimeBytes": 2227
+    },
+    "positionManager": {
+      "address": "0x426a6b482893557E58cF38de635fEbB30Fd6a3C3",
+      "runtimeBytes": 2227
+    },
+    "settleManager": {
+      "address": "0xd328D581f3Fb1Ca86D28D573bA1f17409e5112EF",
+      "runtimeBytes": 2227
+    },
+    "viewAggregator": {
+      "address": "0xf277D41cc8093667bf1A023f4FBbeB8328900bb7",
+      "runtimeBytes": 2227
+    },
+    "vaultPriceFeed": {
+      "address": "0x2666ce652b1929D4F5a2dBBf094E5DfD38d1b9f1",
+      "runtimeBytes": 2227
+    },
+    "fastPriceFeed": {
+      "address": "0xA936FCaD3C5CDda9106F72499729877E9dF5918a",
+      "runtimeBytes": 2227
+    },
+    "spotPriceFeed": {
+      "address": "0x2318040e26791777d675cFeF87FE25BDcE36439A",
+      "runtimeBytes": 2227
+    },
+    "settlePriceFeed": {
+      "address": "0xB51EC03d51e8880FDc2A24f918072694516FB626",
+      "runtimeBytes": 2227
+    },
+    "positionValueFeed": {
+      "address": "0x32847298142A9E692EfE1c259aADe4f260bDe94C",
+      "runtimeBytes": 2227
+    },
+    "usdg": {
+      "address": "0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168",
+      "runtimeBytes": 170
+    },
+    "weth": {
+      "address": "0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73",
+      "runtimeBytes": 2202
+    },
+    "btcOptionsToken": {
+      "address": "0x080084D6A1e9b6657EDc8DBa071BAa9D15Fcc500",
+      "runtimeBytes": 2227
+    },
+    "ethOptionsToken": {
+      "address": "0x84D4ef4062E00F78B0Ea5aaC06D7D08Ab1258B02",
+      "runtimeBytes": 2227
+    },
+    "tradingAccountFactory": {
+      "address": "0x23DB9f5fDde30853EC8eBd75E0492c09505a6D1d",
+      "runtimeBytes": 2148
+    },
+    "legacyTradingAccountFactory": {
+      "address": "0xbcaC622Bb396B2f868b37D7C41F34695c9be1862",
+      "runtimeBytes": 10277
+    },
+    "tradingAccountBeacon": {
+      "address": "0x5685d4DD5114c74C805322d4612CA5D73EAcdc62",
+      "runtimeBytes": 805
+    },
+    "sVault": {
+      "address": "0x21bA39e9394657A6196f6948C2701D9fD9612289",
+      "runtimeBytes": 2227
+    }
+  },
+  "accountFactory": {
+    "address": "0x23DB9f5fDde30853EC8eBd75E0492c09505a6D1d",
+    "safeMode": "false",
+    "openToAll": "true"
+  },
+  "positionManagerExecutionFeeWei": "60000000000000"
+}

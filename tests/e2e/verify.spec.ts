@@ -4,7 +4,14 @@ test("Verify renders server claims with evidence links and keeps unshipped featu
   await page.goto("/verify");
 
   await expect(page.getByRole("heading", { level: 1, name: "Verify", exact: true })).toBeVisible();
-  await expect(page.getByLabel("Safety switches").getByText("Disabled", { exact: true })).toBeVisible();
+  const status = page.getByLabel("Trading status");
+  await expect(status.getByText("Wallet-signed trading", { exact: true })).toBeVisible();
+  await expect(status.getByText(/^(Available|Signing not enabled)$/)).toBeVisible();
+  await expect(status.getByText("Engine built · Live activation required", { exact: true })).toBeVisible();
+  await expect(status.getByText("Acceptance required", { exact: true })).toBeVisible();
+  await expect(status.getByText("Autonomous execution switch")).toBeVisible();
+  await expect(status.getByText("Off", { exact: true })).toBeVisible();
+  await expect(status.getByText("Disabled", { exact: true })).toHaveCount(0);
   const claims = page.getByRole("region", { name: "Verified claims" });
   await expect(claims.getByRole("heading", { name: "Historical backtest" })).toBeVisible();
   await expect(claims.getByRole("link", { name: /Evidence: \/api\/public\/v1\/hooks/ })).toBeVisible();

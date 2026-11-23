@@ -5,6 +5,7 @@ import { useAuthSession } from "../AuthSessionProvider";
 import { Chip, Panel } from "../ui";
 import { Button } from "@/components/ui/button";
 import { LiveAgentConfigure } from "./LiveAgentConfigure";
+import { LiveAgentJourney } from "./LiveAgentJourney";
 import { accountBlockReason, describeAccountGates, type AccountGateFacts } from "@/lib/venue/callput-account-gates-text";
 
 type LiveAgentStatus = {
@@ -79,6 +80,7 @@ export function LiveAgentControls() {
             <div className="metric"><dt>State</dt><dd>{data.control.stopped ? `Stopped${data.control.reason ? `: ${data.control.reason}` : ""}` : "Running"}</dd></div>
           </dl>
           <p className="panel-note">The autonomous execution engine is built and inactive: it can place an order only with an authorized session grant, all seven live gates passing and production acceptance. Until then every real order is approved by you in your own wallet, one transaction at a time (open, close and settle on this page).</p>
+          <LiveAgentJourney liveTradingEnabled={data.liveTradingEnabled} control={data.control} accountUsable={data.accountGates?.status === "ok" ? data.accountGates.accountUsable : null} grants={data.grants} requests={data.requests} />
           {data.accountGates?.status === "ok" ? (
             <p className="panel-note" aria-label="CallPut account gates">
               {accountBlockReason(data.accountGates) === null

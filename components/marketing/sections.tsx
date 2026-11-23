@@ -15,6 +15,7 @@ import { AgentPhones } from "./AgentPhones";
 import { AgentEnsemble } from "./AgentEnsemble";
 import { FinaleCast } from "./FinaleCast";
 import { LIVE_ENGINE_BUILT, LIVE_ENGINE_STATUS, LIVE_REQUIREMENTS } from "../app/live-requirements";
+import { TRADING_CAPABILITY_TITLES } from "../../lib/public/trading-capabilities";
 import { STAGE_ORDER, STAGE_QUESTION, getLandingFacts, stageLabel } from "./data";
 
 type Facts = ReturnType<typeof getLandingFacts>;
@@ -204,7 +205,7 @@ function ExecutionModes({ running }: { running: number | null }) {
   );
 }
 
-const CLAIM_TITLE: Record<string, string> = { market_data: "Market data", hook_catalog: "Hook catalog", house_agents: "House Agent templates", public_house_agents: "Running House Agents", decision_tape: "Decision Tape", historical_backtest: "Historical backtest", live_execution: "Live execution", v4_claim_level: "Uniswap v4 claim level" };
+const CLAIM_TITLE: Record<string, string> = { market_data: "Market data", hook_catalog: "Hook catalog", house_agents: "House Agent templates", public_house_agents: "Running House Agents", decision_tape: "Decision Tape", historical_backtest: "Historical backtest", ...TRADING_CAPABILITY_TITLES, v4_claim_level: "Uniswap v4 claim level" };
 const CLAIM_LABEL: Record<string, string> = { verified: "Verified", limited: "Limited", preview: "Preview", unavailable: "Unavailable", disabled: "Disabled" };
 
 /** What is built and what is not, read from the server's own verification response. One real public call sits beside it. */
@@ -220,7 +221,7 @@ export function Proof({ verification, docs, houseAgentsRunning = null }: { verif
           <ul className="pf-claims" aria-label="Claims from the server">
             {verification.claims.map((claim) => (
               <li key={claim.id} data-status={claim.status}>
-                <div className="pf-head"><b>{CLAIM_TITLE[claim.id] ?? claim.id.replaceAll("_", " ")}</b><Chip tone={claim.status === "verified" ? "azure" : claim.status === "limited" || claim.status === "preview" ? "neutral" : "ember"}>{CLAIM_LABEL[claim.status] ?? claim.status}</Chip></div>
+                <div className="pf-head"><b>{CLAIM_TITLE[claim.id] ?? claim.id.replaceAll("_", " ")}</b><Chip tone={claim.status === "verified" ? "azure" : claim.status === "limited" || claim.status === "preview" ? "neutral" : "ember"}>{claim.label ?? CLAIM_LABEL[claim.status] ?? claim.status}</Chip></div>
                 <p>{claim.statement}</p>
                 <a className="mono" href={claim.evidencePath} target="_blank" rel="noreferrer">Evidence: {claim.evidencePath}</a>
               </li>

@@ -12,7 +12,7 @@ export const LIVE_ENGINE_BUILT: readonly string[] = [
   "Gates G1 to G7 enforced by the worker",
 ];
 
-export const LIVE_ENGINE_STATUS = "Engine built · Live activation required";
+export { LIVE_ENGINE_STATUS } from "../../lib/public/trading-capabilities";
 
 export const LIVE_REQUIREMENTS: readonly { title: string; note: string }[] = [
   { title: "Owner account grant and confirmed signer model", note: "The owner must create a CallPut Account and session grant, and CallPut must confirm that an operator-held device signer is supported. Its public terms are silent on this." },
