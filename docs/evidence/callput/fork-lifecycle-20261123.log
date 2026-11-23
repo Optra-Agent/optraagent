@@ -1,0 +1,27 @@
+PASS: account with contract code and no ERC-1155 receiver is detected from chain data (code 0xef01008a67...)
+PASS: app refuses to prepare an open order for that account (account-erc1155)
+legs: long AAPL-27NOV26-350-P / short AAPL-27NOV26-345-P; spread mark 2.2021 USD; open at 2026-11-24T16:00:00.000Z
+PASS: open request pulls the committed collateral into the venue (275141 raw)
+PASS: a Pending request is not a fill (pending)
+PASS: keeper without fresh prices cancels the request (Cancelled / cancelled)
+PASS: cancelled open returns the collateral (balance 5000000 raw)
+PASS: keeper fill: request Executed (sizeOut 99858707971288250, amountOut(refund) 0, executionPrice 2647000000000000000000000000000)
+PASS: fill confirmed only by option-token balance (99858707971288250 raw)
+PASS: unused collateral is refunded as amountOut (0 raw)
+PASS: app rejects a close larger than the wallet balance (size)
+PASS: app rejects a close without a positive minAmountOut floor (min-amount-out)
+PASS: app rejects a close inside the 30-minute pre-expiry buffer (close-before-expiry)
+PASS: app rejects settlement before expiry (settle-after-expiry)
+PASS: venue itself reverts settlement before expiry (Execution reverted with reason: SettleManager: Option not expired.)
+PASS: close plan asks for the Controller approval first, then the close request (option-token-approval,close-position)
+PASS: while Pending the tokens already left the wallet, yet the app reports no close (balance 49929353985644125, state pending)
+PASS: keeper executes the partial close (executed-position-confirmed)
+PASS: close pays out the reported amountOut in USDG (102252 raw (floor 53725))
+PASS: partial close leaves the remainder held (49929353985644125 raw remain)
+PASS: app rejects a close after expiry and routes to settlement (close-before-expiry)
+PASS: settlement event matches the position and the balance reduction (settled-position-confirmed)
+PASS: settlement pays the maximum spread payoff in USDG, net of a venue fee (received 246251 raw = gross 249647 - venue fee 3396 (1.36%), settle price 340 USD)
+PASS: settling again is rejected by the venue (no position left) (Execution reverted with reason: SettleManager: No position to settle.)
+
+23/23 assertions passed
+lifecycle exit 0

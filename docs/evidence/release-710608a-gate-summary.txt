@@ -1,0 +1,12 @@
+OPTRA release gate summary for commit 710608ab1b7565bfeaf10e1daf5e10ffc9d940b8
+Source: clean 'git archive' copy of that commit, run 2026-11-23 (logs were local scratch; the counts and exit codes below are taken from them).
+
+[typecheck]  tsc exit 0
+[lint]       lint exit 0
+[unit]       Test Files  83 passed | 2 skipped (85)  |  Tests  580 passed | 2 skipped (582)  |  test exit 0
+[build]      build exit 0
+[playwright] specs: agents forge lab paper-flow-live-api tape live-gates callput-position-actions callput-wallet-network overflow verify landing graph (OPTRA_E2E_PORT=3140, CI=1)
+             70 passed (6.7m)  |  e2e exit 0
+[note]       house-agents-flow.spec.ts only runs with OPTRA_E2E_HOUSE=1; the first Playwright attempt timed out because another project held port 3100 (environment, not a test result).
+[github ci]  run 45133089489 (workflow OPTRA staging image, publish=false, tag ci/optra-release-710608a): completed success on 710608ab1b7565bfeaf10e1daf5e10ffc9d940b8
+[railway]    deployment 06534769-1077-4ed7-b947-5c40228c339b SUCCESS on 710608ab1b7565bfeaf10e1daf5e10ffc9d940b8

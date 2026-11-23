@@ -1,4 +1,5 @@
 import { createMarketHandlers } from "./handlers";
+import { createCriusCandleFeed } from "./crius-candles";
 import { createCriusHistoryFeed } from "./crius-history";
 import { createEarningsFeed } from "./earnings";
 import { createRobinhoodMarketFeed } from "./robinhood-feed";
@@ -13,6 +14,11 @@ const feed = createRobinhoodMarketFeed(robinhoodBaseUrl ? { baseUrl: robinhoodBa
 const historyFeed = createCriusHistoryFeed({
   ...(criusBaseUrl ? { criusBaseUrl } : {}),
   ...(robinhoodBaseUrl ? { robinhoodBaseUrl } : {}),
+  ...(Number.isFinite(e2eMarketAsOf) ? { now: () => new Date(e2eMarketAsOf) } : {}),
+  listMarkets: () => feed.listMarkets(),
+});
+const candleFeed = createCriusCandleFeed({
+  ...(criusBaseUrl ? { criusBaseUrl } : {}),
   ...(Number.isFinite(e2eMarketAsOf) ? { now: () => new Date(e2eMarketAsOf) } : {}),
   listMarkets: () => feed.listMarkets(),
 });
@@ -32,6 +38,10 @@ export function getMarketFeed() {
 
 export function getMarketHistoryFeed() {
   return historyFeed;
+}
+
+export function getMarketCandleFeed() {
+  return candleFeed;
 }
 
 export function getEarningsFeed() {

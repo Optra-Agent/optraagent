@@ -31,8 +31,8 @@ const adjusted = (market: MarketAsset) => Number(market.currentMultiplier) !== 1
 
 /**
  * The market explorer. It lists every market the API returns and loads a quote and backtest coverage only for the
- * asset you open. The API has no price series, so there are no 1h, 24h or 7d changes and no sparklines here, and the
- * page says so instead of drawing them. An agent can be started only when coverage is ready and the quote is fresh.
+ * asset you open. Candles and options live on the market page (/market/[symbol]); this list draws no sparklines or
+ * changes. An agent can be started only when coverage is ready and the quote is fresh.
  */
 export function MarketScreen() {
   const [markets, setMarkets] = useState<MarketAsset[]>([]);
@@ -149,9 +149,9 @@ export function MarketScreen() {
   return (
     <main className="page-container market-page">
       <PageHeader
-        eyebrow="READ-ONLY · ROBINHOOD CHAIN"
+        eyebrow="ROBINHOOD CHAIN · STOCK TOKENS"
         title="Markets"
-        description="Every stock token the app can read, with its multiplier and a live quote when you open one. Prices here are underlying references and token quotes, never option prices."
+        description="Every stock token the app can read. Open one for its quote, candlestick chart and options: real CallPut contracts where the venue lists them, a clearly labeled demo everywhere else."
       />
 
       {listStatus === "loading" ? (
@@ -165,7 +165,7 @@ export function MarketScreen() {
       {markets.length > 0 ? (
         <>
           <div className="mk-notes" aria-label="About these prices">
-            <span className="ag-chip" data-tone="azure">Read only</span>
+            <span className="ag-chip" data-tone="azure">Chart and options on every market</span>
             <span className="ag-chip">Robinhood Chain stock tokens</span>
             <span className="ag-chip">Token quotes, never option prices</span>
           </div>
@@ -260,16 +260,17 @@ export function MarketScreen() {
                   </div>
 
                   <div className="mk-actions">
+                    <Link className={buttonVariants()} href={`/market/${encodeURIComponent(asset.symbol)}`}>Open chart &amp; options<ArrowUpRight aria-hidden /></Link>
                     {canBuild ? (
-                      <Link className={buttonVariants()} href={`/agents?symbol=${encodeURIComponent(asset.symbol)}#configure`}>Build a Protective Put on {asset.symbol}<ArrowUpRight aria-hidden /></Link>
+                      <Link className={buttonVariants({ variant: "outline" })} href={`/agents?symbol=${encodeURIComponent(asset.symbol)}#configure`}>Build a Protective Put on {asset.symbol}<ArrowUpRight aria-hidden /></Link>
                     ) : (
-                      <button type="button" className={buttonVariants()} disabled aria-describedby="mk-why">Build a Protective Put on {asset.symbol}</button>
+                      <button type="button" className={buttonVariants({ variant: "outline" })} disabled aria-describedby="mk-why">Build a Protective Put on {asset.symbol}</button>
                     )}
                     <button type="button" className={buttonVariants({ variant: "outline" })} disabled={quoteStatus === "loading"} onClick={refreshQuote}>Refresh</button>
                   </div>
                   {!canBuild ? <p className="mk-why" id="mk-why">{buildReason}</p> : <p className="mk-why">Opens the configure form with {asset.symbol} chosen. Wallet sign-in, a backtest and validation still come first.</p>}
 
-                  <p className="mk-note"><Info aria-hidden />1h, 24h and 7-day changes and sparklines are not shown: the API exposes no price series yet. Underlying and token prices are not option premiums or fills.</p>
+                  <p className="mk-note"><Info aria-hidden />Quotes here are underlying and token prices, not option premiums or fills. The market page adds a candlestick chart and the options for {asset.symbol}.</p>
                 </>
               ) : <StateBlock kind="info" title="Select a market">Choose an asset to load its quote and backtest coverage.</StateBlock>}
             </aside>

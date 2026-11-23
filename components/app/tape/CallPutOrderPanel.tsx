@@ -247,13 +247,14 @@ function WalletNetworkStatus() {
   );
 }
 
-export function CallPutOrderPanel() {
+/** `underlying` preselects a market (the market page passes the stock being viewed); `lockUnderlying` pins it there. */
+export function CallPutOrderPanel({ underlying: initialUnderlying = "AAPL", lockUnderlying = false }: { underlying?: CallPutUnderlyingSymbol; lockUnderlying?: boolean } = {}) {
   const { address, chainId, isConnected } = useAccount();
   const publicClient = usePublicClient({ chainId: CALLPUT_ROBINHOOD_CHAIN_ID });
   const { data: walletClient } = useWalletClient({ chainId: CALLPUT_ROBINHOOD_CHAIN_ID });
   const busy = useRef(false);
 
-  const [underlying, setUnderlying] = useState<CallPutUnderlyingSymbol>("AAPL");
+  const [underlying, setUnderlying] = useState<CallPutUnderlyingSymbol>(initialUnderlying);
   const [strategy, setStrategy] = useState<CallPutSpreadStrategy>("BuyPutSpread");
   const [market, setMarket] = useState<CallPutRobinhoodMarketData | null>(null);
   const [expiry, setExpiry] = useState("");
@@ -676,7 +677,7 @@ export function CallPutOrderPanel() {
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         <div className="grid gap-1.5">
           <label htmlFor="cp-underlying" className="text-sm font-medium">Underlying</label>
-          <NativeSelect id="cp-underlying" value={underlying} onChange={(event) => { setUnderlying(event.target.value as CallPutUnderlyingSymbol); setMarket(null); resetPlan(); }}>
+          <NativeSelect id="cp-underlying" value={underlying} disabled={lockUnderlying} onChange={(event) => { setUnderlying(event.target.value as CallPutUnderlyingSymbol); setMarket(null); resetPlan(); }}>
             {(Object.keys(CALLPUT_ROBINHOOD_UNDERLYINGS) as CallPutUnderlyingSymbol[]).map((symbol) => <option key={symbol} value={symbol}>{symbol}</option>)}
           </NativeSelect>
         </div>
