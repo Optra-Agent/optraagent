@@ -148,6 +148,23 @@ test("the chart refreshes with real provider data, keeps the user's view and nev
   await expect(page.getByLabel("Last traded price")).toHaveText("$123.45");
 });
 
+test("the chart owns the full content width and the trade steps sit below it, not beside it", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await mock(page);
+  await page.goto("/market/AAPL");
+  const svg = page.locator(".mc-svg");
+  await expect(svg).toBeVisible();
+  const main = await page.locator("main.md").boundingBox();
+  const chart = await svg.boundingBox();
+  const strip = await page.getByRole("region", { name: "Trade steps" }).boundingBox();
+  expect(chart!.width).toBeGreaterThan(main!.width - 80);
+  expect(strip!.y).toBeGreaterThan(chart!.y + chart!.height);
+  expect(strip!.width).toBeGreaterThan(main!.width - 8);
+  await expect(page.locator("main aside")).toHaveCount(0);
+  await page.getByRole("region", { name: "Trade steps" }).getByRole("link", { name: "Choose contracts" }).click();
+  await expect(page).toHaveURL(/#options$/);
+});
+
 test("the live option chain feeds the real order form, which stays unsigned", async ({ page }) => {
   await mock(page);
   await page.goto("/market/AAPL");
@@ -164,10 +181,13 @@ test("the live option chain feeds the real order form, which stays unsigned", as
   await expect(trade.locator("#cp-strategy")).toHaveValue("BuyPutSpread");
   await expect(trade.locator("#cp-long-leg option:checked")).toContainText("AAPL-27NOV26-300-P");
   await expect(trade.locator("#cp-short-leg option:checked")).toContainText("AAPL-27NOV26-285-P");
+  // No large warning box competes with the controls; the risk text lives in the review step.
+  await expect(trade.locator("[role=note]")).toHaveCount(0);
+  await expect(trade.getByText(/Real money/)).toHaveCount(0);
+  await expect(trade.getByRole("region", { name: "Before you sign" })).toHaveCount(0);
   // Nothing is prepared, approved or sent until the owner connects a wallet and uses the buttons.
   await expect(trade.getByText("Connect a wallet to prepare an order.")).toBeVisible();
   await expect(trade.getByRole("heading", { name: "Order review" })).toHaveCount(0);
-  await expect(trade.getByText(/transaction hash is not a fill|not a fill/i).first()).toBeVisible();
 });
 
 test("a stock without a CallPut market shows real data only and no options or order controls", async ({ page }) => {

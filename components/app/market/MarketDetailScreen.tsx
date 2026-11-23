@@ -186,8 +186,7 @@ export function MarketDetailScreen({ symbol }: { symbol: string }) {
         </div>
       </header>
 
-      <div className="md-main">
-        <section className="md-panel md-chartcard" aria-labelledby="md-chart-title">
+      <section className="md-panel md-chartcard" aria-labelledby="md-chart-title">
           <h2 id="md-chart-title" className="sr-only">Price and volume</h2>
           <div className="md-price">
             <div>
@@ -224,30 +223,29 @@ export function MarketDetailScreen({ symbol }: { symbol: string }) {
               <p className="md-note">Prices are per share: the token&apos;s on-chain trade price divided by its {series.multiplier.toFixed(6)} multiplier, so they line up with option strikes. Volume is traded USD. Periods with no trades have no candle and are skipped, not filled. The chart refreshes while this tab is open; a forming candle changes only when the provider reports new trades.{series.multiplierPending ? " A multiplier change is pending, so older candles may use a different share ratio." : ""}</p>
             </>
           ) : null}
-        </section>
+      </section>
 
-        <aside className="md-side" aria-label={`Trade ${ticker} options`}>
-          {venueSymbol ? (
-            <div className="md-card">
-              <div className="md-card-head"><h2>Trade {ticker} options</h2><Chip tone="ember">Real money</Chip></div>
-              <ol className="md-steps">
-                <li data-done={legs.long && legs.short ? "1" : "0"}><b>1</b><span>Pick a long and a short leg in the option chain.{legs.long || legs.short ? ` Picked: ${legs.long ? "long" : ""}${legs.long && legs.short ? " + " : ""}${legs.short ? "short" : ""}.` : ""}</span></li>
-                <li data-done="0"><b>2</b><span>Prepare the order: funding, allowance and fee checks run before anything is signed.</span></li>
-                <li data-done="0"><b>3</b><span>Review the destination, then confirm each transaction in MetaMask.</span></li>
-                <li data-done="0"><b>4</b><span>Track the request until it reads Executed and your wallet holds the option tokens.</span></li>
+      <section className="md-strip" aria-label="Trade steps">
+        {venueSymbol ? (
+          <>
+            <div className="md-strip-copy">
+              <h2>Trade {ticker} options</h2>
+              <ol className="md-steps" aria-label="Order steps">
+                <li data-done={legs.long && legs.short ? "1" : "0"}><b>1</b><span>Pick a long and a short leg{legs.long || legs.short ? ` (${[legs.long ? "long" : "", legs.short ? "short" : ""].filter(Boolean).join(" + ")} picked)` : ""}</span></li>
+                <li data-done="0"><b>2</b><span>Prepare: funding and fee checks</span></li>
+                <li data-done="0"><b>3</b><span>Review and confirm in MetaMask</span></li>
+                <li data-done="0"><b>4</b><span>Track until Executed</span></li>
               </ol>
-              <a className={buttonVariants()} href={legs.long && legs.short ? "#trade" : "#options"}>{legs.long && legs.short ? "Go to the order form" : "Choose contracts"}<ArrowUpRight aria-hidden /></a>
-              <p className="md-note">OPTRA never signs, approves or sends anything for you. A submitted transaction is not a fill.</p>
             </div>
-          ) : (
-            <div className="md-card">
-              <div className="md-card-head"><h2>Options</h2><Chip>Not on CallPut</Chip></div>
-              <p className="md-note">CallPut has no options market for {ticker}, so nothing here can be traded. The chart and token details are real market data.</p>
-              <Link className={buttonVariants({ variant: "outline" })} href="/market">Browse stocks with options</Link>
-            </div>
-          )}
-        </aside>
-      </div>
+            <a className={buttonVariants()} href={legs.long && legs.short ? "#trade" : "#options"}>{legs.long && legs.short ? "Go to the order form" : "Choose contracts"}<ArrowUpRight aria-hidden /></a>
+          </>
+        ) : (
+          <>
+            <div className="md-strip-copy"><h2>Options</h2><p className="md-note">CallPut has no options market for {ticker}. The chart and token details above are real market data.</p></div>
+            <Link className={buttonVariants({ variant: "outline" })} href="/market">Browse stocks with options</Link>
+          </>
+        )}
+      </section>
 
       <section className="md-grid" aria-label="Market information">
         <dl className="kv kv-tight">
@@ -298,7 +296,6 @@ export function MarketDetailScreen({ symbol }: { symbol: string }) {
 
       {venueSymbol ? (
         <section id="trade" className="md-trade" aria-label={`Trade ${ticker} options`}>
-          <p className="md-note">Real money. Prepare an order, review the exact transaction, then confirm each transaction in your own wallet. OPTRA never signs for you, and a submitted transaction is not a fill until the CallPut keeper executes it and the option tokens are in your wallet.</p>
           <CallPutWalletReadiness />
           <CallPutOrderPanel key={orderKey} underlying={venueSymbol} lockUnderlying initialMarket={chain} {...(selection ? { initialSelection: selection } : {})} />
           <CallPutRequestTracker />

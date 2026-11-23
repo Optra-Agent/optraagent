@@ -970,8 +970,6 @@ a.ag-pill:hover svg { transform: translateX(3px); }
 .mk-opt { margin-left: 8px; padding: 1px 7px; border: 1px solid var(--azure-line); border-radius: 999px; background: var(--azure-wash); color: var(--azure-hover); font-family: var(--font-data); font-size: 10px; font-style: normal; font-weight: 500; letter-spacing: 0.04em; vertical-align: 2px; }
 
 /* Pons-style market layout: price headline, chart card and a side trade card */
-.md-main { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; align-items: start; }
-@media (min-width: 1100px) { .md-main { grid-template-columns: minmax(0, 1fr) 320px; } .md-side { position: sticky; top: 84px; } }
 .md-chartcard { gap: 12px; }
 .md-price { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 10px 20px; }
 .md-last { margin: 0; color: var(--text); font-size: clamp(26px, 4vw, 38px); font-weight: 600; line-height: 1.1; }
@@ -983,9 +981,6 @@ a.ag-pill:hover svg { transform: translateX(3px); }
 .md-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px 16px; margin: 0; padding: 12px 0 0; border-top: 1px solid var(--line-soft); }
 .md-stats dt { color: var(--dim); font-size: 11px; }
 .md-stats dd { margin: 2px 0 0; color: var(--text); font-size: 14px; }
-.md-card { display: grid; gap: 12px; padding: 18px; border: 1px solid var(--line); border-radius: 22px; background: var(--surface); }
-.md-card-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-.md-card-head h2 { font-size: 16px; }
 .md-steps { display: grid; gap: 10px; margin: 0; padding: 0; list-style: none; }
 .md-steps li { display: grid; grid-template-columns: 22px minmax(0, 1fr); gap: 10px; color: var(--muted); font-size: 12.5px; line-height: 1.5; }
 .md-steps b { display: grid; place-items: center; width: 22px; height: 22px; border: 1px solid var(--line); border-radius: 50%; color: var(--muted); font-family: var(--font-data); font-size: 11px; font-weight: 500; }
@@ -1002,3 +997,11 @@ a.ag-pill:hover svg { transform: translateX(3px); }
 .mc-menu button[aria-pressed="true"]::before { content: "✓ "; }
 .cc-loading { min-height: 440px; }
 @media (max-width: 640px) { .mc-tf { margin-left: 0; } .cc-loading { min-height: 340px; } }
+
+/* Full-width market layout: the chart owns the content width; the trade strip sits below it */
+.md-strip { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 14px 24px; padding: 16px 20px; border: 1px solid var(--line); border-radius: 22px; background: var(--surface); }
+.md-strip-copy { display: grid; gap: 10px; min-width: 0; flex: 1 1 520px; }
+.md-strip-copy h2 { font-size: 16px; }
+.md-strip .md-steps { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px 18px; }
+@media (max-width: 900px) { .md-strip .md-steps { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 520px) { .md-strip { padding: 14px; border-radius: 18px; } .md-strip .md-steps { grid-template-columns: minmax(0, 1fr); } .md-strip > a { width: 100%; justify-content: center; } }

@@ -103,6 +103,26 @@ describe("CallPutOrderPanel", () => {
   });
   afterEach(() => { cleanup(); vi.unstubAllEnvs(); vi.unstubAllGlobals(); mocks.chainId = 4663; mocks.walletClient = null; });
 
+  it("keeps risk text out of the main form and shows the essentials at the review step", async () => {
+    const pc = publicClient([]);
+    mocks.publicClient = pc;
+    mocks.walletClient = { sendTransaction: vi.fn(), chain: { id: 4663 } };
+    const Panel = await loadPanel(true);
+    const user = userEvent.setup();
+    render(createElement(Panel));
+    // Before preparing: no warning box, no real-money paragraph.
+    expect(document.querySelector("[role=note]")).toBeNull();
+    expect(screen.queryByText(/Real money/)).toBeNull();
+    expect(screen.queryByText(/Direct wallet route/)).toBeNull();
+    await prepareOrder(user);
+    const risk = screen.getByRole("region", { name: "Before you sign" });
+    expect(risk.textContent).toMatch(/Real money/);
+    expect(risk.textContent).toMatch(/not assumed refundable/);
+    expect(risk.textContent).toMatch(/transaction hash is not a fill/i);
+    expect(risk.textContent).toMatch(/unaudited/);
+    expect(document.querySelector("[role=note]")).toBeNull();
+  });
+
   it("previews a prepared order but cannot sign when the build flag is off", async () => {
     mocks.publicClient = publicClient();
     const sendTransaction = vi.fn();

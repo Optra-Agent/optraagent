@@ -671,14 +671,7 @@ export function CallPutOrderPanel({ underlying: initialUnderlying = "AAPL", lock
         </div>
         <Chip tone={CALLPUT_LIVE_ORDERS_ENABLED ? "ember" : "neutral"}>{CALLPUT_LIVE_ORDERS_ENABLED ? "Signing enabled" : "Preview only"}</Chip>
       </div>
-      <p className="mb-4 text-sm text-muted-foreground">
-        Direct wallet route: your wallet is the account and signs every transaction. CallPut supports two-leg spreads here; single-leg opens, the CallPut Account relay, and automated agent orders are not enabled. Quotes are indicative estimates; the venue keeper sets the executed price.
-      </p>
-      {CALLPUT_LIVE_ORDERS_ENABLED ? (
-        <p role="note" className="mb-4 rounded-md border border-[var(--ember-text)] p-3 text-sm">
-          Real money. This opens a CallPut position with your own USDG and a native execution fee that is not assumed refundable. OPTRA&apos;s interface is unaudited, quotes are estimates, and a transaction hash is not a fill: the position exists only after the venue reports it executed and your wallet holds the option token. Closing and settling are separate wallet-signed actions in the position panel below. They passed a Mainnet-fork rehearsal, and OPTRA has not yet seen one run against a live keeper fill.
-        </p>
-      ) : null}
+      <p className="mb-3 text-xs text-muted-foreground">Your wallet signs every transaction. Two-leg spreads only. Marks are indicative; the venue keeper sets the executed price.</p>
       <WalletNetworkStatus />
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         <div className="grid gap-1.5">
@@ -764,6 +757,12 @@ export function CallPutOrderPanel({ underlying: initialUnderlying = "AAPL", lock
             <div><Button type="button" variant="outline" onClick={prepare} disabled={!canPrepare || working}>Re-check funding</Button></div>
           </section>
           {plan.transactions.length > 1 ? <p className="text-xs text-muted-foreground">Gas shown is for the approval step. After it confirms, prepare again to re-read allowance and estimate the open request.</p> : null}
+          <section aria-label="Before you sign" className="grid gap-1 rounded-md border border-border p-3 text-xs text-muted-foreground">
+            <h4 className="text-sm font-semibold text-foreground">Before you sign</h4>
+            <p>Real money: this uses your own USDG plus a native execution fee that is not assumed refundable.</p>
+            <p>A transaction hash is not a fill. The position exists only after the venue reports Executed and your wallet holds the option token.</p>
+            <p>Quotes are estimates and this interface is unaudited. Close and Settle are separate wallet-signed actions.</p>
+          </section>
           <ol className="grid gap-2">
             {plan.transactions.map((tx, index) => (
               <li key={tx.kind} className="rounded-md border border-border p-3 text-sm">
