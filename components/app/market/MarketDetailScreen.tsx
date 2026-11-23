@@ -155,7 +155,7 @@ export function MarketDetailScreen({ symbol }: { symbol: string }) {
           </>
         ) : (
           <>
-            {chartStatus === "loading" ? <div role="status" className="cc-loading"><Skeleton lines={6} /><span className="sr-only">Loading {ticker} candles…</span></div> : null}
+            {chartStatus === "loading" ? <div role="status" className="cc-loading"><Skeleton lines={6} /><p className="mk-why">Loading {ticker} candles… daily candles can take several seconds.</p></div> : null}
             {chartStatus === "error" ? (
               <div className="cc-state" role="alert"><p>{chartError}</p><div className="mk-actions"><button type="button" className={buttonVariants({ variant: "outline" })} onClick={retryChart}>Retry</button><button type="button" className="oc-refresh" onClick={() => setDemoAt(Date.now())}>Show demo chart</button></div></div>
             ) : null}

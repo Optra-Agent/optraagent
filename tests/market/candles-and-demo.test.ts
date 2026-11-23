@@ -44,6 +44,18 @@ describe("candle feed and handler", () => {
     await expect(feedWith((async () => new Response("x", { status: 500 })) as unknown as typeof fetch).getSeries("AAPL", "1h")).rejects.toBeInstanceOf(CandleFeedError);
     await expect(feedWith((async () => Response.json({ nope: true })) as unknown as typeof fetch).getSeries("AAPL", "1h")).rejects.toMatchObject({ code: "UPSTREAM_UNAVAILABLE" });
   });
+  it("shares one provider call between repeated requests but never caches a failure", async () => {
+    let calls = 0; let fail = true;
+    const feed = feedWith((async (url: string) => { calls += 1; if (fail) throw new Error("offline"); const interval = new URL(url).searchParams.get("interval"); return Response.json({ data: { ...payload().data, interval } }); }) as unknown as typeof fetch);
+    await expect(feed.getSeries("AAPL", "1d")).rejects.toMatchObject({ code: "UPSTREAM_UNAVAILABLE" });
+    fail = false;
+    const [first, second] = await Promise.all([feed.getSeries("AAPL", "1d"), feed.getSeries("AAPL", "1d")]);
+    await feed.getSeries("AAPL", "1d");
+    expect(first).toBe(second);
+    expect(calls).toBe(2);
+    await feed.getSeries("AAPL", "4h");
+    expect(calls).toBe(3);
+  });
   it("validates the query and returns API errors", async () => {
     const handler = createCandleHandler(feedWith(ok));
     expect((await handler("AAPL", new URLSearchParams("interval=2m"))).status).toBe(400);

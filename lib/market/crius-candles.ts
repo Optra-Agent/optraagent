@@ -47,6 +47,7 @@ export class CandleFeedError extends Error {
   }
 }
 
+const SERIES_CACHE_MS = 60_000;
 const DEFAULT_CRIUS_BASE_URL = "https://api.crius.sh/v1/robinhood/token";
 type MarketFeed = ReturnType<typeof createRobinhoodMarketFeed>;
 type RawNumbers = Array<number | string>;
@@ -104,10 +105,26 @@ export function createCriusCandleFeed(options: CriusCandleFeedOptions) {
   const fetcher = options.fetcher ?? fetch;
   const now = options.now ?? (() => new Date());
   const base = (options.criusBaseUrl ?? DEFAULT_CRIUS_BASE_URL).replace(/\/$/, "");
-  const timeoutMs = options.requestTimeoutMs ?? 8000;
+  // The provider answers daily candles for busy tokens in 6 to 7 seconds, so the cutoff leaves room for that.
+  const timeoutMs = options.requestTimeoutMs ?? 20_000;
+  // Short-lived cache with in-flight sharing, so repeated timeframe switches do not re-query a slow provider. Failures are never cached.
+  const cache = new Map<string, { at: number; series: Promise<CandleSeries> }>();
 
   return {
-    async getSeries(symbolInput: string, interval: ChartInterval, limit = DEFAULT_CHART_CANDLES): Promise<CandleSeries> {
+    getSeries(symbolInput: string, interval: ChartInterval, limit = DEFAULT_CHART_CANDLES): Promise<CandleSeries> {
+      const key = `${symbolInput.trim().toUpperCase()}:${interval}:${limit}`;
+      const hit = cache.get(key);
+      if (hit && now().getTime() - hit.at < SERIES_CACHE_MS) return hit.series;
+      const series = load(symbolInput, interval, limit);
+      cache.set(key, { at: now().getTime(), series });
+      series.catch(() => { if (cache.get(key)?.series === series) cache.delete(key); });
+      if (cache.size > 200) for (const [oldKey, entry] of cache) { if (now().getTime() - entry.at >= SERIES_CACHE_MS) cache.delete(oldKey); }
+      return series;
+    },
+  };
+
+  async function load(symbolInput: string, interval: ChartInterval, limit: number): Promise<CandleSeries> {
+    {
       const symbol = symbolInput.trim().toUpperCase();
       if (!/^[A-Z0-9.]{1,16}$/.test(symbol)) throw new CandleFeedError("UNSUPPORTED", "Choose a supported Robinhood Chain market.", false);
       const requested = Math.min(Math.max(Math.trunc(limit), 1), MAX_CHART_CANDLES);
@@ -138,6 +155,6 @@ export function createCriusCandleFeed(options: CriusCandleFeedOptions) {
         multiplier, multiplierPending: Boolean(market.pendingMultiplier && market.pendingMultiplier !== market.currentMultiplier),
         requested, receivedAt: receivedAt.toISOString(), candles,
       });
-    },
-  };
+    }
+  }
 }
