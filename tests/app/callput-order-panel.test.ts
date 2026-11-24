@@ -72,7 +72,7 @@ async function loadPanel(liveEnabled: boolean) {
   return (await import("../../components/app/tape/CallPutOrderPanel")).CallPutOrderPanel;
 }
 
-async function prepareOrder(user: ReturnType<typeof userEvent.setup>) {
+async function configureOrder(user: ReturnType<typeof userEvent.setup>) {
   await user.click(screen.getByRole("button", { name: "Load market" }));
   await user.selectOptions(await screen.findByLabelText("Expiry"), (await screen.findByLabelText("Expiry")).querySelectorAll("option")[1].getAttribute("value") as string);
   const long = await screen.findByLabelText("Long leg");
@@ -81,6 +81,10 @@ async function prepareOrder(user: ReturnType<typeof userEvent.setup>) {
   await user.selectOptions(long, options[2].value); // 340 strike sorts after 335
   await user.selectOptions(screen.getByLabelText("Short leg"), options[1].value);
   await user.click(screen.getByRole("button", { name: "Prepare order" }));
+}
+
+async function prepareOrder(user: ReturnType<typeof userEvent.setup>) {
+  await configureOrder(user);
   await screen.findByText("Order review");
 }
 
@@ -181,6 +185,42 @@ describe("CallPutOrderPanel", () => {
     const stored = JSON.parse(window.localStorage.getItem("optra.callput.robinhood.intents.v1") ?? "[]");
     expect(stored[0]).toMatchObject({ requestKey: KEY, kind: "open", chainId: 4663 });
     await waitFor(() => expect(screen.queryByText("executed-balance-confirmed")).toBeNull());
+  });
+
+  it("accepts a valid zero EIP-1559 priority fee and preserves it in the signed request", async () => {
+    const topics = encodeEventTopics({ abi: CALLPUT_WRITE_ABIS.positionManager, eventName: "GenerateRequestKey", args: { account: ACCOUNT, key: KEY, isOpen: true } });
+    const pc = publicClient([{ address: CALLPUT_ROBINHOOD_CONTRACTS.positionManager, topics, data: encodeAbiParameters([], []) }]);
+    pc.estimateFeesPerGas.mockImplementationOnce(async () => ({ maxFeePerGas: 2_000_000_000n, maxPriorityFeePerGas: 0n } as never));
+    mocks.publicClient = pc;
+    const sendTransaction = vi.fn(async () => `0x${"cd".repeat(32)}`);
+    mocks.walletClient = { sendTransaction, chain: { id: 4663 } };
+    const Panel = await loadPanel(true);
+    const user = userEvent.setup();
+    render(createElement(Panel));
+    await prepareOrder(user);
+    await user.click(screen.getByRole("checkbox"));
+    await user.click(screen.getByRole("button", { name: "Sign in wallet" }));
+
+    await screen.findByText(KEY);
+    expect(sendTransaction).toHaveBeenCalledTimes(1);
+    expect((sendTransaction.mock.calls as unknown as Array<[{ maxFeePerGas: bigint; maxPriorityFeePerGas: bigint }]>)[0][0]).toMatchObject({
+      maxFeePerGas: 2_000_000_000n,
+      maxPriorityFeePerGas: 0n,
+    });
+  });
+
+  it("rejects an EIP-1559 quote whose priority fee is genuinely missing", async () => {
+    const pc = publicClient();
+    pc.estimateFeesPerGas.mockImplementationOnce(async () => ({ maxFeePerGas: 2_000_000_000n, maxPriorityFeePerGas: null } as never));
+    mocks.publicClient = pc;
+    mocks.walletClient = { sendTransaction: vi.fn(), chain: { id: 4663 } };
+    const Panel = await loadPanel(false);
+    const user = userEvent.setup();
+    render(createElement(Panel));
+    await configureOrder(user);
+
+    expect((await screen.findByRole("alert")).textContent).toMatch(/incomplete EIP-1559 fee quote/i);
+    expect(screen.queryByText("Order review")).toBeNull();
   });
 
   it("does not open the wallet prompt when the server cannot persist the order intent", async () => {

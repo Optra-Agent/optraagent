@@ -111,7 +111,7 @@ async function estimateCallPutGas(client: PublicClient, tx: CallPutPreparedTrans
     client.estimateFeesPerGas(),
   ]);
   const eip1559 = fees.maxFeePerGas !== undefined && fees.maxFeePerGas !== null;
-  if (eip1559 && !fees.maxPriorityFeePerGas) throw new Error("The RPC returned an incomplete EIP-1559 fee quote; no transaction is offered.");
+  if (eip1559 && fees.maxPriorityFeePerGas == null) throw new Error("The RPC returned an incomplete EIP-1559 fee quote; no transaction is offered.");
   const maxFeePerGas = eip1559 ? fees.maxFeePerGas! : fees.gasPrice ?? await client.getGasPrice();
   const maxPriorityFeePerGas = eip1559 ? fees.maxPriorityFeePerGas! : null;
   return {
