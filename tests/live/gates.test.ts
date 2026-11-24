@@ -160,9 +160,12 @@ describe("PM live gates G1–G7", () => {
   });
 
   it("fails G7 with no acknowledgement, a missing statement, or an older wording version", () => {
+    const statementIds = RISK_ACK_STATEMENTS.map((statement) => statement.id);
     expect(failedIds({ ...green(), acknowledgement: null })).toEqual(["G7"]);
     expect(failedIds({ ...green(), acknowledgement: { version: RISK_ACK_VERSION, acceptedAt: NOW, statementIds: ["total-loss"] } })).toEqual(["G7"]);
-    expect(failedIds({ ...green(), acknowledgement: { version: "2020-01-01.0", acceptedAt: NOW, statementIds: RISK_ACK_STATEMENTS.map((s) => s.id) } })).toEqual(["G7"]);
+    expect(failedIds({ ...green(), acknowledgement: { version: "2020-01-01.0", acceptedAt: NOW, statementIds } })).toEqual(["G7"]);
+    expect(failedIds({ ...green(), acknowledgement: { version: RISK_ACK_VERSION, acceptedAt: NOW, statementIds: [...statementIds, "unknown"] } })).toEqual(["G7"]);
+    expect(failedIds({ ...green(), acknowledgement: { version: RISK_ACK_VERSION, acceptedAt: NOW, statementIds: [...statementIds, statementIds[0]!] } })).toEqual(["G7"]);
   });
 
   it("gives actionable remediation for every failing gate and none for a passing one", () => {

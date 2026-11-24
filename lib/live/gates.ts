@@ -37,6 +37,12 @@ export const RISK_ACK_STATEMENTS = [
   { id: "covered-call-cap", text: "A covered call gives up the upside above its strike." },
   { id: "not-the-stock", text: "A synthetic option is not the stock and carries no shareholder rights." },
 ] as const;
+export const hasExactRiskAcknowledgement = (statementIds: readonly string[]) => {
+  const required = RISK_ACK_STATEMENTS.map((statement) => statement.id);
+  return statementIds.length === required.length
+    && new Set(statementIds).size === required.length
+    && required.every((id) => statementIds.includes(id));
+};
 
 /**
  * Provisional jurisdiction block list: the United States plus comprehensively embargoed countries. The PM brief
@@ -205,8 +211,7 @@ function evaluateG6(input: GateInput): GateResult {
 
 function evaluateG7(input: GateInput): GateResult {
   const ack = input.acknowledgement;
-  const needed = RISK_ACK_STATEMENTS.map((statement) => statement.id);
-  const ok = ack !== null && ack.version === RISK_ACK_VERSION && needed.every((id) => ack.statementIds.includes(id));
+  const ok = ack !== null && ack.version === RISK_ACK_VERSION && hasExactRiskAcknowledgement(ack.statementIds);
   return result("G7", "Risk acknowledgement", ok, ok ? `Acknowledged on ${ack.acceptedAt.toISOString().slice(0, 10)}.` : ack ? "The acknowledgement is for an older version or is incomplete." : "The three risk statements have not been acknowledged.", "Tick all three risk statements on the Enable live screen.", ack ? [`Acknowledgement version ${ack.version}, recorded ${ack.acceptedAt.toISOString()}.`] : []);
 }
 

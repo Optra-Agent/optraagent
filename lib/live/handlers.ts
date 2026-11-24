@@ -5,10 +5,10 @@
 import { z } from "zod";
 import type { AppDatabase } from "../db/client";
 import { SessionSchema, type Session } from "../domain/contracts";
-import { isCompleteAcknowledgement, loadLiveGateReport, saveAcknowledgement } from "./gate-loader";
+import { loadLiveGateReport, saveAcknowledgement } from "./gate-loader";
 import { resolveCountry } from "./geo";
 import type { CallPutAccountGates } from "../venue/callput-account-gates";
-import { BETA_CAPS, DEFAULT_BLOCKED_COUNTRIES, MIN_EXPIRY_CYCLES, MIN_PAPER_DAYS, readGateEnv, RISK_ACK_STATEMENTS, RISK_ACK_VERSION } from "./gates";
+import { BETA_CAPS, DEFAULT_BLOCKED_COUNTRIES, hasExactRiskAcknowledgement, MIN_EXPIRY_CYCLES, MIN_PAPER_DAYS, readGateEnv, RISK_ACK_STATEMENTS, RISK_ACK_VERSION } from "./gates";
 import { CALLPUT_VENUE_CHECKLIST, summarizeVenueChecklist } from "./venue-checklist";
 
 export type LiveGateHandlerOptions = {
@@ -74,7 +74,7 @@ export function createLiveGateHandlers(options: LiveGateHandlerOptions) {
       const body = z.object({ version: z.string(), statementIds: z.array(z.string()).max(10) }).strict().safeParse(raw);
       if (!body.success) return failure("VALIDATION_ERROR", "Acknowledgement is malformed.", 400);
       if (body.data.version !== RISK_ACK_VERSION) return failure("VALIDATION_ERROR", "The risk wording has changed. Reload and read it again.", 409);
-      if (!isCompleteAcknowledgement(body.data.statementIds)) return failure("VALIDATION_ERROR", "Every risk statement must be acknowledged.", 400);
+      if (!hasExactRiskAcknowledgement(body.data.statementIds)) return failure("VALIDATION_ERROR", "Every risk statement must be acknowledged exactly once.", 400);
       const country = (await resolveCountry(request.headers, env, options.fetchImpl)).country;
       if (country && readGateEnv(env).blockedCountries.includes(country)) return failure("JURISDICTION_BLOCKED", `Live trading is not available in ${country}.`, 403);
       try {

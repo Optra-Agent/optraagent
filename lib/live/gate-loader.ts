@@ -3,14 +3,12 @@
  */
 import { and, count, eq, inArray, lte, or, sql } from "drizzle-orm";
 import { z } from "zod";
-import { agents, liveAgentGrants, liveRiskAcknowledgements, paperAccounts, paperDecisions } from "../../db/schema";
+import { agents, liveAgentGrants, liveRiskAcknowledgements, paperDecisions, paperOrders, paperPositions } from "../../db/schema";
 import type { AppDatabase } from "../db/client";
 import type { AutonomyEvidence } from "../venue/callput-live-agent-guard";
 import { getLiveAgentControl, getLiveAgentGrant, type LiveAgentGrantRecord } from "../venue/callput-live-agent-store";
-import { evaluateLiveGates, MIN_EXPIRY_CYCLES, MIN_PAPER_DAYS, readGateEnv, RISK_ACK_STATEMENTS, RISK_ACK_VERSION, type GateInput, type GateReport, type PaperCandidate } from "./gates";
+import { evaluateLiveGates, MIN_EXPIRY_CYCLES, MIN_PAPER_DAYS, readGateEnv, RISK_ACK_VERSION, type GateInput, type GateReport, type PaperCandidate } from "./gates";
 import { CALLPUT_VENUE_CHECKLIST } from "./venue-checklist";
-
-const numberOf = (value: unknown): number => (typeof value === "number" && Number.isFinite(value) ? value : 0);
 
 /** Prefers a candidate meeting every G6 condition, then the strongest supporting history. */
 const better = (a: GateInput["paper"], b: GateInput["paper"], now: Date): boolean => {
@@ -30,7 +28,7 @@ const better = (a: GateInput["paper"], b: GateInput["paper"], now: Date): boolea
  * Paper history for G6. Without a named agent the candidates are the owner's own agents AND the OPTRA House Agents,
  * because the House Agents are the ones PM section 13.3 says may go live and they are what the Agents page shows as
  * running. With a named agent (a UUID or a house key) only that agent counts. Dates come from `agents.launchedAt` and
- * settlements from the paper account counters; nothing here can be set by the owner.
+ * settlements from agent-scoped, filled Paper expiry-settlement orders tied to current-recipe, non-error decisions.
  */
 export async function loadPaperHistory(db: AppDatabase, ownerId: string, agentRef?: string, now = new Date()): Promise<GateInput["paper"]> {
   const isUuid = z.uuid().safeParse(agentRef).success;
@@ -42,25 +40,59 @@ export async function loadPaperHistory(db: AppDatabase, ownerId: string, agentRe
       )
       : and(eq(agents.houseKey, agentRef), eq(agents.kind, "house"))
     : or(and(eq(agents.ownerId, ownerId), eq(agents.kind, "user")), eq(agents.kind, "house"));
-  const rows = await db.select({ id: agents.id, name: agents.name, kind: agents.kind, launchedAt: agents.launchedAt, meta: paperAccounts.meta })
-    .from(agents).leftJoin(paperAccounts, eq(paperAccounts.agentId, agents.id)).where(where);
+  const rows = await db.select({ id: agents.id, name: agents.name, kind: agents.kind, launchedAt: agents.launchedAt })
+    .from(agents).where(where);
   const decisionCounts = rows.length === 0 ? [] : await db.select({ agentId: paperDecisions.agentId, evaluatedDecisions: count() })
     .from(paperDecisions).innerJoin(agents, eq(paperDecisions.agentId, agents.id))
     .where(and(
       inArray(agents.id, rows.map((row) => row.id)),
+      eq(paperDecisions.recipeHash, agents.recipeHash),
       sql`${paperDecisions.createdAt} >= ${agents.launchedAt}`,
       lte(paperDecisions.createdAt, now),
       sql`not (${paperDecisions.hookResults} @> '[{"status":"error"}]'::jsonb)`,
     ))
     .groupBy(paperDecisions.agentId);
   const evaluationsByAgent = new Map(decisionCounts.map((row) => [row.agentId, Number(row.evaluatedDecisions)]));
+  const settlementRows = rows.length === 0 ? [] : await db.select({ agentId: paperOrders.agentId, expiryAt: paperOrders.expiryAt })
+    .from(paperOrders)
+    .innerJoin(paperPositions, eq(paperOrders.positionId, paperPositions.id))
+    .innerJoin(paperDecisions, eq(paperOrders.decisionId, paperDecisions.id))
+    .innerJoin(agents, eq(paperOrders.agentId, agents.id))
+    .where(and(
+      inArray(paperOrders.agentId, rows.map((row) => row.id)),
+      eq(paperPositions.agentId, paperOrders.agentId),
+      eq(paperPositions.status, "closed"),
+      eq(paperPositions.expiryAt, paperOrders.expiryAt),
+      sql`${paperPositions.openedAt} >= ${agents.launchedAt}`,
+      sql`${paperPositions.openedAt} <= ${paperOrders.expiryAt}`,
+      sql`${paperPositions.closedAt} = ${paperOrders.createdAt}`,
+      eq(paperDecisions.agentId, paperOrders.agentId),
+      eq(paperOrders.purpose, "expiry_settlement"),
+      eq(paperOrders.status, "filled"),
+      eq(paperOrders.executionMode, "PAPER"),
+      eq(paperDecisions.tickId, paperOrders.tickId),
+      eq(paperDecisions.createdAt, paperOrders.createdAt),
+      eq(paperDecisions.recipeHash, agents.recipeHash),
+      sql`${paperDecisions.createdAt} >= ${agents.launchedAt}`,
+      lte(paperDecisions.createdAt, now),
+      sql`${paperOrders.createdAt} >= ${agents.launchedAt}`,
+      lte(paperOrders.createdAt, now),
+      sql`${paperOrders.expiryAt} <= ${paperOrders.createdAt}`,
+      sql`not (${paperDecisions.hookResults} @> '[{"status":"error"}]'::jsonb)`,
+    ))
+    .groupBy(paperOrders.agentId, paperOrders.expiryAt);
+  const expiriesByAgent = new Map<string, Set<number>>();
+  for (const row of settlementRows) {
+    const expiries = expiriesByAgent.get(row.agentId) ?? new Set<number>();
+    expiries.add(row.expiryAt.getTime());
+    expiriesByAgent.set(row.agentId, expiries);
+  }
   const candidates: PaperCandidate[] = rows.map((row) => {
-    const meta = (row.meta ?? {}) as Record<string, unknown>;
     return {
       label: row.name,
       kind: row.kind === "house" ? "house" : "user",
       launchedAt: row.launchedAt,
-      expiryCycles: numberOf(meta.settledItm) + numberOf(meta.settledOtm),
+      expiryCycles: expiriesByAgent.get(row.id)?.size ?? 0,
       evaluatedDecisions: evaluationsByAgent.get(row.id) ?? 0,
     };
   });
@@ -82,8 +114,6 @@ export async function saveAcknowledgement(db: AppDatabase, ownerId: string, stat
   const values = { ownerId, version: RISK_ACK_VERSION, statementIds: [...statementIds], country, acceptedAt: now };
   await db.insert(liveRiskAcknowledgements).values(values).onConflictDoUpdate({ target: liveRiskAcknowledgements.ownerId, set: { version: values.version, statementIds: values.statementIds, country, acceptedAt: now } });
 }
-
-export const isCompleteAcknowledgement = (statementIds: readonly string[]) => RISK_ACK_STATEMENTS.every((statement) => statementIds.includes(statement.id));
 
 async function activeGrant(db: AppDatabase, ownerId: string, nowMs: number, grantId?: string): Promise<LiveAgentGrantRecord | null> {
   const rows = await db.select({ id: liveAgentGrants.id, status: liveAgentGrants.status }).from(liveAgentGrants).where(grantId ? and(eq(liveAgentGrants.ownerId, ownerId), eq(liveAgentGrants.id, grantId)) : and(eq(liveAgentGrants.ownerId, ownerId), eq(liveAgentGrants.status, "active"))).limit(1);
