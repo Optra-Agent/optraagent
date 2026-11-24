@@ -1,6 +1,22 @@
 # OPTRA — Autonomous Live Agent: validation and activation checklist
 
-Updated 24 Nov 2026, 07:13 UTC (14:13 WIB), after Batch 01. The last confirmed production baseline remains `4797eedd9ed27e1b66dafb3fa3953dd216a38ce8` on Railway service `opetra` (`d3695933-4069-4e7c-b3ae-266bf042d4a0`); this batch made no production changes. Focused verification: 103 tests passed across eight files; lint and typecheck passed. Full suite, build, CI, and deployment were intentionally not run in this batch. The current fork lifecycle results conflict (20/25 and 25/25); do not treat the latter alone as deterministic acceptance. No production setting, wallet, funding, signature, transaction, or protected database evidence was changed or accessed.
+Updated 24 Nov 2026, 09:44 UTC (16:44 WIB), Batch 03 pre-release snapshot. The last production baseline was verified read-only against Railway service `opetra` (`6876c674-9299-4822-8c3b-fdbab34f5995`) in project `OPTRA` / Production: deployment `d3695933-4069-4e7c-b3ae-266bf042d4a0`, `SUCCESS`, full `meta.commitHash` `4797eedd9ed27e1b66dafb3fa3953dd216a38ce8` on `main`. Candidate release, CI and deployment were not yet run at this timestamp. Local verification: 86 test files passed / 2 skipped; 643 tests passed / 2 skipped; lint, typecheck and production build passed on Node 26.12.1 / Bun 1.3.14. Authenticated G7 browser test passed 1/1 against the isolated local app/PGlite database with a generated throwaway wallet; its persisted test acknowledgement is not the owner's production acknowledgement. A fresh isolated fork pinned at block 122119407 (hash `0x5e1b5ff78bbd7d98be5344ab2c6e69dc555b509a1751d49ec89a84271dbc47d9`) passed 25/25. No production setting/data/wallet was changed, no production protected database evidence was read, no contract was deployed, and the separate recording session/fork on port 8561 was left untouched.
+
+## Batch 03 — integrated engineering status versus activation eligibility
+
+| Gate | Engineering verification | Actual activation status |
+|---|---|---|
+| G1 Venue | Evaluator/reporting integrated; current evidence inventory remains 3/12 verified, 6 partial, 3 open | BLOCKED: written CallPut permission, current source/upgrade evidence, real lifecycle evidence and owner sign-off are absent |
+| G2 Custody | Owner-bound grant checks and configured Account observations are integrated; no signer is wired | BLOCKED: current resolver-selected Account, exact bounded grant enforcement, owner grant and independent audit are unverified |
+| G3 Global controls | Deployment/process switches, durable owner stop and lease-aware rechecks are integrated | BLOCKED: keep `LIVE_TRADING_ENABLED=false`; other gates are unmet |
+| G4 Wallet allowlist | Exact connected-wallet comparison/reporting is integrated | BLOCKED: no owner wallet is presumed or newly allowlisted |
+| G5 Jurisdiction | Trusted-source refresh and fail-closed worker checks are integrated | BLOCKED: counsel policy and trusted production source are not approved/configured |
+| G6 Paper history | Genuine current-recipe decisions and settled-expiry evidence are evaluated by the shared gate logic | BLOCKED: seven full days, a genuine evaluated decision and a settled expiry remain unverified; age-only earliest point is `2026-11-28T23:28:28.066Z` |
+| G7 Risk acknowledgement | Current-version acknowledgement persistence/reporting is integrated; isolated browser test passed | BLOCKED for production owner: no owner-specific acknowledgement was read; the throwaway test-wallet record is not owner evidence |
+
+Fork discrepancy: the unpinned port-8561 captures differed (20/25 and 25/25) because the acceptance harness selected the actor's latest plan instead of the plan for the submitted request; the harness now passes the request-associated plan to the keeper. A separate pinned attempt at block 122102881 on port 8562 failed before assertions because the upstream RPC could not supply required historical state; it is not a test failure or a pass. The fresh isolated block-122119407 run passed 25/25 without weakening assertions. The fork chain state was pinned, but plan and keeper inputs used live option-market data rather than a saved fixture. See `docs/evidence/callput/live-agent-fork-acceptance-20261124-pinned-122119407.log`.
+
+Overall Live Agent activation remains **BLOCKED / NOT ELIGIBLE**. The release can be a safe engineering deployment with the execution switch off; it does not satisfy or waive owner, venue, counsel, custody/audit, scheduler, or seven-day Paper requirements. The completion report records the later exact candidate/CI/deployment outcome.
 
 ## Batch 01 checkpoint — G1–G5
 
@@ -22,7 +38,7 @@ Updated 24 Nov 2026, 07:13 UTC (14:13 WIB), after Batch 01. The last confirmed p
 | Engine logic | Owner-scoped grants and Paper history, current-recipe decision mapping, hard spending limits, idempotency, expiring lease, pre-submit switch/stop recheck, durable reconciliation, emergency stop and monitoring | Full test suite; isolated Mainnet-fork acceptance 25/25; pinned-SHA CI pending |
 | Account evidence | Configured factory getters are displayed as observations only; resolver, source and per-open enforcement are explicitly unverified and G2 remains blocked | account-gate and UI regression tests |
 | Browser acceptance | Authenticated G7 flow, persistence, blocked gates, and no transaction methods exercised with a throwaway signer against the isolated test server | `OPTRA_E2E_PORT=3140 bun run test:e2e tests/e2e/live-gates.spec.ts` — 1 passed |
-|| Fork acceptance | A captured run reports 25/25 on Robinhood Mainnet fork, chain 4663; two later run results conflict at 20/25 and 25/25, so repeatability is unresolved; not a live trade | `scripts/callput-live-agent-fork-acceptance.ts`; captured run: `docs/evidence/callput/live-agent-fork-acceptance-20261124.log` |
+|| Fork acceptance | Historical unpinned 25/25 is not release-grade; the unpinned 20/25 discrepancy was traced to plan misassociation. Fresh isolated block-pinned run passed 25/25; the separate 122102881 fork was unavailable before assertions. This is not a live trade. | `docs/evidence/callput/live-agent-fork-acceptance-20261124-pinned-122119407.log`; historical capture: `docs/evidence/callput/live-agent-fork-acceptance-20261124.log` |
 | Hard caps | Engine hard caps in `lib/venue/callput-live-agent-limits.ts` plus PM beta caps in `lib/live/gates.ts` ($100 capital per agent, $300 new exposure per user per day, 1 live agent per user, $25 maximum premium per position, no naked shorts) | code |
 
 Integration facts that matter for activation:
@@ -34,7 +50,7 @@ Integration facts that matter for activation:
 
 ## 2. Activation checklist (status and blockers; do not skip an item)
 
-### A. Historical engineering status (deployment state at the original timestamp above)
+### A. Engineering status at the Batch 03 pre-release timestamp above
 1. Production signer wiring remains absent by design. Do not build it until CallPut confirms the current Account model and an independent audit verifies the exact grant fields, custody and revocation behavior. The 2026-11-22 sample had inferred field names and several unbounded values; do not copy or sign it.
 2. The cron route returns a monitoring summary and reports durable unresolved requests when enabled. No external scheduler caller, production `CRON_SECRET`, or alert destination is verified. Configure none while mandatory gates are unmet.
 3. G5 code accepts only a configured trusted edge-overwritten header or server-side IP lookup on the authenticated jurisdiction-refresh request. A fresh owner-bound proof is stored on that owner's unrevoked grant for at most 15 minutes and is validated against the current policy on every worker tick. The cron caller's location and saved acknowledgement country are ignored. Production geo configuration and counsel's final policy remain unverified.
@@ -65,8 +81,8 @@ Integration facts that matter for activation:
 ### F. Last step (operator only, after A to E pass)
 Set `LIVE_TRADING_ENABLED=true` on Railway. The worker then re-evaluates G1 to G7 itself; a screen showing green is not enough. Keep `V4_CLAIM_LEVEL=L0`. Emergency stop: the Stop control in `/tape#live-agent` (`POST /api/venue/callput/live-agent/stop`) and setting the switch back to false.
 
-## 3. Historical verdict (pre-release snapshot)
-Live Agent readiness: **BLOCKED; not activatable**. At the timestamp above, the last confirmed production baseline had `liveTradingEnabled: false` and `v4ClaimLevel: L0`; no owner session was created to read private production gates. The candidate is locally verified but not yet deployed at that timestamp. G1–G7 and external, owner, CallPut, counsel, audit and time-based blockers remain as listed above; the release report records the eventual commit and deployment outcome.
+## 3. Batch 03 pre-release verdict
+Live Agent readiness: **BLOCKED; not activatable**. At the timestamp above, the verified production baseline had `liveTradingEnabled: false` and `v4ClaimLevel: L0`; no owner session was created to read private production gates. The candidate was locally verified but not yet committed, CI-validated or deployed at that timestamp. G1–G7 engineering reporting is integrated, but actual activation remains blocked by the owner, venue, counsel, audit/custody, scheduler and time-dependent requirements above. The final release completion report supplies the subsequent commit and deployment evidence.
 
 ## 4. Batch 02 — G6/G7 engineering checkpoint (24 Nov 2026)
 

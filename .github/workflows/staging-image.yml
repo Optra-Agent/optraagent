@@ -201,6 +201,24 @@ jobs:
             exit 1
           fi
 
+          live_status="$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' \
+            --request POST http://127.0.0.1:3000/api/cron/live-agent)"
+          if [[ "$live_status" != 401 ]]; then
+            echo "Expected unauthenticated Live Agent scheduler request to return 401, received $live_status." >&2
+            exit 1
+          fi
+
+          live_body="$(mktemp)"
+          cleanup() { rm -f "$live_body"; docker rm --force "$container_id" >/dev/null 2>&1 || true; }
+          trap cleanup EXIT
+          live_status="$(curl --silent --show-error --output "$live_body" --write-out '%{http_code}' \
+            --request POST http://127.0.0.1:3000/api/cron/live-agent \
+            --header "authorization: Bearer $CI_CRON_SECRET")"
+          if [[ "$live_status" != 200 ]] || ! jq -e '.status == "disabled" and .monitoring.status == "disabled" and .monitoring.pendingReconciliationCount == null' "$live_body" >/dev/null; then
+            echo "Authenticated Live Agent scheduler must be safely disabled and report request-state as unchecked." >&2
+            exit 1
+          fi
+
   publish-ghcr:
     name: Publish reviewed image to GHCR
     needs: validate-and-build

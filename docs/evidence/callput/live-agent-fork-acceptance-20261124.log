@@ -1,0 +1,32 @@
+# Historical unpinned capture from 2026-11-24 (exit 0), not deterministic release acceptance. A separate run on port 8561 scored 20/25; see live-agent-fork-acceptance-20261124-pinned-122119407.log for the isolated, block-pinned 25/25 result.
+# FORK_RPC=http://127.0.0.1:8561 bun run scripts/callput-live-agent-fork-acceptance.ts
+# Fresh local Robinhood Chain Mainnet fork, chain ID 4663; fork clock is reported below.
+legs expire 2026-11-27T17:00:00.000Z; fork clock 2026-11-25T16:00:00.000Z
+PASS: grant proposed, evidenced, activated and the agent resumed for owner A
+PASS: LIVE_TRADING_ENABLED unset: the tick does nothing at all (disabled)
+PASS: scheduled pass: authorized, signed and submitted exactly one order (submitted, queue +1)
+PASS: the request key from the receipt is on the ledger in state pending, and the chain agrees (pending/Pending)
+PASS: the committed collateral left the wallet and matches the ledger (227834 raw)
+PASS: replaying the same decision is recognized and sends nothing (replayed)
+PASS: a second order while one is pending is blocked by the pending-request limit (blocked)
+PASS: after the keeper fill the next tick reconciles the request to executed (executed)
+PASS: the fill is confirmed by the wallet's option-token balance, not by the hash (99744250229990799 raw)
+PASS: a declined signature is not-broadcast: the reservation is cancelled, nothing is sent, the agent keeps running (blocked/1 cancelled)
+PASS: with the first order filled and no pending request, the next order is allowed (submitted)
+PASS: the second order is reconciled to executed (2 executed)
+PASS: a third order is blocked by the daily order limit (two per day) (blocked)
+PASS: the emergency stop blocks every order (stopped)
+PASS: the owner can resume after a plain stop
+PASS: a revoked grant sends nothing, stops the agent, and cannot be resumed (stopped; No active, unexpired grant.)
+PASS: owner B armed
+PASS: owner B's order is submitted and pending (submitted)
+PASS: a request pending past the venue window goes stale and halts the agent; no new order is sent (halted/stale)
+PASS: the agent cannot be resumed while a request is stale (A stale or unknown request must be reconciled first.)
+PASS: once the chain shows the request cancelled, the ledger follows, the collateral is back, and the owner can resume (cancelled)
+PASS: owner D armed
+PASS: an error after broadcast is an unknown outcome: request marked unknown and the agent stopped (submission-unknown/unknown)
+PASS: the order really was created on chain, which is why the agent must not retry blindly (queue +1)
+PASS: no further order is sent and the agent cannot be resumed until the unknown request is reconciled (halted; A stale or unknown request must be reconciled first.)
+
+25/25 assertions passed
+EXIT=0

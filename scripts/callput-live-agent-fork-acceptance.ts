@@ -133,8 +133,7 @@ const tick = async (actor: Actor, tickId: string, options: { noPlan?: boolean; p
 const usdgOf = (who: Address) => publicClient.readContract({ address: usdg, abi: CALLPUT_WRITE_ABIS.erc20, functionName: "balanceOf", args: [who] });
 
 /** Plays the real keeper for the most recent open request (it must be the last one in the queue). */
-async function fillLast(actor: Actor, requestKey: Hex) {
-  const plan = actor.plans.at(-1)!;
+async function fillLast(requestKey: Hex, plan: CallPutOpenSpreadPlan) {
   const market = await fetchCallPutRobinhoodMarketData();
   // An option ID encodes strike and expiry but not the side, so the lookup must match the side too (a call shares the ID).
   const legOf = (id: Hex) => market.options.find((o) => o.side === "put" && o.underlyingSymbol === UNDERLYING && o.optionId.toLowerCase() === id.toLowerCase())!;
@@ -200,7 +199,7 @@ try {
 
   // ---- Keeper fill, reconciled from chain, confirmed independently by the option-token balance ----
   {
-    const tokenId = await fillLast(A, key1);
+    const tokenId = await fillLast(key1, A.plans[0]!);
     const r = await tick(A, "t-3", { noPlan: true });
     const request = (await listLiveAgentRequests(db, A.ownerId))[0]!;
     const position = await readCallPutPositionState(publicClient, A.address, UNDERLYING, tokenId, "position");
@@ -220,10 +219,12 @@ try {
 
   // ---- Second order, filled; then the daily order limit ----
   {
+    const planIndex = A.plans.length;
     const r = await tick(A, "t-4", { submitter: submitterFor(A) });
+    const plan = A.plans[planIndex]!;
     const request = (await listLiveAgentRequests(db, A.ownerId)).find((x) => x.state === "pending")!;
     check("with the first order filled and no pending request, the next order is allowed", r.status === "submitted" && !!request?.requestKey, r.status);
-    await fillLast(A, request.requestKey as Hex);
+    await fillLast(request.requestKey as Hex, plan);
     const rec = await tick(A, "t-5", { noPlan: true });
     const states = (await listLiveAgentRequests(db, A.ownerId)).filter((x) => x.state === "executed").length;
     check("the second order is reconciled to executed", rec.status === "no-trade" && states === 2, `${states} executed`);

@@ -1,0 +1,44 @@
+Live Agent fork acceptance — pinned Robinhood Chain state
+Date: 2026-11-24
+Chain ID: 4663
+Fork base block: 122119407
+Fork base hash: 0x5e1b5ff78bbd7d98be5344ab2c6e69dc555b509a1751d49ec89a84271dbc47d9
+Fork base timestamp: 2026-11-24T09:24:57Z
+Isolated Anvil port: 8563 (fresh process; separate from the existing 8561 process)
+
+Anvil:
+  anvil --fork-url https://rpc.mainnet.chain.robinhood.com --fork-block-number 122119407 --chain-id 4663 --port 8563 --silent
+Acceptance command:
+  FORK_RPC=http://127.0.0.1:8563 bun run scripts/callput-live-agent-fork-acceptance.ts
+
+Observed options expire 2026-11-27T17:00:00.000Z; fork clock advanced to 2026-11-25T16:00:00.000Z by the acceptance harness. The earlier unpinned run on port 8561 was inconsistent (20/25 and 25/25); do not treat its 25/25 capture as deterministic evidence. The harness now associates keeper inputs with the plan for the exact request instead of the actor's latest plan (scripts/callput-live-agent-fork-acceptance.ts:136, 202, 222-227).
+Feed limitation: the chain base is pinned, but `buildPlan` and `fillLast` fetch live option-market data; no fixed market-data fixture was used. Future runs may select different legs or marks. This log records the actual 25/25 run, not a network-independent replay.
+
+PASS: grant proposed, evidenced, activated and the agent resumed for owner A
+PASS: LIVE_TRADING_ENABLED unset: the tick does nothing at all (disabled)
+PASS: scheduled pass: authorized, signed and submitted exactly one order (submitted, queue +1)
+PASS: the request key from the receipt is on the ledger in state pending, and the chain agrees (pending/Pending)
+PASS: the committed collateral left the wallet and matches the ledger (316158 raw)
+PASS: replaying the same decision is recognized and sends nothing (replayed)
+PASS: a second order while one is pending is blocked by the pending-request limit (blocked)
+PASS: after the keeper fill the next tick reconciles the request to executed (executed)
+PASS: the fill is confirmed by the wallet's option-token balance, not by the hash (99896596858638742 raw)
+PASS: a declined signature is not-broadcast: the reservation is cancelled, nothing is sent, the agent keeps running (blocked/1 cancelled)
+PASS: with the first order filled and no pending request, the next order is allowed (submitted)
+PASS: the second order is reconciled to executed (2 executed)
+PASS: a third order is blocked by the daily order limit (two per day) (blocked)
+PASS: the emergency stop blocks every order (stopped)
+PASS: the owner can resume after a plain stop
+PASS: a revoked grant sends nothing, stops the agent, and cannot be resumed (stopped; No active, unexpired grant.)
+PASS: owner B armed
+PASS: owner B's order is submitted and pending (submitted)
+PASS: a request pending past the venue window goes stale and halts the agent; no new order is sent (halted/stale)
+PASS: the agent cannot be resumed while a request is stale (A stale or unknown request must be reconciled first.)
+PASS: once the chain shows the request cancelled, the ledger follows, the collateral is back, and the owner can resume (cancelled)
+PASS: owner D armed
+PASS: an error after broadcast is an unknown outcome: request marked unknown and the agent stopped (submission-unknown/unknown)
+PASS: the order really was created on chain, which is why the agent must not retry blindly (queue +1)
+PASS: no further order is sent and the agent cannot be resumed until the unknown request is reconciled (halted; A stale or unknown request must be reconciled first.)
+
+25/25 assertions passed
+EXIT=0

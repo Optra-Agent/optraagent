@@ -50,7 +50,7 @@ From CallPut's MCP tool descriptions (read 2026-11-22; venue documentation, not 
 * An owner starts a durable account workflow, selects ONE underlying and ONE spread strategy, a deposit, a gas cap and a total trade-collateral cap (`max_user_amount_raw`), and signs a grant. Steps are login (SIWE), create, deposit, register, open, close, settle, revoke and withdraw. Withdraw and revoke always need the owner's signature.
 * `session_mode` is `open_close` or `close_only` (close a held position after the grant ends, with no open allowance). Open and close are separate permissions in the venue's own model.
 * An agent runs a separate device signer; opens are submitted through CallPut's relay ("sponsored open"), which cannot be reproduced on a fork.
-* On chain: the current factory is open to all with safe mode off, and a real `closeWithSession` transaction exists (device signer `0xBd4a…1356`, 180-day grant, unbounded value caps), so session execution is real. OPTRA has not run an Account creation, a delegated open or a revocation.
+* At block 120670889 on 2026-11-22, the venue-resolved factory reported global `openToAll=true` and `safeMode=false`. The probe's deployer Account was not created/registered and could not open; a different sample Account was eligible. A separate `closeWithSession` transaction shows one session close occurred (device signer `0xBd4a…1356`, 180-day grant, several unbounded value fields with inferred names). This is not proof of the owner's Account eligibility or OPTRA permission. OPTRA has not run an owner Account creation, a delegated open or a revocation; factory/Account source and audit remain open.
 
 ## Safest scope for a Monday launch
 

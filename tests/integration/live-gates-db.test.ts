@@ -71,6 +71,15 @@ describe("live gates against a real database", () => {
     expect(body.venue.summary.verified).toBeLessThan(12);
   });
 
+  it("treats a missing durable owner-control row as an active emergency stop", async () => {
+    const { db, ownerId } = await setup();
+    const report = await loadLiveGateReport({ db, ownerId, walletAddress: WALLET, country: "ID", now: NOW, env: { LIVE_TRADING_ENABLED: "true" } });
+    const g3 = report.gates.find((gate) => gate.id === "G3")!;
+    expect(g3.pass).toBe(false);
+    expect(g3.detail).toMatch(/owner's durable emergency stop is active/i);
+    expect(g3.evidence.join(" ")).toContain("Owner emergency stop is active");
+  });
+
   it("records the acknowledgement only when complete and current, and then satisfies G7 only", async () => {
     const { handlers } = await setup();
     expect((await handlers().acknowledge(post({ version: RISK_ACK_VERSION, statementIds: ["total-loss"] }))).status).toBe(400);
@@ -108,12 +117,16 @@ describe("live gates against a real database", () => {
   it("refuses an acknowledgement from a blocked country, and stores the country only from the operator's trusted header", async () => {
     const { handlers, db, ownerId } = await setup();
     const env = { LIVE_GEO_HEADER: "cf-ipcountry" };
+    const approvedEnv = { ...env, LIVE_GEO_POLICY_APPROVAL_REF: "counsel-policy-2026-11-24" };
     expect((await handlers(env).acknowledge(post({ version: RISK_ACK_VERSION, statementIds: ALL_IDS }, { "cf-ipcountry": "US" }))).status).toBe(403);
     // Without a configured header a client-supplied country is ignored: it is stored as unknown and G5 stays closed.
     expect((await handlers({}).acknowledge(post({ version: RISK_ACK_VERSION, statementIds: ALL_IDS }, { "cf-ipcountry": "ID" }))).status).toBe(200);
     const g5 = (await loadLiveGateReport({ db, ownerId, walletAddress: WALLET, country: null, now: NOW, env: {} })).gates.find((gate) => gate.id === "G5");
     expect(g5?.pass).toBe(false);
-    const viaHeader = (await (await handlers(env).status(get({ "cf-ipcountry": "ID" }))).json()) as { gates: Array<{ id: string; pass: boolean }> };
+    const withoutPolicy = (await (await handlers(env).status(get({ "cf-ipcountry": "ID" }))).json()) as { gates: Array<{ id: string; pass: boolean; detail: string }> };
+    expect(withoutPolicy.gates.find((gate) => gate.id === "G5")).toMatchObject({ pass: false });
+    expect(withoutPolicy.gates.find((gate) => gate.id === "G5")?.detail).toMatch(/counsel-approved jurisdiction policy/i);
+    const viaHeader = (await (await handlers(approvedEnv).status(get({ "cf-ipcountry": "ID" }))).json()) as { gates: Array<{ id: string; pass: boolean }> };
     expect(viaHeader.gates.find((gate) => gate.id === "G5")?.pass).toBe(true);
     const spoofedUs = (await (await handlers(env).status(get({ "cf-ipcountry": "US" }))).json()) as { gates: Array<{ id: string; pass: boolean }> };
     expect(spoofedUs.gates.find((gate) => gate.id === "G5")?.pass).toBe(false);

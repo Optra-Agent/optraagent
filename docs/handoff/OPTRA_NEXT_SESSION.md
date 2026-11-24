@@ -1,6 +1,6 @@
 # OPTRA — Next Session Continuation
 
-Written Monday 23 November 2026, about 15:30 UTC (22:30 WIB), at the end of the final PM acceptance. Read this first after `/new`. Longer reference: `OPTRA_V2_FINAL_HANDOFF.md` (contracts, gates, hygiene), `OPTRA_PM_PRODUCT_WALKTHROUGH.md` (PM tour), `../marketing/OPTRA_X_LAUNCH_CONTENT_MAP.md` (posts, video).
+Updated Tuesday 24 November 2026, 09:44 UTC (16:44 WIB), Batch 03 pre-release snapshot. Local verification is complete; this note predates the final commit, pinned-SHA CI and Railway release. The final completion report supplies those later facts. Read this first after `/new`. Longer reference: `OPTRA_V2_FINAL_HANDOFF.md` (contracts, gates, hygiene), `OPTRA_PM_PRODUCT_WALKTHROUGH.md` (PM tour), `../marketing/OPTRA_X_LAUNCH_CONTENT_MAP.md` (posts, video).
 
 Not transaction authorization. Nothing here signs, approves or broadcasts anything.
 
@@ -9,23 +9,24 @@ Not transaction authorization. Nothing here signs, approves or broadcasts anythi
 | Item | Value |
 |---|---|
 | Branch | `codex/callput-erc1155-guard-lifecycle` |
-| Production and remote `main` | `ee17ccf0be04bbb37f3d0c2259e3cbb695541931` (fast-forward from `7ad5ed5`; CI run 45203641187 success on that SHA, tag `ci/optra-release-ee17ccf`, `publish=false`; Railway deployment `ed258081-9f1e-403a-affb-b4fa105a72a9` SUCCESS, `meta.commitHash` equal) |
-| Included commits | `f590196` (House Agent detail configuration panel, Lab draft summary and route back; CI run 45197405716 also passed on it) and `ee17ccf` (scheduler receipt-time fix with regression test) |
-| Local HEAD | `ee17ccf` plus one local docs-only commit (the four handoff/marketing files). **Not pushed, not deployed**, by instruction; `git log origin/main..HEAD` shows only it |
-| Working tree | `next-env.d.ts`, `tsconfig.json`, `tsconfig.tsbuildinfo` modified by builds (generated, never commit). Nothing else |
-| Release script | `~/.hermes/cache/scratch/optra-release.sh <run-id> <sha> <parent-sha>` |
-| Safety flags | `LIVE_TRADING_ENABLED=false`, `V4_CLAIM_LEVEL=L0`, unchanged |
+| Production and remote `main` | Read-only baseline verified 24 Nov 2026 09:44 UTC: `4797eedd9ed27e1b66dafb3fa3953dd216a38ce8`; Railway deployment `d3695933-4069-4e7c-b3ae-266bf042d4a0` SUCCESS with matching full `meta.commitHash` |
+| Local HEAD | Batch 02 `934533eb32330817e4f984da31b435c4d1d4c660`, directly above Batch 01 `125f7275786bde1ebe1dd0ca14c1e0eeb2b799ae`; Batch 03 changes are uncommitted at this snapshot |
+| Working tree | Reviewed in-scope Live Agent test, workflow, evidence and handoff changes plus unrelated `.DS_Store` and generated build files. Commit only the reviewed task paths; preserve the rest |
+| Local verification | 86 test files passed / 2 skipped; 643 tests passed / 2 skipped; lint, typecheck and production build passed on Node 26.12.1 / Bun 1.3.14; authenticated G7 browser test 1/1 against isolated local PGlite with a generated throwaway wallet |
+| Fork acceptance | 25/25 on a fresh isolated Robinhood Chain fork pinned to block 122119407, hash `0x5e1b5ff78bbd7d98be5344ab2c6e69dc555b509a1751d49ec89a84271dbc47d9`; unpinned inconsistency traced to request/plan misassociation. Market-data inputs were live, not fixture-pinned. Block 122102881 could not be forked because required historical state was unavailable |
+| Release process | `~/.hermes/cache/scratch/optra-release.sh <run-id> <full-sha> <parent-sha>`; unique tag pinned to the exact candidate, `publish=false`, then fast-forward `main` only after CI |
+| Safety flags | Last confirmed production baseline: `LIVE_TRADING_ENABLED=false`, `V4_CLAIM_LEVEL=L0`; preserve both. No contract redeploy, production wallet action, or recording-session change |
 
-Deployed UI verified after the release in a real browser: all four `/house/<id>` pages show the Configuration panel ("Last evaluation 23 Nov 2026 · 15:00 UTC · skip") with no horizontal overflow; `/lab` loads.
+Prior production UI notes below are historical evidence from the deployment preceding this candidate; they were not re-run at this pre-release snapshot. Keep the separate recording session and its port-8561 fork untouched.
 
-## 2. Production health (read from https://optraagent.cc)
+## 2. Production baseline health (pre-release; fresh post-release result belongs in completion report)
 
 - `/api/health/live` 200, `/api/health/ready` `{"status":"ready","checks":{"database":"ok"}}`.
 - `/api/public/v1/verify`: `liveTradingEnabled: false`, `v4ClaimLevel: L0`.
 - Routes 200: `/`, `/market`, `/market/NVDA`, `/agents`, `/forge`, `/lab`, `/tape`, `/verify`, `/hooks`, `/house/<id>`. `/api/venue/callput/orders` without a session = 401.
 - `railway.app` host `opetra-production.up.railway.app` is the second domain.
 
-## 3. Module status
+## 3. Module status at the pre-release production baseline
 
 | Module | Status | Evidence this session |
 |---|---|---|
@@ -80,19 +81,20 @@ Existing specs rerun: forge, lab, lab-benchmarks, paper-flow-live-api (custom Pr
 
 Prepared and signed by the owner in MetaMask; OPTRA never signs. `/market/NVDA` leads from the chain to the order form (Pick long/short leg, Prepare order, funding preflight, review, Sign, Read request, Prepare close). Fork lifecycle passed 23 of 23; **no Mainnet fill has happened**. Owner steps for the recording are in section 10.
 
-## 8. Autonomous Live Agent restrictions
+## 8. Autonomous Live Agent restrictions and current engineering state
 
-Engine built and fork-tested (25 of 25). Inactive in production: `LIVE_TRADING_ENABLED=false`, no signer, no owner grant, G1–G7 unmet (details in the final handoff, section E). Never describe it as live, never enable it, never provision a signer from an agent session.
+At the timestamp above, local verification passed: 86 test files passed / 2 skipped; 643 tests passed / 2 skipped; lint, typecheck and production build passed on Node 26.12.1 / Bun 1.3.14; the authenticated G7 browser flow passed 1/1 against the isolated local app/PGlite database using a generated throwaway key; and the Live Agent fork acceptance passed 25/25 at pinned block 122119407. That browser test validates persisted acknowledgement and gate reporting for its test identity; it is not the owner's production acknowledgement. The authenticated status endpoint and worker use the same G1–G7 evaluator. The proposed Paper decision source rejects foreign/private agents and stale, errored, unlaunched, or recipe-mismatched decisions. A prior unpinned acceptance varied because the harness chose the latest actor plan rather than the submitted request's plan; `fillLast` now receives the exact request-associated plan. A separate pinned attempt at block 122102881 stopped before assertions because the upstream RPC lacked required historical state. Production remains inactive (`LIVE_TRADING_ENABLED=false`, `V4_CLAIM_LEVEL=L0` at the verified baseline); no signer is wired, no owner grant is verified, and activation is not eligible. Pinned-SHA CI and Railway release had not run at this snapshot. See the activation checklist for the actual owner, CallPut, counsel, audit/custody, scheduler and time-dependent blockers.
 
-## 9. Remaining genuine defects and blockers
+## 9. Genuine Live Agent activation dependencies (engineering release does not satisfy these)
 
-1. Scheduler provenance defect: fixed and deployed; the four 15:00 UTC error records stay as history. The fix is proven by a unit test, not yet by a production decision.
-2. No genuine strategy decision exists. The Crius provider was failing from about 15:50 to at least 16:16 UTC, so the fixed scheduler deferred every agent. Re-check the provider before blaming code.
-2b. Verify `decision_tape` claim wording overstates the four error records (section 4).
-3. Owner-dependent: MetaMask connection, funding, any Mainnet transaction, production wallet sign-in for a production Forge → Lab run.
-4. Provider flapping of Crius coverage (see section 5). Not a code defect; re-check before recording.
-5. AAPL, SPY, MU blocked by a stock-token multiplier action in the window; do not bypass.
-6. Local hygiene from the previous handoff (`optra-e2e-*` snapshots, `optra-house-*` leaks) is still unfixed; clean gate copies after releases.
+1. CallPut must answer in writing whether OPTRA automation and an operator-held session signer are permitted, and provide current grant, custody, cancellation, rate-limit, support, source/upgrade and audit evidence.
+2. Independent review must verify the resolver-selected Account, exact bounded grant enforcement/revocation and signer custody. Only then may the owner create/fund the exact Account and sign its grant.
+3. Counsel must approve the jurisdiction policy and the trusted production location source; the owner wallet must be identified/allowlisted by the authorized operator only after G2 passes.
+4. G6 needs seven full genuine Paper days, at least one current-recipe evaluated decision and one settled expiry. The age-only earliest point is `2026-11-28T23:28:28.066Z`; no history may be seeded or backdated.
+5. The owner must personally review the current G7 statements and, after all earlier conditions, the strategy mapping and any real CallPut lifecycle actions. The throwaway browser-test acknowledgement is not owner evidence; no production owner gate report was read.
+6. An approved external scheduler, production `CRON_SECRET` and alert/monitoring destination are not verified. Configure these only after the activation requirements are genuinely met; keep the execution switch off until the operator's final authorized step.
+
+Historical scheduler/provider and recording notes in sections 4–8 remain context only; do not treat them as Batch 03 blockers or as current production evidence.
 
 ## 10. Single showcase video: workflow and owner steps
 
@@ -104,10 +106,9 @@ What the owner must do for a real-money segment, and what must not be claimed ot
 3. Treat it as a fill only when Read request shows Executed and the wallet holds the option tokens. Only then record it in `lib/public/mainnet-acceptance.ts` and release. The transaction hash comes from the wallet or the explorer, never from an agent.
 4. Without that, say "wallet-signed trading is available", never "executed" or "filled". No simulated transaction may be labelled a real-money fill.
 
-## 11. Exact next actions
+## 11. Next session
 
-1. `git status`, `git log --oneline -5`, `git fetch`, compare `origin/main` with the SHA in section 1.
-2. Read `/api/backtests/coverage?symbol=NVDA` (provider health), `/api/public/v1/tape` and `railway logs -d <deployment> --since 30m | grep paper_scheduler` (events `agent_deferred`, `error_recorded`, `run_completed`). Report the outcome of the next eligible candle per agent (open, hold, skip with trace, deferred or error) and confirm Landing, Verify and Agents show the same counts.
-3. If the 16:00 UTC records are again data errors, read the scheduler log lines (`paper_scheduler.error_recorded`) before changing code.
-4. Update the PM walkthrough (section 4) and X Post 4 with the genuine decision, then give the owner GO for the recording segment that needs it.
-5. Do not add House Agents, do not enable Live, do not touch production data.
+1. Read the Batch 03 completion report for the exact final commit, pinned CI run, Railway deployment SHA, health and public smoke results. Do not repeat the full local suite if no code changed.
+2. Keep `LIVE_TRADING_ENABLED=false` and `V4_CLAIM_LEVEL=L0`; do not create a production wallet session or touch production Paper data for this handoff.
+3. Continue only the owner/CallPut/counsel/audit/scheduler items in section 9 and the activation checklist. Do not repeat gate implementation or claim activation eligibility from engineering tests.
+4. Preserve the separate recording session and wallet state; no action on its port-8561 fork.
