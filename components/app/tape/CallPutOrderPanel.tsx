@@ -447,8 +447,10 @@ export function CallPutOrderPanel({ underlying: initialUnderlying = "AAPL", lock
       return;
     }
     if (!gasQuote || nowMs() - preparedAt > GAS_QUOTE_MAX_AGE_MS) {
-      setPlan(null); setGasQuote(null); setReviewed(null);
-      setError("The gas estimate is missing or older than 30 seconds. Prepare again before signing.");
+      // Keep the review mounted so the refusal does not collapse the panel and
+      // scroll-anchor the owner into an unrelated section. Clear signing state.
+      setGasQuote(null); setReviewed(null);
+      setError("The gas estimate is missing or older than 30 seconds. No wallet request was sent; prepare again before signing.");
       return;
     }
     busy.current = true;

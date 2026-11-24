@@ -105,7 +105,7 @@ describe("CallPutOrderPanel", () => {
       return new Response(JSON.stringify({ orders: [] }), { status: 200 });
     }));
   });
-  afterEach(() => { cleanup(); vi.unstubAllEnvs(); vi.unstubAllGlobals(); mocks.chainId = 4663; mocks.walletClient = null; });
+  afterEach(() => { cleanup(); vi.useRealTimers(); vi.unstubAllEnvs(); vi.unstubAllGlobals(); mocks.chainId = 4663; mocks.walletClient = null; });
 
   it("keeps risk text out of the main form and shows the essentials at the review step", async () => {
     const pc = publicClient([]);
@@ -409,6 +409,29 @@ describe("CallPutOrderPanel", () => {
     vi.restoreAllMocks();
   });
 
+  it("keeps the exact order review in place when the gas estimate expires before the owner click", async () => {
+    const pc = publicClient();
+    mocks.publicClient = pc;
+    const sendTransaction = vi.fn();
+    mocks.walletClient = { sendTransaction, chain: { id: 4663 } };
+    const Panel = await loadPanel(true);
+    const user = userEvent.setup();
+    render(createElement(Panel));
+    await prepareOrder(user);
+    await user.click(screen.getByRole("checkbox"));
+    const realNow = Date.now;
+    vi.spyOn(Date, "now").mockImplementation(() => realNow() + 31_000);
+    await user.click(screen.getByRole("button", { name: "Sign in wallet" }));
+
+    expect((await screen.findByRole("alert")).textContent).toMatch(/gas estimate is missing or older than 30 seconds/i);
+    expect(screen.getByText("Order review")).toBeTruthy();
+    expect((screen.getByRole("button", { name: "Sign in wallet" }) as HTMLButtonElement).disabled).toBe(true);
+    expect(sendTransaction).not.toHaveBeenCalled();
+    const orderWrite = vi.mocked(fetch).mock.calls.find(([url, init]) => url === "/api/venue/callput/orders" && init?.method === "POST");
+    expect(orderWrite).toBeUndefined();
+    vi.restoreAllMocks();
+  });
+
   it("shows the exact USDG shortfall and the allowance explanation, offers the destinations and keeps Sign disabled when USDG is short", async () => {
     mocks.publicClient = publicClient([], { usdg: 1_000n, allowance: 0n });
     const sendTransaction = vi.fn();
@@ -631,7 +654,7 @@ describe("CallPutOrderPanel wallet network and duplicate protection", () => {
       return new Response(JSON.stringify({ orders: [] }), { status: 200 });
     }));
   });
-  afterEach(() => { cleanup(); vi.unstubAllEnvs(); vi.unstubAllGlobals(); mocks.chainId = 4663; mocks.walletClient = null; });
+  afterEach(() => { cleanup(); vi.useRealTimers(); vi.unstubAllEnvs(); vi.unstubAllGlobals(); mocks.chainId = 4663; mocks.walletClient = null; });
 
   it("shows the connected network and offers no switch when the wallet is on Robinhood Mainnet", async () => {
     mocks.publicClient = publicClient();
