@@ -9,6 +9,7 @@ import { JourneyRail, PageHeader, StateBlock, Panel } from "../ui";
 import { AgentGallery } from "./AgentGallery";
 import { HouseAgentCreator } from "./HouseAgentCreator";
 import { LiveHouseAgents } from "./LiveHouseAgents";
+import { HouseBacktestResults } from "../HouseBacktestResults";
 import type { HouseTemplateId } from "./house-meta";
 import { Button } from "@/components/ui/button";
 import { Wallet } from "lucide-react";
@@ -77,6 +78,7 @@ export function AgentListScreen({ initialTemplate = "protective_put" }: { initia
       ) : null}
 
       <LiveHouseAgents />
+      <HouseBacktestResults />
 
       <AgentGallery selected={template} onSelect={setTemplate} owned={agents} ownedStatus={status === "signed_in" ? loadStatus : "ready"} ownedError={error} signedIn={status === "signed_in"} onRetry={() => setReload((value) => value + 1)} />
 

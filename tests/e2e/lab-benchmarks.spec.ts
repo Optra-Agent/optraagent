@@ -37,6 +37,8 @@ test("Lab shows the server's same-window benchmarks next to the strategy result"
   });
   await setup(page, { totalReturnPct: "-0.75", maxDrawdownPct: "1.80", endingCashUsd: "99250.00", benchmarks });
   await page.goto(`/lab?agent=${agentId}`);
+  const history = page.getByRole("region", { name: "Historical House Agent backtests" });
+  await expect(history.getByRole("row", { name: /Cash-Secured Put.*AMZN/ })).toContainText("No modeled entry");
   await page.getByRole("button", { name: "Run paper backtest" }).click();
 
   const bench = page.getByRole("region", { name: "Benchmark comparison" });

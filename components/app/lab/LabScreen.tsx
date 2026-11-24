@@ -19,6 +19,7 @@ import { Button, buttonVariants } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { BenchmarkComparison } from "./BenchmarkComparison";
 import { modelAssumptions, type HouseTemplateId } from "../agents/house-meta";
+import { HouseBacktestResults } from "../HouseBacktestResults";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 function errorMessage(value: unknown): string {
@@ -398,6 +399,7 @@ export function LabScreen({ initialAgentId = "" }: { initialAgentId?: string }) 
           </Panel>
         </div>
       ) : null}
+      <HouseBacktestResults />
     </main>
   );
 }

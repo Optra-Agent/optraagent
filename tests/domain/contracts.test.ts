@@ -99,6 +99,26 @@ describe("shared API contracts", () => {
     expect(BacktestRunSchema.safeParse({ ...run, recipeHash: "" }).success).toBe(false);
   });
 
+  it("backtest_metrics_preserve_a_signed_modeled_cash_balance", () => {
+    const run = {
+      id: "backtest-negative-cash",
+      recipeHash: `sha256:${"0".repeat(64)}`,
+      dataSource: "crius_robinhood_chain_candles",
+      startAt: "2026-10-13T00:00:00.000Z",
+      endAt: "2026-11-12T00:00:00.000Z",
+      sampleCount: 720,
+      hourlyCoverageComplete: true,
+      premiumSource: "modeled",
+      pricingMethod: "modeled",
+      status: "complete",
+      metrics: { totalReturnPct: "-1.25", maxDrawdownPct: "2.50", endingCashUsd: "-12.5" },
+      reason: "Modeled result.",
+      createdAt: "2026-11-12T03:12:00.000Z",
+    };
+
+    expect(BacktestRunSchema.parse(run).metrics?.endingCashUsd).toBe("-12.5");
+  });
+
   it("catalog_only_hook_reports_a_reason_without_claiming_execution", () => {
     const hook = HookDefinitionSchema.parse({
       id: "source-pending",
