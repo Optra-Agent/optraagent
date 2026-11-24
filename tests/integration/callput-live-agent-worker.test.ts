@@ -1,7 +1,7 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Address, Hex } from "viem";
 import golden from "../options/fixtures/callput-robinhood-venue-prepared-open.json";
 import { DrizzleAuthRepository } from "../../lib/auth/drizzle-repository";
@@ -14,18 +14,24 @@ import {
   acquireLiveAgentLease,
   activateLiveAgentGrant,
   getLiveAgentControl,
+  getLiveAgentGrant,
   listLiveAgentRequests,
   proposeLiveAgentGrant,
   recordLiveAgentEvidence,
+  recordLiveAgentJurisdictionEvidence,
   resumeLiveAgent,
   revokeLiveAgentGrant,
   type ProposeLiveAgentGrantInput,
 } from "../../lib/venue/callput-live-agent-store";
 import { NotBroadcastError, runLiveAgentTick, type LiveAgentSubmitter } from "../../lib/venue/callput-live-agent-worker";
-import { runLiveAgentSchedule } from "../../lib/venue/callput-live-agent-scheduler";
+import { runLiveAgentSchedule, summarizeLiveAgentSchedule } from "../../lib/venue/callput-live-agent-scheduler";
 import { createPaperDecisionSource } from "../../lib/venue/callput-live-agent-signal";
 import { agents, paperDecisions } from "../../db/schema";
 import { createLiveAgentHandlers } from "../../lib/venue/callput-live-agent-handlers";
+import { saveAcknowledgement } from "../../lib/live/gate-loader";
+import { RISK_ACK_STATEMENTS } from "../../lib/live/gates";
+
+vi.setConfig({ testTimeout: 15_000 });
 
 const WALLET = "0x000000000000000000000000000000000000dEaD" as Address;
 const OTHER = "0xfa0426d7ad93f4f1e990bd4c1103c771344ada17" as Address;
@@ -133,10 +139,12 @@ describe("CallPut Live Agent worker, scheduler and owner controls", () => {
     const common = { db, env: ENV, readSnapshots: async () => [], submitter, gates: async () => GATES_PASS, decisionSource };
     const first = await runLiveAgentSchedule({ ...common, now: NOW, runId: "run-1" });
     expect(first.results.map((r) => [r.grantId, r.status])).toEqual([[grant.id, "submitted"]]);
+    expect(first.pendingReconciliationCount).toBe(1);
     // Request key is tracked and the chain snapshot says Pending, so the next pass reconciles it and does not halt.
     const pending = { requestKey: `0x${"cd".repeat(32)}` as Hex, kind: "open" as const, status: "Pending" as const, account: WALLET, underlyingAssetIndex: null, expiry: null, optionTokenId: null, minSize: null, amountIn: null, minOutWhenSwap: null, size: null, minAmountOut: null, sizeOut: null, amountOut: null, executionPrice: null, submittedAt: BigInt(Math.floor((NOW.getTime() + 3_600_000) / 1000) - 30), processedAt: null, nativeTokenHandling: null };
     const later = await runLiveAgentSchedule({ ...common, readSnapshots: async () => [pending], now: new Date(NOW.getTime() + 3_600_000), runId: "run-2" });
     expect(later.results[0]?.status).toBe("replayed");
+    expect(later.pendingReconciliationCount).toBe(1);
     expect(submitter.calls).toBe(1);
   });
 
@@ -150,10 +158,11 @@ describe("CallPut Live Agent worker, scheduler and owner controls", () => {
   });
 
   describe("paper decision source", () => {
-    async function seed(db: DatabaseConnection["db"], ownerId: string, template: string, actions: Array<{ action: string; ageMs: number }>) {
-      const [agent] = await db.insert(agents).values({ ownerId, name: "Seeded", templateId: template, status: "running", recipe: { underlyingSymbol: "NVDA" } as never, recipeHash: `sha256:${"2".repeat(64)}`, launchedAt: NOW }).returning({ id: agents.id });
+    async function seed(db: DatabaseConnection["db"], ownerId: string, template: string, actions: Array<{ action: string; ageMs: number; recipeHash?: string }>) {
+      const launchedAt = new Date(NOW.getTime() - Math.max(0, ...actions.map(({ ageMs }) => ageMs)) - 1_000);
+      const [agent] = await db.insert(agents).values({ ownerId, name: "Seeded", templateId: template, status: "running", recipe: { underlyingSymbol: "NVDA" } as never, recipeHash: `sha256:${"2".repeat(64)}`, launchedAt }).returning({ id: agents.id });
       for (const [index, entry] of actions.entries()) {
-        await db.insert(paperDecisions).values({ id: `d-${index}-${agent!.id}`, agentId: agent!.id, tickId: `t-${index}`, action: entry.action, reason: "test", hookResults: [], snapshotSource: "test", recipeHash: `sha256:${"2".repeat(64)}`, createdAt: new Date(NOW.getTime() - entry.ageMs) });
+        await db.insert(paperDecisions).values({ id: `d-${index}-${agent!.id}`, agentId: agent!.id, tickId: `t-${index}`, action: entry.action, reason: "test", hookResults: [], snapshotSource: "test", recipeHash: entry.recipeHash ?? `sha256:${"2".repeat(64)}`, createdAt: new Date(NOW.getTime() - entry.ageMs) });
       }
       return agent!.id;
     }
@@ -167,6 +176,24 @@ describe("CallPut Live Agent worker, scheduler and owner controls", () => {
       expect(await source({ LIVE_MAPPING_APPROVAL_REF: "  " })(({ ownerId, agentId, grantId: grant.id }), NOW)).toBeNull();
       const found = await source({ LIVE_MAPPING_APPROVAL_REF: "owner-2026-12-01" })({ ownerId, agentId, grantId: grant.id }, NOW);
       expect(found?.decisionId).toContain(`d-0-${agentId}`);
+    });
+
+    it("never maps another owner's private Paper decision to this owner's grant", async () => {
+      const { db, ownerId, strangerId } = await setup();
+      const foreignAgentId = await seed(db, strangerId, "protective_put", [{ action: "open", ageMs: 60_000 }]);
+      const grant = await armed(db, ownerId, { agentId: foreignAgentId });
+      const source = createPaperDecisionSource({ db, client: {} as never, env: { LIVE_MAPPING_APPROVAL_REF: "owner-ref" } });
+
+      expect(await source({ ownerId, agentId: foreignAgentId, grantId: grant.id }, NOW)).toBeNull();
+    });
+
+    it("ignores an open decision from a different recipe version", async () => {
+      const { db, ownerId } = await setup();
+      const agentId = await seed(db, ownerId, "protective_put", [{ action: "open", ageMs: 60_000, recipeHash: `sha256:${"3".repeat(64)}` }]);
+      const grant = await armed(db, ownerId, { agentId });
+      const source = createPaperDecisionSource({ db, client: {} as never, env: { LIVE_MAPPING_APPROVAL_REF: "owner-ref" } });
+
+      expect(await source({ ownerId, agentId, grantId: grant.id }, NOW)).toBeNull();
     });
 
     it("ignores stale, non-open and unmappable decisions", async () => {
@@ -336,7 +363,7 @@ describe("CallPut Live Agent worker, scheduler and owner controls", () => {
   it("scheduler: disabled by default, skips revoked and expired grants, and never submits without a route", async () => {
     const { db, ownerId, strangerId } = await setup();
     const grant = await armed(db, ownerId);
-    expect(await runLiveAgentSchedule({ db, now: NOW, env: {} })).toEqual({ status: "disabled", results: [] });
+    expect(await runLiveAgentSchedule({ db, now: NOW, env: {} })).toEqual({ status: "disabled", results: [], pendingReconciliationCount: null });
 
     const revoked = await proposeLiveAgentGrant(db, strangerId, proposal({ ownerAddress: OTHER, tradingAddress: OTHER, agentId: "agent-2" }), NOW);
     await recordLiveAgentEvidence(db, strangerId, revoked.id, EVIDENCE, NOW);
@@ -345,9 +372,18 @@ describe("CallPut Live Agent worker, scheduler and owner controls", () => {
 
     // Production path: the real database-backed G1–G7 evaluation. Nothing is satisfied here, so no plan is even requested.
     let planAsked = 0;
-    const real = await runLiveAgentSchedule({ db, now: NOW, env: ENV, readSnapshots: async () => [], preparePlan: async () => { planAsked += 1; return plan(); } });
+    let accountReadFor = "";
+    let accountReadForTradingAddress = "";
+    const accountGates = { openToAll: true, safeMode: false, account: WALLET, accountCreated: true, accountRegistered: true, accountAllowed: true, accountCanOpen: true, ownerAccountCount: 1, accountUsable: true };
+    const real = await runLiveAgentSchedule({
+      db, now: NOW, env: ENV, readSnapshots: async () => [],
+      readAccountGates: async (owner, tradingAddress) => { accountReadFor = owner; accountReadForTradingAddress = tradingAddress ?? ""; return accountGates; },
+      preparePlan: async () => { planAsked += 1; return plan(); },
+    });
     expect(real.results.map((r) => [r.grantId, r.status])).toEqual([[grant.id, "gated"]]);
     expect(real.results[0]?.detail).toMatch(/G1.*G4.*G5.*G6.*G7/);
+    expect(accountReadFor.toLowerCase()).toBe(WALLET.toLowerCase());
+    expect(accountReadForTradingAddress.toLowerCase()).toBe(grant.tradingAddress.toLowerCase());
     expect(planAsked).toBe(0);
 
     const ran = await runLiveAgentSchedule({ db, now: NOW, env: ENV, readSnapshots: async () => [], preparePlan: async () => plan(), gates: async () => GATES_PASS });
@@ -357,6 +393,40 @@ describe("CallPut Live Agent worker, scheduler and owner controls", () => {
 
     const expired = await runLiveAgentSchedule({ db, now: new Date(NOW.getTime() + 3 * 86_400_000), env: ENV, readSnapshots: async () => [] });
     expect(expired.results).toEqual([]);
+  });
+
+  it("summarizes monitoring outcomes instead of calling every completed scheduler pass healthy", () => {
+    const summary = summarizeLiveAgentSchedule({
+      status: "completed",
+      pendingReconciliationCount: 3,
+      results: [
+        { status: "halted" },
+        { status: "no-submission-route" },
+        { status: "submitted", decisionSourceFailure: true },
+        { status: "no-trade" },
+      ],
+    });
+    expect(summary).toMatchObject({
+      status: "critical", resultCount: 4, criticalCount: 1, attentionCount: 2, pendingReconciliationCount: 3,
+      noActiveGrants: false, decisionSourceFailureCount: 1,
+      statusCounts: { halted: 1, "no-submission-route": 1, submitted: 1, "no-trade": 1 },
+    });
+    expect(summarizeLiveAgentSchedule({ status: "disabled", pendingReconciliationCount: null, results: [] })).toMatchObject({ status: "disabled", resultCount: 0, pendingReconciliationCount: null, noActiveGrants: false });
+    expect(summarizeLiveAgentSchedule({ status: "completed", pendingReconciliationCount: 0, results: [] })).toMatchObject({ status: "attention", resultCount: 0, pendingReconciliationCount: 0, attentionCount: 1, noActiveGrants: true });
+  });
+
+  it("reports decision-source read failures to monitoring while keeping the tick non-submitting", async () => {
+    const { db, ownerId } = await setup();
+    const grant = await armed(db, ownerId);
+    const outcome = await runLiveAgentSchedule({
+      db, now: NOW, env: ENV, readSnapshots: async () => [], gates: async () => GATES_PASS,
+      decisionSource: async () => { throw new Error("provider detail is intentionally not exposed"); },
+    });
+    expect(outcome.results[0]).toMatchObject({ status: "no-trade", decisionSourceFailure: true });
+    expect(outcome.results[0]?.detail).toMatch(/decision source read failed/i);
+    expect(summarizeLiveAgentSchedule(outcome)).toMatchObject({ status: "attention", decisionSourceFailureCount: 1, noActiveGrants: false });
+    expect(await listLiveAgentRequests(db, ownerId)).toHaveLength(0);
+    expect(grant.id).toBeTruthy();
   });
 
   describe("owner controls", () => {
@@ -381,7 +451,7 @@ describe("CallPut Live Agent worker, scheduler and owner controls", () => {
       expect((await mine.propose(req("POST", { ...payload, extra: true }))).status).toBe(400);
 
       const status = await (await mine.status(req("GET"))).json();
-      expect(status).toMatchObject({ liveTradingEnabled: false, submissionRoute: "not-configured", control: { stopped: true } });
+      expect(status).toMatchObject({ liveTradingEnabled: false, liveTradingSwitchOn: false, killSwitchActive: false, submissionRoute: "not-configured", control: { stopped: true } });
       expect(status.grants).toHaveLength(1);
       expect((await (await theirs.status(req("GET"))).json()).grants).toHaveLength(0);
 
@@ -393,11 +463,127 @@ describe("CallPut Live Agent worker, scheduler and owner controls", () => {
       expect((await mine.status(req("POST"))).status).toBe(405);
     });
 
+    it("reports a configured live switch as ineffective while the process kill switch is active", async () => {
+      const { db, ownerId } = await setup();
+      const mine = createLiveAgentHandlers({
+        db,
+        readSession: async () => session(ownerId, WALLET),
+        env: { LIVE_TRADING_ENABLED: "true", LIVE_AGENT_KILL_SWITCH: "true" },
+      });
+      const status = await (await mine.status(req("GET"))).json();
+      expect(status).toMatchObject({ liveTradingEnabled: false, liveTradingSwitchOn: true, killSwitchActive: true });
+    });
+
+    it("does not confirm emergency stop until the current worker lease is released", async () => {
+      const { db, ownerId } = await setup();
+      const grant = await armed(db, ownerId);
+      let enteredSubmit!: () => void;
+      const submitEntered = new Promise<void>((resolve) => { enteredSubmit = resolve; });
+      let finishSubmit!: (result: { transactionHash: Hex; requestKey?: Hex }) => void;
+      const deferredSubmission = new Promise<{ transactionHash: Hex; requestKey?: Hex }>((resolve) => { finishSubmit = resolve; });
+      const submitter = countingSubmitter(async () => { enteredSubmit(); return deferredSubmission; });
+      let workerFinished = false;
+      const worker = tick(db, ownerId, grant.id, { submitter }).finally(() => { workerFinished = true; });
+      await submitEntered;
+
+      const mine = createLiveAgentHandlers({ db, readSession: async () => session(ownerId, WALLET), now: () => NOW, env: ENV });
+      let workerFinishedWhenStopReturned = false;
+      const stopping = mine.stop(req("POST")).then((response) => {
+        workerFinishedWhenStopReturned = workerFinished;
+        return response;
+      });
+      setTimeout(() => finishSubmit({ transactionHash: HASH, requestKey: KEY }), 20);
+
+      const response = await stopping;
+      const result = await worker;
+      expect(response.status).toBe(200);
+      expect(workerFinishedWhenStopReturned).toBe(true);
+      expect(await response.json()).toEqual({ stopped: true, quiesced: true, leasePresent: false });
+      expect(result.status).toBe("submitted");
+      expect((await listLiveAgentRequests(db, ownerId))[0]?.state).toBe("pending");
+    });
+
+    it("reports a durable stop as pending when a worker lease remains after the drain timeout", async () => {
+      const { db, ownerId } = await setup();
+      expect(await acquireLiveAgentLease(db, ownerId, "active-tick", 60_000, NOW)).toBe(true);
+      const mine = createLiveAgentHandlers({ db, readSession: async () => session(ownerId, WALLET), now: () => NOW, env: ENV, stopDrainTimeoutMs: 0 });
+
+      const response = await mine.stop(req("POST"));
+      expect(response.status).toBe(202);
+      expect(await response.json()).toEqual({ stopped: true, quiesced: false, leasePresent: true });
+      const status = await (await mine.status(req("GET"))).json();
+      expect(status.control).toMatchObject({ stopped: true, leasePresent: true });
+    });
+
+    it("does not report an expired worker lease as active or delay emergency-stop confirmation", async () => {
+      const { db, ownerId } = await setup();
+      const expiredAt = new Date(Date.now() - 2_000);
+      expect(await acquireLiveAgentLease(db, ownerId, "expired-tick", 1_000, expiredAt)).toBe(true);
+      const mine = createLiveAgentHandlers({ db, readSession: async () => session(ownerId, WALLET), stopDrainTimeoutMs: 0 });
+
+      const status = await (await mine.status(req("GET"))).json();
+      expect(status.control.leasePresent).toBe(false);
+      const stopped = await mine.stop(req("POST"));
+      expect(stopped.status).toBe(200);
+      expect(await stopped.json()).toEqual({ stopped: true, quiesced: true, leasePresent: false });
+    });
+
     it("passes through an unauthenticated response unchanged", async () => {
       const { db } = await setup();
       const denied = createLiveAgentHandlers({ db, readSession: async () => Response.json({ error: { code: "UNAUTHORIZED" } }, { status: 401 }) });
       expect((await denied.status(req("GET"))).status).toBe(401);
       expect((await denied.stop(req("POST"))).status).toBe(401);
+    });
+
+    it("returns an owner-specific G1-G7 execution report and keeps scheduled jurisdiction fail-closed", async () => {
+      const { db, ownerId, strangerId } = await setup();
+      await saveAcknowledgement(db, ownerId, RISK_ACK_STATEMENTS.map((statement) => statement.id), "ID", NOW);
+      const mine = createLiveAgentHandlers({ db, readSession: async () => session(ownerId, WALLET), now: () => NOW, env: {} });
+      const theirs = createLiveAgentHandlers({ db, readSession: async () => session(strangerId, OTHER), now: () => NOW, env: {} });
+
+      const ownerStatus = await (await mine.status(req("GET"))).json();
+      const strangerStatus = await (await theirs.status(req("GET"))).json();
+      const ownerReport = ownerStatus.gateReport as { allPass: boolean; gates: Array<{ id: string; pass: boolean; detail: string }> };
+      const strangerReport = strangerStatus.gateReport as { gates: Array<{ id: string; pass: boolean }> };
+
+      expect(ownerReport.gates.map((gate) => gate.id)).toEqual(["G1", "G2", "G3", "G4", "G5", "G6", "G7"]);
+      expect(ownerReport.gates.find((gate) => gate.id === "G7")?.pass).toBe(true);
+      expect(strangerReport.gates.find((gate) => gate.id === "G7")?.pass).toBe(false);
+      expect(ownerStatus.activationGatesPass).toBe(false);
+      expect(ownerReport.allPass).toBe(false);
+      expect(ownerReport.gates.find((gate) => gate.id === "G5")?.detail).toMatch(/scheduled worker.*owner-location/i);
+    });
+
+    it("refreshes only server-resolved, owner-bound jurisdiction evidence and feeds it to the scheduled gate report", async () => {
+      const { db, ownerId, strangerId } = await setup();
+      const grant = await proposeLiveAgentGrant(db, ownerId, proposal(), NOW);
+      const mine = createLiveAgentHandlers({
+        db, readSession: async () => session(ownerId, WALLET), now: () => NOW,
+        env: { LIVE_GEO_HEADER: "x-edge-country", LIVE_GEO_POLICY_APPROVAL_REF: "counsel-approval-2026-11-24" },
+      });
+      const theirs = createLiveAgentHandlers({
+        db, readSession: async () => session(strangerId, OTHER), now: () => NOW,
+        env: { LIVE_GEO_HEADER: "x-edge-country", LIVE_GEO_POLICY_APPROVAL_REF: "counsel-approval-2026-11-24" },
+      });
+      const refreshRequest = (country: string, grantId = grant.id) => new Request("https://optra.invalid/api/venue/callput/live-agent/jurisdiction", {
+        method: "POST", headers: { "content-type": "application/json", "x-edge-country": country }, body: JSON.stringify({ grantId }),
+      });
+
+      const refreshed = await mine.refreshJurisdiction(refreshRequest("ID"));
+      expect(refreshed.status).toBe(200);
+      expect(await refreshed.json()).toMatchObject({ country: "ID", source: "edge-header", policyRef: "counsel-approval-2026-11-24" });
+      const stored = await getLiveAgentGrant(db, ownerId, grant.id);
+      expect(stored?.evidence.jurisdictionProof).toMatchObject({ country: "ID", source: "edge-header", observedAt: NOW.toISOString() });
+      const ownerStatus = await (await mine.status(req("GET"))).json();
+      expect(ownerStatus).toMatchObject({ gateReport: { gates: expect.arrayContaining([expect.objectContaining({ id: "G5", pass: true })]) } });
+      expect((await theirs.refreshJurisdiction(refreshRequest("ID"))).status).toBe(404);
+      expect((await mine.refreshJurisdiction(refreshRequest("US"))).status).toBe(403);
+      expect((await mine.refreshJurisdiction(new Request("https://optra.invalid/api/venue/callput/live-agent/jurisdiction", {
+        method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ grantId: grant.id }),
+      }))).status).toBe(409);
+      await recordLiveAgentJurisdictionEvidence(db, ownerId, grant.id, { country: "ID", source: "edge-header", policyRef: "old-policy-ref" }, NOW);
+      const stalePolicy = await mine.status(req("GET"));
+      expect(((await stalePolicy.json()).gateReport.gates as Array<{ id: string; pass: boolean }>).find((gate) => gate.id === "G5")?.pass).toBe(false);
     });
 
     it("reports the live CallPut account gates for the signed-in wallet and degrades to unavailable instead of failing the page", async () => {

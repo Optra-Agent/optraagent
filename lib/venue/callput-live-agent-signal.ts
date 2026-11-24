@@ -15,7 +15,7 @@
  * Only an `open` decision starts an order. close, hold and skip send nothing: automated closing needs a delegated close
  * capability that does not exist for this owner today, so positions are closed by the owner's wallet.
  */
-import { and, desc, eq, gte } from "drizzle-orm";
+import { and, desc, eq, gte, lte, or, sql } from "drizzle-orm";
 import type { PublicClient } from "viem";
 import { z } from "zod";
 import { agents, paperDecisions } from "../../db/schema";
@@ -66,12 +66,27 @@ export function createPaperDecisionSource(options: PaperDecisionSourceOptions): 
   return async (grant, now) => {
     if (!options.env.LIVE_MAPPING_APPROVAL_REF?.trim()) return null;
     const isUuid = z.uuid().safeParse(grant.agentId).success;
-    const [agent] = await options.db.select({ id: agents.id, templateId: agents.templateId, recipe: agents.recipe })
-      .from(agents).where(isUuid ? eq(agents.id, grant.agentId) : eq(agents.houseKey, grant.agentId)).limit(1);
-    if (!agent) return null;
+    const agentScope = isUuid
+      ? or(
+        and(eq(agents.id, grant.agentId), eq(agents.kind, "user"), eq(agents.ownerId, grant.ownerId)),
+        and(eq(agents.id, grant.agentId), eq(agents.kind, "house"), eq(agents.visibility, "public")),
+      )
+      : and(eq(agents.houseKey, grant.agentId), eq(agents.kind, "house"), eq(agents.visibility, "public"));
+    const agentRows = await options.db.select({ id: agents.id, templateId: agents.templateId, recipe: agents.recipe, recipeHash: agents.recipeHash, status: agents.status, launchedAt: agents.launchedAt })
+      .from(agents).where(agentScope).limit(2);
+    const agent = agentRows.length === 1 ? agentRows[0] : null;
+    if (!agent || agent.status !== "running" || !agent.launchedAt) return null;
     const since = new Date(now.getTime() - DECISION_MAX_AGE_MS);
     const [decision] = await options.db.select({ id: paperDecisions.id, action: paperDecisions.action })
-      .from(paperDecisions).where(and(eq(paperDecisions.agentId, agent.id), eq(paperDecisions.action, "open"), gte(paperDecisions.createdAt, since)))
+      .from(paperDecisions).where(and(
+        eq(paperDecisions.agentId, agent.id),
+        eq(paperDecisions.recipeHash, agent.recipeHash),
+        eq(paperDecisions.action, "open"),
+        gte(paperDecisions.createdAt, since),
+        gte(paperDecisions.createdAt, agent.launchedAt),
+        lte(paperDecisions.createdAt, now),
+        sql`not (${paperDecisions.hookResults} @> '[{"status":"error"}]'::jsonb)`,
+      ))
       .orderBy(desc(paperDecisions.createdAt)).limit(1);
     if (!decision) return null;
     const mapping = mapDecisionToStructure(agent.templateId, agent.recipe.underlyingSymbol, decision.action);

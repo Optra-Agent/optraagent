@@ -120,6 +120,15 @@ export async function runLiveAgentTick(input: LiveAgentTickInput): Promise<LiveA
     if (!auth.allowed || !auth.request) return { status: "blocked", detail: `Blocked by: ${auth.checks.filter((c) => !c.ok).map((c) => c.id).join(", ")}.`, checks: auth.checks };
     const request = auth.request;
 
+    // A stop or deployment switch may have changed while the plan was being prepared.
+    // Never begin submission after that durable control change.
+    const controlBeforeSubmit = await getLiveAgentControl(db, ownerId);
+    if (controlBeforeSubmit.stopped || env.LIVE_TRADING_ENABLED !== "true" || env.LIVE_AGENT_KILL_SWITCH === "true") {
+      await advanceLiveAgentRequest(db, ownerId, request.id, { state: "cancelled" }, now);
+      if (controlBeforeSubmit.stopped) return { status: "stopped", detail: controlBeforeSubmit.reason ?? "The agent was stopped before submission.", checks: auth.checks, requestId: request.id };
+      return { status: "disabled", detail: "The live execution switch changed before submission; the reservation was cancelled.", checks: auth.checks, requestId: request.id };
+    }
+
     // 5. Submission. Without a verified route the reservation is released immediately so it cannot wedge the agent.
     if (!input.submitter) {
       await advanceLiveAgentRequest(db, ownerId, request.id, { state: "cancelled" }, now);

@@ -22,7 +22,11 @@ async function readVenueDelegation() {
   return value;
 }
 
-const readAccountGates = (owner: string) => readCallPutAccountGates(createPublicClient({ chain: robinhoodMainnet, transport: http() }), owner as Address);
+const readAccountGates = (owner: string, tradingAddress?: string) => readCallPutAccountGates(
+  createPublicClient({ chain: robinhoodMainnet, transport: http() }),
+  owner as Address,
+  tradingAddress as Address | undefined,
+);
 
 export async function GET(request: Request): Promise<Response> {
   try {

@@ -9,11 +9,15 @@ import { LiveAgentJourney } from "./LiveAgentJourney";
 import { describeLiveRequest } from "@/lib/venue/callput-live-agent-request-text";
 import { explorerTxUrl } from "@/lib/chain/mainnet-contracts";
 import { accountBlockReason, describeAccountGates, type AccountGateFacts } from "@/lib/venue/callput-account-gates-text";
+import type { GateReport } from "@/lib/live/gates";
 
 type LiveAgentStatus = {
   liveTradingEnabled: boolean;
+  liveTradingSwitchOn: boolean;
+  killSwitchActive: boolean;
+  gateReport?: GateReport;
   submissionRoute: string;
-  control: { stopped: boolean; reason: string | null };
+  control: { stopped: boolean; reason: string | null; leasePresent?: boolean };
   accountGates?: ({ status: "ok" } & AccountGateFacts) | { status: "unavailable" } | { status: "not-configured" };
   venueDelegation?: { status: "ok"; fetchedAt: string; findings: Array<{ id: string; ok: boolean; detail: string }> } | { status: "unavailable" } | { status: "not-configured" };
   grants: Array<{ id: string; agentId: string; tradingAddress: string; route: string; status: "proposed" | "active" | "revoked"; expiresAt: string; missingEvidence: string[] }>;
@@ -28,6 +32,7 @@ export function LiveAgentControls() {
   const { status: session } = useAuthSession();
   const [data, setData] = useState<LiveAgentStatus | null>(null);
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState("");
 
   const [refreshCount, setRefreshCount] = useState(0);
@@ -50,11 +55,27 @@ export function LiveAgentControls() {
     return () => controller.abort();
   }, [session, refreshCount]);
 
-  async function post(path: string, label: string) {
+  async function post(path: string, label: string, body?: unknown) {
     setBusy(label);
+    setNotice("");
     try {
-      const response = await fetch(path, { method: "POST", credentials: "include", cache: "no-store" });
-      if (!response.ok) throw new Error(`${label} failed. Try again.`);
+      const response = await fetch(path, {
+        method: "POST",
+        credentials: "include",
+        cache: "no-store",
+        ...(body === undefined ? {} : { headers: { "content-type": "application/json" }, body: JSON.stringify(body) }),
+      });
+      const result = await response.json().catch(() => null) as { quiesced?: boolean; country?: string; expiresAt?: string; error?: { message?: string } } | null;
+      if (!response.ok) throw new Error(result?.error?.message || `${label} failed. Try again.`);
+      if (path.endsWith("/stop") || path.endsWith("/revoke")) {
+        setNotice(result?.quiesced === false
+          ? "Stop/revocation is recorded, but a worker lease remains. The in-flight outcome is unconfirmed; keep the scheduler disabled and reconcile any request."
+          : result?.quiesced === true
+            ? "Stop confirmed after the worker lease drained. Previously submitted CallPut requests can still execute; this stop does not cancel venue requests."
+            : "");
+      } else if (path.endsWith("/jurisdiction") && result?.country && result.expiresAt) {
+        setNotice(`Owner-bound ${result.country} location proof recorded until ${result.expiresAt}. It does not enable execution; all gates still apply.`);
+      }
       setRefreshCount((count) => count + 1);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : `${label} failed.`);
@@ -64,11 +85,34 @@ export function LiveAgentControls() {
   }
 
   const active = data?.grants.filter((grant) => grant.status === "active") ?? [];
+  const jurisdictionGrant = data?.grants.find((grant) => grant.status === "active")
+    ?? data?.grants.find((grant) => grant.status === "proposed");
+  const armed = Boolean(data?.liveTradingEnabled && !data.control.stopped && active.length > 0
+    && data.gateReport?.allPass === true && data.submissionRoute !== "not-configured");
+  const failedGateIds = data?.gateReport?.gates.filter((gate) => !gate.pass).map((gate) => gate.id) ?? [];
+  const gateSummary = !data?.gateReport ? "Unavailable" : data.gateReport.allPass ? "All seven pass" : `Blocked: ${failedGateIds.join(", ") || "unreported"}`;
+  const chipLabel = !data ? "Stopped" : data.control.stopped ? "Stopped" : data.killSwitchActive ? "Kill switch active" : !data.liveTradingEnabled ? "Switch off" : active.length === 0 ? "No active grant" : data.submissionRoute === "not-configured" ? "No submission route" : !data.gateReport ? "Gate report unavailable" : !data.gateReport.allPass ? "Gates blocked" : armed ? "Armed" : "Not armed";
+  const stateText = !data ? "Unknown"
+    : data.control.stopped
+      ? `Stopped${data.control.reason ? `: ${data.control.reason}` : ""}${data.control.leasePresent ? " · worker lease present; quiescence unconfirmed" : ""}`
+      : data.control.leasePresent
+        ? "Worker lease present · execution outcome not implied"
+        : !data.liveTradingEnabled
+          ? data.killSwitchActive && data.liveTradingSwitchOn ? "Paused by process kill switch" : "Execution switch off"
+          : data.submissionRoute === "not-configured"
+            ? "Not runnable · submission route not configured"
+            : active.length === 0
+              ? "Not runnable · no active grant"
+              : !data.gateReport
+                ? "Not runnable · current execution gate report unavailable"
+                : !data.gateReport.allPass
+                  ? `Not runnable · gates blocked: ${failedGateIds.join(", ") || "unreported"}`
+                  : "No worker lease · execution not confirmed";
   return (
     <Panel id="live-agent" aria-label="Live Agent controls" className="scroll-mt-20">
       <div className="panel-head">
         <div><p className="eyebrow">AUTOMATED CALLPUT AGENT</p><h2>Agent controls</h2></div>
-        <Chip tone={data && !data.control.stopped && active.length > 0 ? "ember" : "neutral"}>{data && !data.control.stopped && active.length > 0 ? "Armed" : "Stopped"}</Chip>
+        <Chip tone={armed ? "ember" : "neutral"}>{chipLabel}</Chip>
       </div>
       {session !== "signed_in" ? (
         <p className="panel-note">Connect a wallet to see and control your agent grants. The agent cannot place orders while it is stopped.</p>
@@ -77,17 +121,16 @@ export function LiveAgentControls() {
       ) : (
         <>
           <dl className="metric-row" aria-label="Live Agent state">
-            <div className="metric"><dt>Autonomous execution</dt><dd>{data.liveTradingEnabled ? "Enabled on this deployment" : "Off on this deployment"}</dd></div>
+            <div className="metric"><dt>Execution switch</dt><dd>{data.killSwitchActive ? data.liveTradingSwitchOn ? "On; blocked by process kill switch" : "Off; process kill switch active" : data.liveTradingEnabled ? "On on this deployment" : "Off on this deployment"}</dd></div>
+            <div className="metric"><dt>Activation gates</dt><dd>{gateSummary}</dd></div>
             <div className="metric"><dt>Submission route</dt><dd>{data.submissionRoute === "not-configured" ? "Not configured" : data.submissionRoute}</dd></div>
-            <div className="metric"><dt>State</dt><dd>{data.control.stopped ? `Stopped${data.control.reason ? `: ${data.control.reason}` : ""}` : "Running"}</dd></div>
+            <div className="metric"><dt>State</dt><dd>{stateText}</dd></div>
           </dl>
           <p className="panel-note">The autonomous execution engine is built and inactive: it can place an order only with an authorized session grant, all seven live gates passing and production acceptance. Until then every real order is approved by you in your own wallet, one transaction at a time (open, close and settle on this page).</p>
-          <LiveAgentJourney liveTradingEnabled={data.liveTradingEnabled} control={data.control} account={data.accountGates?.status === "ok" ? { address: data.accountGates.account, created: data.accountGates.accountCreated, registered: data.accountGates.accountRegistered } : null} accountUsable={data.accountGates?.status === "ok" ? data.accountGates.accountUsable : null} grants={data.grants} requests={data.requests} />
+          <LiveAgentJourney liveTradingEnabled={data.liveTradingEnabled} gateReport={data.gateReport} submissionRoute={data.submissionRoute} control={data.control} account={data.accountGates?.status === "ok" ? { address: data.accountGates.account, created: data.accountGates.accountCreated, registered: data.accountGates.accountRegistered } : null} accountUsable={data.accountGates?.status === "ok" ? data.accountGates.accountUsable : null} grants={data.grants} requests={data.requests} />
           {data.accountGates?.status === "ok" ? (
             <p className="panel-note" aria-label="CallPut account gates">
-              {accountBlockReason(data.accountGates) === null
-                ? "CallPut's account factory would let your Account open today."
-                : `CallPut's account factory would refuse an open today: ${accountBlockReason(data.accountGates)}. Read from the chain just now: ${describeAccountGates(data.accountGates)}.`}
+              {`Configured factory read: ${describeAccountGates(data.accountGates)}. ${accountBlockReason(data.accountGates) ?? "canOpen=true is not an OPTRA authorization."}`}
             </p>
           ) : null}
           {data.venueDelegation?.status === "ok" ? (
@@ -132,8 +175,16 @@ export function LiveAgentControls() {
           ) : null}
           <LiveAgentConfigure tradingAddress={data.accountGates?.status === "ok" ? data.accountGates.account : null} accountUsable={data.accountGates?.status === "ok" ? data.accountGates.accountUsable : null} onProposed={() => setRefreshCount((count) => count + 1)} />
           <div className="panel-actions">
-            <Button type="button" variant="outline" disabled={busy !== "" || data.control.stopped} onClick={() => void post("/api/venue/callput/live-agent/stop", "Emergency stop")}>Emergency stop</Button>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={busy !== "" || !jurisdictionGrant}
+              onClick={() => jurisdictionGrant && void post("/api/venue/callput/live-agent/jurisdiction", "Refresh jurisdiction", { grantId: jurisdictionGrant.id })}
+            >Refresh jurisdiction proof</Button>
+            <Button type="button" variant="outline" disabled={busy !== "" || (data.control.stopped && !data.control.leasePresent)} onClick={() => void post("/api/venue/callput/live-agent/stop", "Emergency stop")}>Emergency stop</Button>
           </div>
+          <p className="panel-note">Jurisdiction proof is owner-bound, expires after 15 minutes, and stores only country/source/time (not the IP). Refreshing it does not acknowledge financial risk or enable live execution.</p>
+          {notice ? <p role="status" className="panel-note">{notice}</p> : null}
           {error ? <p role="alert" className="form-error">{error}</p> : null}
         </>
       )}

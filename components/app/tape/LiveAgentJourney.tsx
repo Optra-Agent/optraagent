@@ -1,11 +1,15 @@
 import { CheckCircle2, CircleAlert, CircleDashed } from "lucide-react";
+import type { GateReport } from "@/lib/live/gates";
 
 export type JourneyInput = {
   liveTradingEnabled: boolean;
+  /** The authenticated report for the same scheduled-execution context used by the worker. */
+  gateReport?: GateReport | null;
+  submissionRoute: string;
   control: { stopped: boolean; reason?: string | null };
-  /** The owner's CallPut Account as the factory reports it right now, or null when it could not be read. */
+  /** The owner's Account status from the statically configured factory getters, or null when unavailable. */
   account?: { address: string; created: boolean; registered: boolean } | null;
-  /** `accountUsable` false means CallPut's factory would refuse an open for this owner's Account today. */
+  /** True only when the configured canOpen result and current venue enforcement are independently verified. */
   accountUsable: boolean | null;
   grants: Array<{ agentId: string; status: "proposed" | "active" | "revoked"; missingEvidence: string[] }>;
   requests: Array<{ state: string }>;
@@ -22,28 +26,38 @@ export function liveAgentJourney(input: JourneyInput): Step[] {
   const active = grants.filter((grant) => grant.status === "active");
   const pending = grants.find((grant) => grant.status === "proposed");
   const hasGrant = grants.length > 0;
-  const armed = active.length > 0 && input.liveTradingEnabled && !input.control.stopped;
+  const custodyGate = input.gateReport?.gates.find((gate) => gate.id === "G2") ?? null;
+  const armed = active.length > 0 && input.liveTradingEnabled && !input.control.stopped
+    && input.gateReport?.allPass === true && input.submissionRoute !== "not-configured";
 
   const account = input.account ?? null;
   const accountSentence = account === null
     ? "Your CallPut Account could not be read right now."
     : !account.created
-      ? `Your CallPut Account ${account.address} does not exist yet: creating and funding it is an owner action in CallPut's Account flow.`
+      ? `The configured factory reports Account ${account.address} is not created. Confirm CallPut's current create/fund/register workflow before any wallet action.`
       : !account.registered
-        ? `Your CallPut Account ${account.address} exists but is not registered with the factory; it registers when you fund it.`
-        : `Your CallPut Account ${account.address} is created and registered.`;
+        ? `The configured factory reports Account ${account.address} is not registered. Confirm CallPut's current registration workflow before any wallet action.`
+        : `The configured factory reports Account ${account.address} is created and registered.`;
 
   const authorize: Step = active.length > 0
-    ? { title: "Authorize scoped session", state: "done", detail: "A scoped grant is active with all evidence recorded." }
+    ? custodyGate?.pass === true
+      ? { title: "Authorize scoped session", state: "done", detail: "The current G2 report verifies the active scoped grant and its Account evidence." }
+      : { title: "Authorize scoped session", state: "blocked", detail: custodyGate
+        ? `${custodyGate.detail}${custodyGate.remediation ? ` ${custodyGate.remediation}` : ""}`
+        : "The authenticated G1–G7 execution report is unavailable; an active database grant alone is not verified authorization." }
     : input.accountUsable === false
-      ? { title: "Authorize scoped session", state: "blocked", detail: "CallPut's account factory would refuse an open for your Account today, so a session cannot be used yet." }
+      ? { title: "Authorize scoped session", state: "blocked", detail: "The configured Account getter does not establish OPTRA authorization: resolver match, contract source and per-open enforcement are not verified. Confirm the current state and required action with CallPut before signing." }
       : pending
         ? { title: "Authorize scoped session", state: "next", detail: `${pending.missingEvidence.length} evidence items are still missing. ${accountSentence} The session is signed by you in CallPut's Account flow; OPTRA never holds your wallet key.` }
         : { title: "Authorize scoped session", state: "waiting", detail: `Propose a grant first. ${accountSentence} Then you sign the scoped session yourself in CallPut's Account flow.` };
 
   const activate: Step = armed
-    ? { title: "Activate when eligible", state: "done", detail: "The operator switch is on, a grant is active and the agent is running." }
-    : { title: "Activate when eligible", state: "waiting", detail: input.liveTradingEnabled ? "The operator switch is on. The agent still needs an active grant and all seven live gates." : "The operator switch is off, and the agent also needs an active grant and all seven live gates. Your agents keep running on paper." };
+    ? { title: "Activate when eligible", state: "done", detail: "The current G1–G7 report passes, a scoped grant is active, the operator switch is on and a submission route is configured. This does not prove an order executed or filled." }
+    : { title: "Activate when eligible", state: "waiting", detail: input.liveTradingEnabled && active.length > 0 && !input.control.stopped
+      ? "An active grant and operator switch are not enough. A current all-pass G1–G7 report and configured submission route are still required."
+      : input.liveTradingEnabled
+        ? "The operator switch is on. The agent still needs an active grant, all seven live gates and a configured submission route."
+        : "The operator switch is off, and the agent also needs an active grant, all seven live gates and a configured submission route. Your agents keep running on paper." };
 
   return [
     hasGrant ? { title: "Choose agent", state: "done", detail: `Grant covers ${grants[0]!.agentId}.` } : { title: "Choose agent", state: "next", detail: "Pick the Paper agent in the form below." },

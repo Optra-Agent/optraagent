@@ -61,7 +61,7 @@ export function buildTradingCapabilityClaims(input: TradingCapabilityInput): Pub
     id: AUTONOMOUS_ENGINE_CLAIM,
     status: "preview",
     label: LIVE_ENGINE_STATUS,
-    statement: `Built and fork-tested (25 of 25 checks): strategy evaluation, decision-to-order mapping, risk guards, durable execution ledger, signer submitter, transaction reconciliation, emergency stop and gates G1–G7 enforced by the worker. Live activation is not granted: the operator switch is ${input.autonomousSwitchOn ? "on" : "off"}, no signer is provisioned, no owner grant is active, and ${checklist.verified} of ${checklist.total} venue checklist items are fully verified. No OPTRA agent places a real-money order.`,
+    statement: `Built and fork-tested (25 of 25 checks): strategy evaluation, decision-to-order mapping, risk guards, durable execution ledger, signer submitter, transaction reconciliation, emergency stop and gates G1–G7 enforced by the worker. Live activation is not granted: the operator switch is ${input.autonomousSwitchOn ? "on" : "off"}, no production signer is wired, owner-specific grant status is private and must be verified in the authenticated gate report, and ${checklist.verified} of ${checklist.total} venue checklist items are fully verified. No OPTRA agent places a real-money order.`,
     evidencePath: "/verify",
   };
 

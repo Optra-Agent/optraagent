@@ -24,7 +24,7 @@ describe("Live agent grant configuration", () => {
 
   it("shows the real launch path and that Authorize session is blocked by the factory", async () => {
     await open();
-    expect(screen.getByText(/Authorize session: blocked, CallPut's account factory would refuse an open for this Account today/)).toBeTruthy();
+    expect(screen.getByText(/Authorize session: blocked: the configured Account getter does not verify the resolver/)).toBeTruthy();
     expect(screen.getByText(/Launch, evaluate, execute: closed until all seven gates pass/)).toBeTruthy();
   });
 

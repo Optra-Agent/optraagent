@@ -9,7 +9,7 @@ import { LIVE_AGENT_HARD_CAPS } from "@/lib/venue/callput-live-agent-limits";
 
 type AgentChoice = { id: string; name: string; kind: "house" | "yours"; symbol: string | null };
 type Props = {
-  /** The address the CallPut factory would give this wallet's first Account, or null when it could not be read. */
+  /** The address computed by the statically configured factory for this wallet's first Account. */
   tradingAddress: string | null;
   accountUsable: boolean | null;
   onProposed: () => void;
@@ -123,7 +123,7 @@ export function LiveAgentConfigure({ tradingAddress, accountUsable, onProposed }
         <ol className="gate-evidence" aria-label="Launch path">
           <li>1. Connect wallet: done.</li>
           <li>2. Configure and validate: below, checked against the engine&apos;s hard caps.</li>
-          <li>3. Authorize session: {accountUsable === false ? "blocked, CallPut's account factory would refuse an open for this Account today (see the account gates note above)." : accountUsable === true ? "needs an on-chain session grant signed by you." : "account status not read."}</li>
+          <li>3. Authorize session: {accountUsable === false ? "blocked: the configured Account getter does not verify the resolver, source or per-open enforcement (see the account gates note above)." : accountUsable === true ? "the configured account enforcement is verified, but this is not an OPTRA permission; CallPut confirmation and an on-chain session grant signed by you are still needed." : "account status not read."}</li>
           <li>4. Launch, evaluate, execute: closed until all seven gates pass and a grant is active.</li>
         </ol>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">

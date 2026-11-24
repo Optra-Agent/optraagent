@@ -10,6 +10,7 @@
  */
 export type GeoSource = "edge-header" | "ip-lookup";
 export type GeoResult = { country: string | null; source: GeoSource | null };
+export const OWNER_JURISDICTION_PROOF_TTL_MS = 15 * 60_000;
 
 const CODE = /^[A-Z]{2}$/;
 const cache = new Map<string, { country: string | null; at: number }>();

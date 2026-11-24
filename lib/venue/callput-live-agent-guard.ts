@@ -97,6 +97,13 @@ export function evaluateLiveAgentOrder(policy: LiveAgentPolicy, plan: CallPutOpe
 }
 
 export type AutonomyBlocker = { id: string; detail: string };
+export type OwnerJurisdictionEvidence = {
+  country: string;
+  source: "edge-header" | "ip-lookup";
+  observedAt: string;
+  expiresAt: string;
+  policyRef: string;
+};
 export type AutonomyEvidence = {
   /** Written CallPut confirmation of the delegation/session-key permission terms. */
   venueDelegationConfirmedRef: string | null;
@@ -108,6 +115,8 @@ export type AutonomyEvidence = {
   ownerApprovalRef: string | null;
   /** Revocation procedure was rehearsed. */
   revocationTested: boolean;
+  /** Fresh owner-request location evidence; not a risk acknowledgement or cron-caller location. */
+  jurisdictionProof?: OwnerJurisdictionEvidence | null;
 };
 
 /** Autonomous submission stays blocked until every item is evidenced. Nothing here can be satisfied by code alone. */

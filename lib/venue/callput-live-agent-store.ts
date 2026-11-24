@@ -1,7 +1,8 @@
 /**
  * Durable state for the CallPut Live Agent: owner grants, emergency stop, single-flight lease and the request ledger.
  *
- * This module never signs, broadcasts, holds keys or calls the venue, and no API route or scheduler imports it yet.
+ * This module never signs, broadcasts, holds keys or calls the venue. The authenticated owner controls and scheduled
+ * worker use it only for durable policy, lease and reconciliation state; production does not wire a signer.
  * Autonomous submission stays disabled: `authorizeLiveAgentOrder` fails closed unless `LIVE_TRADING_ENABLED=true`, the
  * grant is active with every autonomy evidence reference recorded, the durable stop is cleared, the caller holds the
  * lease, no tracked request is stale or unknown, and the pure policy in `callput-live-agent-guard` passes.
@@ -19,11 +20,13 @@ import {
   liveAgentIdempotencyKey,
   type AutonomyBlocker,
   type AutonomyEvidence,
+  type OwnerJurisdictionEvidence,
   type LiveAgentPolicy,
   type LiveAgentState,
 } from "./callput-live-agent-guard";
 
 import { LIVE_AGENT_HARD_CAPS } from "./callput-live-agent-limits";
+import { OWNER_JURISDICTION_PROOF_TTL_MS } from "../live/geo";
 export { LIVE_AGENT_HARD_CAPS };
 
 export const LIVE_AGENT_REQUEST_STATES = ["reserved", "submitted", "pending", "executed", "cancelled", "stale", "unknown", "closed"] as const;
@@ -44,6 +47,11 @@ const AddressSchema = z.string().regex(/^0x[\da-fA-F]{40}$/);
 const RawSchema = z.string().regex(/^\d{1,78}$/);
 const Bytes32Schema = z.string().regex(/^0x[\da-fA-F]{64}$/);
 const RefSchema = z.string().trim().min(3).max(300);
+const JurisdictionProofInputSchema = z.object({
+  country: z.string().regex(/^[A-Z]{2}$/),
+  source: z.enum(["edge-header", "ip-lookup"]),
+  policyRef: RefSchema,
+}).strict();
 
 const StoredPolicySchema = z.object({
   allowedUnderlyings: z.array(z.enum(Object.keys(CALLPUT_ROBINHOOD_UNDERLYINGS) as [string, ...string[]])).min(1).max(8),
@@ -74,6 +82,20 @@ const EvidenceSchema = z.object({
   auditRef: RefSchema.nullable().optional(),
   ownerApprovalRef: RefSchema.nullable().optional(),
   revocationTested: z.boolean().optional(),
+}).strict();
+const IsoTimestampSchema = z.string().refine((value) => {
+  const timestamp = new Date(value);
+  return Number.isFinite(timestamp.getTime()) && timestamp.toISOString() === value;
+});
+const JurisdictionProofSchema = z.object({
+  country: z.string().regex(/^[A-Z]{2}$/),
+  source: z.enum(["edge-header", "ip-lookup"]),
+  observedAt: IsoTimestampSchema,
+  expiresAt: IsoTimestampSchema,
+  policyRef: RefSchema,
+}).strict();
+const StoredEvidenceSchema = EvidenceSchema.extend({
+  jurisdictionProof: JurisdictionProofSchema.nullable().optional(),
 }).strict();
 
 const ProposeSchema = z.object({
@@ -115,12 +137,12 @@ type GrantRow = typeof liveAgentGrants.$inferSelect;
 type RequestRow = typeof liveAgentRequests.$inferSelect;
 
 function emptyEvidence(): AutonomyEvidence {
-  return { venueDelegationConfirmedRef: null, onchainGrantRef: null, auditRef: null, ownerApprovalRef: null, revocationTested: false };
+  return { venueDelegationConfirmedRef: null, onchainGrantRef: null, auditRef: null, ownerApprovalRef: null, revocationTested: false, jurisdictionProof: null };
 }
 
 function toGrant(row: GrantRow): LiveAgentGrantRecord {
   const stored = row.policy as StoredLiveAgentPolicy & { ownerAddress?: string };
-  const evidence = { ...emptyEvidence(), ...(row.evidence as Partial<AutonomyEvidence>) };
+  const evidence = { ...emptyEvidence(), ...StoredEvidenceSchema.parse(row.evidence ?? {}) };
   return {
     id: row.id,
     ownerId: row.ownerId,
@@ -263,6 +285,28 @@ export async function recordLiveAgentEvidence(db: AppDatabase, ownerId: string, 
   return updated ? toGrant(updated) : null;
 }
 
+/** Stores only server-resolved country/source evidence, scoped to the authenticated owner's unrevoked, unexpired grant. */
+export async function recordLiveAgentJurisdictionEvidence(
+  db: AppDatabase,
+  ownerId: string,
+  grantId: string,
+  input: z.input<typeof JurisdictionProofInputSchema>,
+  now: Date,
+): Promise<LiveAgentGrantRecord | null> {
+  const value = JurisdictionProofInputSchema.parse(input);
+  const row = await ownedGrant(db, ownerId, grantId);
+  if (!row || row.status === "revoked" || row.expiresAt.getTime() <= now.getTime()) return null;
+  const proof: OwnerJurisdictionEvidence = {
+    ...value,
+    observedAt: now.toISOString(),
+    expiresAt: new Date(now.getTime() + OWNER_JURISDICTION_PROOF_TTL_MS).toISOString(),
+  };
+  const merged = { ...emptyEvidence(), ...(row.evidence as Partial<AutonomyEvidence>), jurisdictionProof: proof };
+  const [updated] = await db.update(liveAgentGrants).set({ evidence: merged, updatedAt: now })
+    .where(and(eq(liveAgentGrants.id, grantId), eq(liveAgentGrants.ownerId, ownerId), ne(liveAgentGrants.status, "revoked"))).returning();
+  return updated ? toGrant(updated) : null;
+}
+
 export type ActivateResult = { activated: boolean; blockers: AutonomyBlocker[]; grant: LiveAgentGrantRecord | null };
 
 export async function activateLiveAgentGrant(db: AppDatabase, ownerId: string, grantId: string, now: Date): Promise<ActivateResult> {
@@ -310,6 +354,24 @@ export async function acquireLiveAgentLease(db: AppDatabase, ownerId: string, ho
 export async function releaseLiveAgentLease(db: AppDatabase, ownerId: string, holder: string): Promise<boolean> {
   const rows = await db.delete(liveAgentLeases).where(and(eq(liveAgentLeases.ownerId, ownerId), eq(liveAgentLeases.holder, holder))).returning({ ownerId: liveAgentLeases.ownerId });
   return rows.length === 1;
+}
+
+export async function liveAgentLeasePresent(db: AppDatabase, ownerId: string, now = new Date()): Promise<boolean> {
+  const [row] = await db.select({ holder: liveAgentLeases.holder }).from(liveAgentLeases)
+    .where(and(eq(liveAgentLeases.ownerId, ownerId), gt(liveAgentLeases.expiresAt, now))).limit(1);
+  return Boolean(row);
+}
+
+/** A stop is not confirmed until the current worker has released its durable single-flight lease. */
+export async function waitForLiveAgentLeaseRelease(db: AppDatabase, ownerId: string, timeoutMs = 3_000, clock: () => Date = () => new Date()): Promise<boolean> {
+  if (!Number.isInteger(timeoutMs) || timeoutMs < 0 || timeoutMs > 60_000) throw new Error("Invalid stop drain timeout.");
+  const deadline = Date.now() + timeoutMs;
+  while (true) {
+    if (!(await liveAgentLeasePresent(db, ownerId, clock()))) return true;
+    const remaining = deadline - Date.now();
+    if (remaining <= 0) return false;
+    await new Promise<void>((resolve) => setTimeout(resolve, Math.min(50, remaining)));
+  }
 }
 
 async function holdsLease(db: AppDatabase, ownerId: string, holder: string, now: Date): Promise<boolean> {

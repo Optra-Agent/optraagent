@@ -68,7 +68,7 @@ export function CallPutWalletReadiness() {
     `Chain: ${chainId ?? "unknown"} (required ${CALLPUT_ROBINHOOD_CHAIN_ID})`,
     ...checks.map((check) => `${check.ok ? "OK" : "NO"} ${check.id}: ${check.detail}`),
     `US session: ${session.label}`,
-    account ? `CallPut Account route: ${describeAccountGates(account)}${reason ? `; would refuse: ${reason}` : ""}` : "CallPut Account route: not read",
+    account ? `CallPut Account route: ${describeAccountGates(account)}; ${reason ?? "canOpen=true is not an OPTRA authorization."}` : "CallPut Account route: not read",
   ].join("\n");
 
   return (
@@ -85,7 +85,7 @@ export function CallPutWalletReadiness() {
       <p className="panel-note">{session.label}</p>
       <div className="gate-evidence">
         <p><strong>Direct wallet (used by the order panel below):</strong> your wallet is the account. No CallPut Account is involved.</p>
-        <p><strong>CallPut Account route (separate, for delegated or automated trading):</strong> {account ? (reason === null ? "this wallet's Account can open today." : `this wallet's Account would be refused today: ${reason}.`) : "not read."}{account ? ` Account address for THIS wallet: ${account.account}.` : ""}</p>
+        <p><strong>CallPut Account route (separate, for delegated or automated trading):</strong> {account ? `${describeAccountGates(account)}. ${reason ?? "This getter result is not an OPTRA authorization."}` : "not read."}{account ? ` Account address for THIS wallet: ${account.account}.` : ""}</p>
       </div>
       {error ? <p role="alert" className="form-error">{error}</p> : null}
       <div className="ack-actions">
