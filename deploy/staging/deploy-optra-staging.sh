@@ -6,7 +6,7 @@ readonly PROJECT="optra-staging"
 readonly STAGING_ROOT="/srv/platform/applications/staging/optra-paper"
 readonly STATE_ROOT="/var/lib/optra-staging"
 readonly BACKUP_ROOT="/srv/platform/backups/optra-staging"
-readonly IMAGE_RE='^ghcr\.io/Optra-Agent/optraagent:sha-[0-9a-f]{40}$'
+readonly IMAGE_RE='^ghcr\.io/optra-agent/optraagent:sha-[0-9a-f]{40}$'
 
 usage() {
   cat >&2 <<'USAGE'
