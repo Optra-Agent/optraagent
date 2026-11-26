@@ -143,6 +143,12 @@ test("Markets ranks verified completed backtests ahead of uncovered markets", as
   await historyLink.click();
   await expect(page).toHaveURL(/\/agents#house-backtests$/, { timeout: 45_000 });
   await expect(page.getByRole("region", { name: "Historical House Agent backtests" })).toBeVisible({ timeout: 45_000 });
+  const historyHeading = page.getByRole("heading", { name: "Historical House Agent backtests", exact: true });
+  await expect(historyHeading).toBeVisible({ timeout: 45_000 });
+  await expect.poll(() => historyHeading.evaluate((element) => {
+    const top = element.getBoundingClientRect().top;
+    return top >= 0 && top < window.innerHeight;
+  }), { timeout: 45_000 }).toBe(true);
 });
 
 test("Markets preserves feed order instead of implying an alphabetical ranking when backtests are unavailable", async ({ page }) => {

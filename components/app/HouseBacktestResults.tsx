@@ -66,8 +66,8 @@ export function HouseBacktestResults() {
 
   const runs = [...state.response.runs].sort((left, right) => left.symbol.localeCompare(right.symbol) || left.agentLabel.localeCompare(right.agentLabel));
   return (
-    <Panel id="house-backtests" className="house-backtests" aria-label="Historical House Agent backtests">
-      <div className="panel-head">
+    <Panel className="house-backtests" aria-label="Historical House Agent backtests">
+      <div id="house-backtests" className="panel-head">
         <div><p className="eyebrow">VERIFIED HISTORICAL REPLAY</p><h2>Historical House Agent backtests</h2></div>
         <Chip tone="azure">{runs.length} runs</Chip>
       </div>

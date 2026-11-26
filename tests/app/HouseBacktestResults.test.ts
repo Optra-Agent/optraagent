@@ -74,7 +74,7 @@ describe("HouseBacktestResults", () => {
     render(createElement(HouseBacktestResults));
 
     const region = await screen.findByRole("region", { name: "Historical House Agent backtests" });
-    expect(region.id).toBe("house-backtests");
+    expect(document.getElementById("house-backtests")).toBe(region.querySelector(".panel-head"));
     const negative = within(region).getByRole("row", { name: /Covered Call.*AMD/ });
     expect(negative.textContent).toMatch(/-25\.90%|−25\.90%/);
     expect(negative.textContent).toMatch(/32\.96%/);

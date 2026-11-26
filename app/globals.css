@@ -319,6 +319,7 @@ a.template-cta:hover svg { transform: translateX(3px); }
 .position-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
 .position-foot { margin: 12px 0 0; color: var(--dim); font-size: 12px; }
 
+#house-backtests { scroll-margin-top: 80px; }
 .table-scroll { overflow-x: auto; }
 .data-table { width: 100%; border-collapse: collapse; font-size: 13px; }
 .data-table th, .data-table td { padding: 10px 14px 10px 0; border-bottom: 1px solid var(--line-soft); text-align: left; vertical-align: top; white-space: nowrap; }
