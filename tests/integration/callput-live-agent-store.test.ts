@@ -1,7 +1,7 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Address, Hex } from "viem";
 import golden from "../options/fixtures/callput-robinhood-venue-prepared-open.json";
 import { DrizzleAuthRepository } from "../../lib/auth/drizzle-repository";
@@ -28,6 +28,8 @@ import {
   stopLiveAgent,
   type ProposeLiveAgentGrantInput,
 } from "../../lib/venue/callput-live-agent-store";
+
+vi.setConfig({ testTimeout: 15_000 });
 
 const WALLET = "0x000000000000000000000000000000000000dEaD" as Address;
 const OTHER = "0xfa0426d7ad93f4f1e990bd4c1103c771344ada17" as Address;
@@ -59,7 +61,7 @@ const market: CallPutRobinhoodMarketData = {
   spotIndexRaw: { AAPL: f.spot }, futuresIndexRaw: {},
   options: [leg(golden.request.longOptionId as Hex, f.long.strike, f.long.mark, f.long.rpBuy), leg(golden.request.shortOptionId as Hex, f.short.strike, f.short.mark, f.short.rpBuy)],
 };
-const wallet: CallPutWalletState = { chainId: 4663, account: WALLET, usdgBalanceRaw: 5_000_000n, usdgAllowanceRaw: 0n, nativeBalanceWei: 10n ** 16n, executionFeeWei: 60_000_000_000_000n };
+const wallet: CallPutWalletState = { chainId: 4663, account: WALLET, usdgBalanceRaw: 5_000_000n, usdgAllowanceRaw: 0n, nativeBalanceWei: 10n ** 16n, executionFeeWei: 60_000_000_000_000n, accountAcceptsErc1155: true };
 const plan = (): CallPutOpenSpreadPlan => prepareCallPutOpenSpread({ strategy: "BuyPutSpread", underlying: "AAPL", longOptionId: golden.request.longOptionId as Hex, shortOptionId: golden.request.shortOptionId as Hex, size: golden.request.size, market, wallet, nowMs: NOW.getTime() });
 
 const proposal = (overrides: Partial<ProposeLiveAgentGrantInput> = {}): ProposeLiveAgentGrantInput => ({

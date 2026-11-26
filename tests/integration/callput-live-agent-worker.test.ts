@@ -58,7 +58,7 @@ const market: CallPutRobinhoodMarketData = {
   spotIndexRaw: { AAPL: f.spot }, futuresIndexRaw: {},
   options: [leg(golden.request.longOptionId as Hex, f.long.strike, f.long.mark, f.long.rpBuy), leg(golden.request.shortOptionId as Hex, f.short.strike, f.short.mark, f.short.rpBuy)],
 };
-const wallet: CallPutWalletState = { chainId: 4663, account: WALLET, usdgBalanceRaw: 5_000_000n, usdgAllowanceRaw: 0n, nativeBalanceWei: 10n ** 16n, executionFeeWei: 60_000_000_000_000n };
+const wallet: CallPutWalletState = { chainId: 4663, account: WALLET, usdgBalanceRaw: 5_000_000n, usdgAllowanceRaw: 0n, nativeBalanceWei: 10n ** 16n, executionFeeWei: 60_000_000_000_000n, accountAcceptsErc1155: true };
 const plan = (): CallPutOpenSpreadPlan => prepareCallPutOpenSpread({ strategy: "BuyPutSpread", underlying: "AAPL", longOptionId: golden.request.longOptionId as Hex, shortOptionId: golden.request.shortOptionId as Hex, size: golden.request.size, market, wallet, nowMs: NOW.getTime() });
 
 const proposal = (overrides: Partial<ProposeLiveAgentGrantInput> = {}): ProposeLiveAgentGrantInput => ({
