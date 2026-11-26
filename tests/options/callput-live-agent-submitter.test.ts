@@ -29,7 +29,7 @@ const market = (extra: CallPutRobinhoodOptionMark[] = []): CallPutRobinhoodMarke
   spotIndexRaw: { AAPL: f.spot }, futuresIndexRaw: {},
   options: [leg("put", golden.request.longOptionId as Hex, f.long.strike, f.long.mark, f.long.rpBuy), leg("put", golden.request.shortOptionId as Hex, f.short.strike, f.short.mark, f.short.rpBuy), ...extra],
 });
-const wallet = (allowance = 0n): CallPutWalletState => ({ chainId: 4663, account: WALLET, usdgBalanceRaw: 5_000_000n, usdgAllowanceRaw: allowance, nativeBalanceWei: 10n ** 16n, executionFeeWei: 60_000_000_000_000n });
+const wallet = (allowance = 0n): CallPutWalletState => ({ chainId: 4663, account: WALLET, usdgBalanceRaw: 5_000_000n, usdgAllowanceRaw: allowance, nativeBalanceWei: 10n ** 16n, executionFeeWei: 60_000_000_000_000n, accountAcceptsErc1155: true });
 const plan = (allowance = 0n) =>
   prepareCallPutOpenSpread({ strategy: "BuyPutSpread", underlying: "AAPL", longOptionId: golden.request.longOptionId as Hex, shortOptionId: golden.request.shortOptionId as Hex, size: "0.1", market: market(), wallet: wallet(allowance), nowMs: NOW_MS });
 

@@ -14,6 +14,7 @@ import { Chip, Panel } from "../ui";
 import { errorText } from "../format";
 import { Button } from "@/components/ui/button";
 import { ShieldCheck } from "lucide-react";
+import { prioritizeMarkets } from "../../../lib/market/market-priority";
 
 function responseError(body: unknown, fallback: string): string {
   const parsed = ApiErrorSchema.safeParse(body);
@@ -59,7 +60,7 @@ export function HouseAgentCreator({ templateId = "protective_put" }: { templateI
         return MarketListSchema.parse(body);
       })
       .then(({ markets }) => {
-        const nextSymbols = markets.map((market) => market.symbol);
+        const nextSymbols = prioritizeMarkets(markets).map((market) => market.symbol);
         setSymbols(nextSymbols);
         setMarketsLoading(false);
         if (nextSymbols.length) {

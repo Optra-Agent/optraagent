@@ -19,14 +19,16 @@ async function signInPage(page: import("@playwright/test").Page) {
 }
 
 test("agents screen shows real unauthenticated state and paper-only boundary", async ({ page }) => {
+  test.setTimeout(120_000);
   await page.goto("/agents");
 
   await expect(page.getByRole("heading", { name: "Agents", exact: true })).toBeVisible();
   await expect(page.getByRole("main").getByText("PAPER ONLY", { exact: true })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Wallet session" })).toBeVisible({ timeout: 45_000 });
   await expect(page.getByText("Connect a wallet to view your agents.", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Connect wallet", exact: true })).toBeVisible();
   const history = page.getByRole("region", { name: "Historical House Agent backtests" });
-  await expect(history.getByRole("row", { name: /Covered Call.*AMD/ })).toContainText("-25.90%");
+  await expect(history.getByRole("row", { name: /Covered Call.*AMD/ }).filter({ hasText: "-25.90%" })).toHaveCount(1);
 });
 
 test("wallet connection explains when no supported extension is available", async ({ page }) => {

@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { MarketCandleSchema, MarketHistoryCoverageSchema } from "../domain/contracts";
 import type { MarketCandle, MarketHistoryCoverage } from "../domain/contracts";
-import { createCriusClient, type CriusClient } from "./crius-client";
+import { createCriusClient, criusFailureMessage, type CriusClient } from "./crius-client";
 import { createRobinhoodMarketFeed } from "./robinhood-feed";
 
 const DEFAULT_CRIUS_BASE_URL = "https://api.crius.sh/v1/robinhood/token";
@@ -34,6 +34,7 @@ export type MarketHistoryResult = {
   candles: MarketCandle[];
   coverage: MarketHistoryCoverage;
   corporateActionDates: string[];
+  providerError?: string;
 };
 
 export class MarketHistoryError extends Error {
@@ -78,7 +79,7 @@ function readArrays(input: unknown): CriusResponse | null {
   if (!root.data || typeof root.data !== "object") return null;
   const data = root.data as Record<string, unknown>;
   const arrays = [data.t, data.o, data.h, data.l, data.c, data.n, data.v];
-  if (!arrays.every(Array.isArray) || arrays.some((array) => (array as unknown[]).length === 0)) return null;
+  if (!arrays.every(Array.isArray)) return null;
   const count = (data.t as unknown[]).length;
   if (arrays.some((array) => (array as unknown[]).length !== count)) return null;
   if (data.interval !== "1h" || String(data.currency).toLowerCase() !== "usd") return null;
@@ -125,17 +126,18 @@ function calculateCoverage(input: {
   candles: MarketCandle[];
   requiredCandles: number;
   multiplierStatus: MarketHistoryCoverage["multiplierStatus"];
+  reason?: string;
 }): MarketHistoryCoverage {
   const consecutiveHours = countConsecutive(input.candles);
   const dataIsUsable = input.multiplierStatus === "stable_verified" && input.tokenAddress !== null;
   const ready = dataIsUsable && consecutiveHours >= input.requiredCandles;
-  const reason = ready
+  const reason = input.reason ?? (ready
     ? `${consecutiveHours} consecutive, nonempty, closed Crius hourly candles are available with no in-window corporate action.`
     : input.multiplierStatus === "action_in_window"
       ? "A Robinhood corporate action falls inside the candle window; historical share normalization cannot be verified."
       : input.multiplierStatus === "unverified"
         ? "The token multiplier or corporate-action history could not be verified for this candle window."
-        : `Only ${consecutiveHours} consecutive nonempty hourly candles are available; ${input.requiredCandles} are required.`;
+        : `Only ${consecutiveHours} consecutive nonempty hourly candles are available; ${input.requiredCandles} are required.`);
   return MarketHistoryCoverageSchema.parse({
     symbol: input.symbol,
     source: "crius_robinhood_chain_candles",
@@ -163,8 +165,12 @@ export function createCriusHistoryFeed(options: CriusHistoryOptions = {}) {
   const timeoutMs = options.requestTimeoutMs ?? 8000;
   const listMarkets = options.listMarkets ?? (() => createRobinhoodMarketFeed({ fetcher, now, baseUrl: robinhoodBaseUrl }).listMarkets());
   const client = options.client ?? createCriusClient({ fetcher, now, timeoutMs, ...(options.apiKey ? { apiKey: options.apiKey } : {}) });
-  // Overlapping callers (Lab, scheduler, backtest) share one provider request per symbol; nothing is kept after it settles.
+  // Overlapping callers share candle requests; corporate-action provenance is cached briefly across symbols.
   const inflight = new Map<string, Promise<MarketHistoryResult>>();
+  const corporateActionsUrl = `${robinhoodBaseUrl}/rhj/corporate-actions`;
+  const corporateActionsCacheMs = 5 * 60_000;
+  let corporateActionsCache: { payload: unknown; expiresAt: number } | null = null;
+  let corporateActionsPending: Promise<unknown | null> | null = null;
 
   async function getJson(url: string): Promise<unknown | null> {
     try {
@@ -177,6 +183,24 @@ export function createCriusHistoryFeed(options: CriusHistoryOptions = {}) {
       return response.ok ? await response.json() as unknown : null;
     } catch {
       return null;
+    }
+  }
+
+  async function getCorporateActions(): Promise<unknown | null> {
+    const cached = corporateActionsCache;
+    if (cached && cached.expiresAt > now().getTime()) return cached.payload;
+    if (corporateActionsPending) return corporateActionsPending;
+    const pending = getJson(corporateActionsUrl).then((payload) => {
+      if (payload !== null && CorporateActionResponseSchema.safeParse(payload).success) {
+        corporateActionsCache = { payload, expiresAt: now().getTime() + corporateActionsCacheMs };
+      }
+      return payload;
+    });
+    corporateActionsPending = pending;
+    try {
+      return await pending;
+    } finally {
+      if (corporateActionsPending === pending) corporateActionsPending = null;
     }
   }
 
@@ -207,14 +231,37 @@ export function createCriusHistoryFeed(options: CriusHistoryOptions = {}) {
       candleUrl.searchParams.set("fill", "false");
       candleUrl.searchParams.set("continuous", "false");
       candleUrl.searchParams.set("currency", "usd");
-      const [rawCandles, rawActions] = await Promise.all([
-        client.getJson(candleUrl.toString()).catch(() => null),
-        getJson(`${robinhoodBaseUrl}/rhj/corporate-actions`),
+      const [candleResult, rawActions] = await Promise.all([
+        client.getJson(candleUrl.toString()).then(
+          (payload) => ({ payload, error: null as unknown }),
+          (error: unknown) => ({ payload: null, error }),
+        ),
+        getCorporateActions(),
       ]);
+      if (candleResult.error) {
+        const providerError = criusFailureMessage(candleResult.error);
+        return {
+          candles: [],
+          corporateActionDates: [],
+          coverage: calculateCoverage({ symbol, tokenAddress: market.tokenAddress, requestedCandles, candles: [], requiredCandles, multiplierStatus: "unverified", reason: providerError }),
+          providerError,
+        };
+      }
+      const rawCandles = candleResult.payload;
       const response = readArrays(rawCandles);
       const actionResponse = CorporateActionResponseSchema.safeParse(rawActions);
       if (!response || !actionResponse.success) {
-        return { candles: [], corporateActionDates: [], coverage: calculateCoverage({ symbol, tokenAddress: market.tokenAddress, requestedCandles, candles: [], requiredCandles, multiplierStatus: "unverified" }) };
+        const providerError = !response
+          ? "Crius candle history returned an invalid response."
+          : rawActions === null
+            ? "Robinhood corporate-action history is temporarily unavailable."
+            : "Robinhood corporate-action history returned an invalid response.";
+        return {
+          candles: [],
+          corporateActionDates: [],
+          coverage: calculateCoverage({ symbol, tokenAddress: market.tokenAddress, requestedCandles, candles: [], requiredCandles, multiplierStatus: "unverified", reason: providerError }),
+          providerError,
+        };
       }
 
       const multiplier = safeJsonNumber(market.currentMultiplier);

@@ -500,13 +500,6 @@ export const PublicHouseBacktestRunSchema = z.object({
   createdAt: IsoDateTimeSchema,
 }).strict();
 
-export const PublicHouseBacktestCampaignResponseSchema = z.object({
-  campaignId: z.string().min(1),
-  asOf: IsoDateTimeSchema,
-  status: z.enum(["pending", "complete"]),
-  runs: z.array(PublicHouseBacktestRunSchema),
-}).strict();
-
 export const BacktestCoverageSchema = z.object({
   symbol: z.string().regex(/^[A-Z0-9.]{1,16}$/),
   availableSamples: z.number().int().nonnegative(),
@@ -520,6 +513,46 @@ export const BacktestCoverageSchema = z.object({
   multiplierStatus: z.enum(["stable_verified", "action_in_window", "unverified"]).optional(),
   fillApplied: z.boolean().optional(),
   reason: z.string().min(1),
+}).strict();
+
+export const HouseCampaignMarketStatusSchema = z.enum([
+  "qualified", "insufficient_data", "corporate_action", "unverified", "provider_error",
+]);
+export const HouseCampaignStrategyStatusSchema = z.enum([
+  "complete", "no_entry", "insufficient_data", "incompatible", "error",
+]);
+export const HouseCampaignStrategyOutcomeSchema = z.object({
+  status: HouseCampaignStrategyStatusSchema,
+  runId: z.string().min(1).nullable(),
+  campaignId: z.string().min(1).nullable(),
+  reason: z.string().min(1),
+}).strict();
+export const HouseCampaignMarketCoverageSchema = z.object({
+  symbol: z.string().regex(/^[A-Z0-9.]{1,16}$/),
+  name: z.string().min(1),
+  registryTokenAddress: EvmAddressSchema.nullable(),
+  currentMultiplier: DecimalStringSchema,
+  status: HouseCampaignMarketStatusSchema,
+  coverage: BacktestCoverageSchema,
+  historyDataHash: z.string().regex(/^sha256:[a-f0-9]{64}$/).nullable(),
+  candleSnapshotHash: z.string().regex(/^sha256:[a-f0-9]{64}$/).nullable(),
+  corporateActionCount: z.number().int().nonnegative(),
+  corporateActionDatesHash: z.string().regex(/^sha256:[a-f0-9]{64}$/).nullable(),
+  reason: z.string().min(1),
+  strategies: z.object({
+    protective_put: HouseCampaignStrategyOutcomeSchema,
+    covered_call: HouseCampaignStrategyOutcomeSchema,
+    cash_secured_put: HouseCampaignStrategyOutcomeSchema,
+    earnings_straddle: HouseCampaignStrategyOutcomeSchema,
+  }).strict(),
+}).strict();
+
+export const PublicHouseBacktestCampaignResponseSchema = z.object({
+  campaignId: z.string().min(1),
+  asOf: IsoDateTimeSchema,
+  status: z.enum(["pending", "complete"]),
+  runs: z.array(PublicHouseBacktestRunSchema),
+  marketCoverage: z.array(HouseCampaignMarketCoverageSchema).default([]),
 }).strict();
 
 export const MarketHistoryCollectionSchema = z.object({
@@ -568,6 +601,8 @@ export type BacktestRun = z.infer<typeof BacktestRunSchema>;
 export type BacktestMetrics = z.infer<typeof BacktestMetricsSchema>;
 export type PublicHouseBacktestRun = z.infer<typeof PublicHouseBacktestRunSchema>;
 export type PublicHouseBacktestCampaignResponse = z.infer<typeof PublicHouseBacktestCampaignResponseSchema>;
+export type HouseCampaignMarketCoverage = z.infer<typeof HouseCampaignMarketCoverageSchema>;
+export type HouseCampaignStrategyOutcome = z.infer<typeof HouseCampaignStrategyOutcomeSchema>;
 export type BacktestBenchmarks = z.infer<typeof BacktestBenchmarksSchema>;
 export type BacktestCoverage = z.infer<typeof BacktestCoverageSchema>;
 export type MarketHistoryCollection = z.infer<typeof MarketHistoryCollectionSchema>;

@@ -6,12 +6,13 @@
  *
  * What it proves from live chain data: both legs are listed and available in the feed, the venue Controller itself
  * validates the exact spread structure (validateOpenPosition, an eth_call), the quote and exposure, the signer's
- * USDG, ETH and allowance, and that the signer is an account the keeper can deliver ERC-1155 option tokens to.
+ * USDG, ETH and allowance. Plain EOAs have no receiver code; contract-wallet compatibility is fail-closed unless
+ * the deployed CallPut token callback behavior has been verified.
  */
 import { createPublicClient, decodeFunctionData, encodeFunctionData, formatEther, getAddress, http, parseAbi, type Address } from "viem";
 import { robinhoodMainnet } from "../lib/chain/robinhood";
 import { CALLPUT_ROBINHOOD_CONTRACTS as C, fetchCallPutRobinhoodMarketData } from "../lib/venue/callput-robinhood-readonly";
-import { CALLPUT_WRITE_ABIS, formatUsdgRaw, prepareCallPutOpenSpread, readCallPutWalletState, type CallPutSpreadStrategy } from "../lib/venue/callput-robinhood-write";
+import { CALLPUT_WRITE_ABIS, formatUsdgRaw, prepareCallPutCandidatePlan, prepareCallPutOpenSpread, readCallPutWalletState, type CallPutSpreadStrategy } from "../lib/venue/callput-robinhood-write";
 
 const [underlying = "AAPL", strategy = "BuyPutSpread", size = "0.1", minDays = "3"] = process.argv.slice(2);
 const signerEnv = process.env.SIGNER;
@@ -42,7 +43,7 @@ try {
   prepareResult = { ok: false, blocked: error instanceof Error ? error.message : String(error) };
 }
 // Structure, quote and calldata with ample funds so they are shown even when the signer is short.
-const structural = prepareCallPutOpenSpread({ ...input, wallet: { ...state, usdgBalanceRaw: 10n ** 9n, usdgAllowanceRaw: 0n, nativeBalanceWei: 10n ** 18n, accountAcceptsErc1155: true } });
+const structural = prepareCallPutCandidatePlan({ ...input, wallet: state });
 const open = structural.transactions.at(-1)!;
 const approve = structural.transactions[0]!;
 

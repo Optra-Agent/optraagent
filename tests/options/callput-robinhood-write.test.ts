@@ -16,6 +16,7 @@ import {
   prepareCallPutSettle,
   readCallPutWalletState,
   readAccountAcceptsErc1155,
+  prepareCallPutCandidatePlan,
   reconcileCallPutOpen,
   reconcileCallPutClose,
   reconcileCallPutSettlement,
@@ -53,7 +54,7 @@ function market(overrides: Partial<CallPutRobinhoodMarketData> = {}, legOverride
 
 const wallet: CallPutWalletState = {
   chainId: 4663, account: WALLET, usdgBalanceRaw: 5_000_000n, usdgAllowanceRaw: 0n,
-  nativeBalanceWei: 10n ** 16n, executionFeeWei: 60_000_000_000_000n,
+  nativeBalanceWei: 10n ** 16n, executionFeeWei: 60_000_000_000_000n, accountAcceptsErc1155: true,
 };
 
 function openInput(overrides: Partial<CallPutOpenSpreadInput> = {}): CallPutOpenSpreadInput {
@@ -64,6 +65,16 @@ function openInput(overrides: Partial<CallPutOpenSpreadInput> = {}): CallPutOpen
 }
 
 describe("CallPut Robinhood write preparation", () => {
+  it("keeps candidate preflight fail-closed when contract-wallet receiver behavior is unknown", () => {
+    const input = openInput({ wallet: { ...wallet, usdgBalanceRaw: 0n, nativeBalanceWei: 0n, accountAcceptsErc1155: undefined } });
+    expect(() => prepareCallPutCandidatePlan(input)).toThrow(/receiver compatibility is unverified/i);
+  });
+
+  it("builds an unsigned candidate preview with synthetic funding for a verified EOA", () => {
+    const input = openInput({ wallet: { ...wallet, usdgBalanceRaw: 0n, nativeBalanceWei: 0n } });
+    expect(prepareCallPutCandidatePlan(input).transactions.map((tx) => tx.kind)).toEqual(["usdg-approval", "open-spread"]);
+  });
+
   it("reproduces the venue MCP's unsigned BuyPutSpread calldata byte for byte", () => {
     const plan = prepareCallPutOpenSpread(openInput());
     expect(plan.quote.amountInRaw.toString()).toBe(golden.expected.amountInRaw);
@@ -331,7 +342,7 @@ describe("CallPut pre-flight reads", () => {
   });
 });
 
-describe("ERC-1155 receiver safeguard (found on a mainnet fork: a 7702-delegated account made every fill revert)", () => {
+describe("CallPut position-token receiver safeguard", () => {
   const withCode = (impl: () => Promise<{ data?: string }>) =>
     ({ getCode: vi.fn(async () => "0xef0100cc04506d439d338bde8ebbb074f17a54b7673b95"), call: vi.fn(impl) }) as unknown as PublicClient;
 
@@ -341,27 +352,24 @@ describe("ERC-1155 receiver safeguard (found on a mainnet fork: a 7702-delegated
     expect((eoa as unknown as { call: ReturnType<typeof vi.fn> }).call).not.toHaveBeenCalled();
   });
 
-  it("accepts a contract account that returns the ERC-1155 receiver magic value", async () => {
-    await expect(readAccountAcceptsErc1155(withCode(async () => ({ data: "0xf23a6e6100000000000000000000000000000000000000000000000000000000" })), WALLET)).resolves.toBe(true);
+  it("does not trust a synthetic callback response when deployed token-call semantics are unverified", async () => {
+    const client = withCode(async () => ({ data: "0xf23a6e6100000000000000000000000000000000000000000000000000000000" }));
+    await expect(readAccountAcceptsErc1155(client, WALLET)).resolves.toBeUndefined();
+    expect((client as unknown as { call: ReturnType<typeof vi.fn> }).call).not.toHaveBeenCalled();
   });
 
-  it("rejects a contract account whose fallback returns nothing, or that reverts", async () => {
-    await expect(readAccountAcceptsErc1155(withCode(async () => ({ data: "0x" })), WALLET)).resolves.toBe(false);
-    await expect(readAccountAcceptsErc1155(withCode(async () => { throw new Error("revert"); }), WALLET)).resolves.toBe(false);
+  it("leaves contract-wallet compatibility unverified when a callback is empty or reverts", async () => {
+    const empty = withCode(async () => ({ data: "0x" }));
+    const reverted = withCode(async () => { throw new Error("revert"); });
+    await expect(readAccountAcceptsErc1155(empty, WALLET)).resolves.toBeUndefined();
+    await expect(readAccountAcceptsErc1155(reverted, WALLET)).resolves.toBeUndefined();
+    expect((empty as unknown as { call: ReturnType<typeof vi.fn> }).call).not.toHaveBeenCalled();
+    expect((reverted as unknown as { call: ReturnType<typeof vi.fn> }).call).not.toHaveBeenCalled();
   });
 
-  it("calls the account the way the venue does: from PositionManager with the receiver selector", async () => {
-    const client = withCode(async () => ({ data: "0xf23a6e61" }));
-    await readAccountAcceptsErc1155(client, WALLET);
-    const call = (client as unknown as { call: ReturnType<typeof vi.fn> }).call.mock.calls[0]![0] as { account: string; to: string; data: string };
-    expect(call.account).toBe(CALLPUT_ROBINHOOD_CONTRACTS.positionManager);
-    expect(call.to).toBe(WALLET);
-    expect(call.data.startsWith("0xf23a6e61")).toBe(true);
-  });
-
-  it("blocks an open order for an account that cannot receive the position, and still allows unknown or accepted", () => {
-    expect(() => prepareCallPutOpenSpread(openInput({ wallet: { ...wallet, accountAcceptsErc1155: false } }))).toThrow(/ERC-1155 option tokens/);
+  it("blocks an open order unless position-token receiver compatibility is explicitly verified", () => {
+    expect(() => prepareCallPutOpenSpread(openInput({ wallet: { ...wallet, accountAcceptsErc1155: false } }))).toThrow(/ERC-1155 option-token/i);
+    expect(() => prepareCallPutOpenSpread(openInput({ wallet: { ...wallet, accountAcceptsErc1155: undefined } }))).toThrow(/receiver compatibility is unverified/i);
     expect(() => prepareCallPutOpenSpread(openInput({ wallet: { ...wallet, accountAcceptsErc1155: true } }))).not.toThrow();
-    expect(() => prepareCallPutOpenSpread(openInput())).not.toThrow();
   });
 });

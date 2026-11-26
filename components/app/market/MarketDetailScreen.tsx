@@ -255,7 +255,7 @@ export function MarketDetailScreen({ symbol }: { symbol: string }) {
           <div><dt>Multiplier</dt><dd className="mono">{Number(asset.currentMultiplier).toFixed(6)}</dd></div>
           <div><dt>Quote provider time</dt><dd className="mono">{snapshot ? <time dateTime={snapshot.observedAt}>{formatUtc(snapshot.observedAt)}</time> : "—"}</dd></div>
           <div><dt>Token contract · chain 4663</dt><dd className="mono">{asset.tokenAddress ? <a href={explorerAddressUrl(asset.tokenAddress)} target="_blank" rel="noreferrer">{shortAddress(asset.tokenAddress)}<ArrowUpRight aria-hidden /></a> : "n/a"}</dd></div>
-          {venueSymbol ? <div><dt>CallPut options token (ERC-1155) · chain 4663</dt><dd className="mono"><a href={explorerAddressUrl(CALLPUT_ROBINHOOD_UNDERLYINGS[venueSymbol].optionsToken)} target="_blank" rel="noreferrer">{shortAddress(CALLPUT_ROBINHOOD_UNDERLYINGS[venueSymbol].optionsToken)}<ArrowUpRight aria-hidden /></a></dd></div> : null}
+          {venueSymbol ? <div><dt>CallPut options token · chain 4663</dt><dd className="mono"><a href={explorerAddressUrl(CALLPUT_ROBINHOOD_UNDERLYINGS[venueSymbol].optionsToken)} target="_blank" rel="noreferrer">{shortAddress(CALLPUT_ROBINHOOD_UNDERLYINGS[venueSymbol].optionsToken)}<ArrowUpRight aria-hidden /></a></dd></div> : null}
         </dl>
         <p className="md-note">Three different prices are shown on purpose: the underlying equity reference, the token&apos;s swap quote and its last on-chain trade. CallPut option marks below are a fourth, separate instrument.</p>
         {quoteError ? <p role="alert" className="inline-error market-error">{quoteError}</p> : null}

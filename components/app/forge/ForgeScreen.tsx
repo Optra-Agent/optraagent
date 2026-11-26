@@ -14,6 +14,7 @@ import {
   RecipeV1Schema,
 } from "../../../lib/domain/contracts";
 import type { HookCatalogResponse, HookDefinition, HookStage, MarketAsset, RecipeValidationResult } from "../../../lib/domain/contracts";
+import { prioritizeMarkets } from "../../../lib/market/market-priority";
 import { buildProtectivePutRecipe, PAPER_PROTECTIVE_PUT_HOOK_IDS } from "../../../lib/hooks/catalog";
 import { shortHash, titleCase, errorText } from "../format";
 import { Chip, PageHeader, StateBlock, Panel } from "../ui";
@@ -83,8 +84,9 @@ export function ForgeScreen() {
       }),
     ]).then(([hookCatalog, marketList]) => {
       setCatalog(hookCatalog);
-      setMarkets(marketList.markets);
-      if (!marketList.markets.some((market) => market.symbol === "AAPL")) setSymbol(marketList.markets[0]?.symbol ?? "");
+      const orderedMarkets = prioritizeMarkets(marketList.markets);
+      setMarkets(orderedMarkets);
+      if (!orderedMarkets.some((market) => market.symbol === "AAPL")) setSymbol(orderedMarkets[0]?.symbol ?? "");
       setLoadState("ready");
     }).catch((reason: unknown) => {
       if (controller.signal.aborted) return;

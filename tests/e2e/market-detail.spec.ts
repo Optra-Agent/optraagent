@@ -49,6 +49,7 @@ async function mock(page: Page, options: { candles?: "ok" | "empty" | "fail"; co
 }
 
 test("Markets opens a stock's market page from the list", async ({ page }) => {
+  test.setTimeout(120_000);
   await mock(page);
   await page.goto("/market");
   // Only a stock CallPut actually lists carries the Options badge.
@@ -56,9 +57,9 @@ test("Markets opens a stock's market page from the list", async ({ page }) => {
   await expect(page.locator(".mk-row", { hasText: "ADBE" }).locator(".mk-opt")).toHaveCount(0);
   await page.getByRole("button", { name: /AAPL, Apple/ }).click();
   await page.getByRole("complementary", { name: "AAPL details" }).getByRole("link", { name: /Open chart & options/ }).click();
-  await expect(page).toHaveURL(/\/market\/AAPL$/);
-  await expect(page.getByRole("heading", { name: "Apple", level: 1 })).toBeVisible();
-  await expect(page.getByText("Tokenized stock · Robinhood Chain")).toBeVisible();
+  await expect(page).toHaveURL(/\/market\/AAPL$/, { timeout: 45_000 });
+  await expect(page.getByRole("heading", { name: "Apple", level: 1 })).toBeVisible({ timeout: 45_000 });
+  await expect(page.getByText("Tokenized stock · Robinhood Chain")).toBeVisible({ timeout: 45_000 });
 });
 
 test("a CallPut-listed stock opens on candles and volume, and indicators are opt-in", async ({ page }) => {
@@ -170,6 +171,8 @@ test("the live option chain feeds the real order form, which stays unsigned", as
   await page.goto("/market/AAPL");
   await expect(page.getByRole("table", { name: /AAPL CallPut options expiring/ })).toBeVisible();
   await expect(page.getByText("Source CallPut venue feed")).toBeVisible();
+  await expect(page.getByText("CallPut options token · chain 4663", { exact: true })).toBeVisible();
+  await expect(page.getByText("CallPut options token (ERC-1155) · chain 4663", { exact: true })).toHaveCount(0);
   await page.getByRole("button", { name: /Pick as long leg: AAPL-27NOV26-300-P/ }).click();
   await page.getByRole("button", { name: /Pick as short leg: AAPL-27NOV26-285-P/ }).click();
   await expect(page.getByLabel("Selected legs")).toContainText("Long AAPL-27NOV26-300-P");

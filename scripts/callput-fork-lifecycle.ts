@@ -84,7 +84,7 @@ async function sendPlan(txs: CallPutPreparedTransaction[]) {
   const delegated = forkAccount(32).address;
   const code = await publicClient.getCode({ address: delegated });
   const state = await readCallPutWalletState(publicClient, delegated);
-  check("account with contract code and no ERC-1155 receiver is detected from chain data", !!code && code !== "0x" && state.accountAcceptsErc1155 === false, `code ${code?.slice(0, 12)}...`);
+  check("contract-wallet receiver compatibility stays blocked without verified CallPut callback semantics", !!code && code !== "0x" && state.accountAcceptsErc1155 !== true, `code ${code?.slice(0, 12)}...`);
   const { market: m0, long: l0, short: s0 } = await pickSpreadLegs(underlying, strategy, 3);
   let blocked = "";
   try { prepareCallPutOpenSpread({ strategy, underlying, longOptionId: l0.optionId, shortOptionId: s0.optionId, size, market: m0, wallet: state, nowMs: Date.now() }); } catch (e) { blocked = e instanceof CallPutRiskError ? e.failed.map((c) => c.id).join(",") : String(e); }

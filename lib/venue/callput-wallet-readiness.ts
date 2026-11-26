@@ -7,6 +7,7 @@
 import { formatEther } from "viem";
 import { CALLPUT_ROBINHOOD_CHAIN_ID } from "./callput-robinhood-readonly";
 import { CALLPUT_APPROVAL_SPENDER, formatUsdgRaw, type CallPutWalletState } from "./callput-robinhood-write";
+import { marketSessionState } from "../engine/us-market-session";
 
 export type ReadinessCheck = { id: string; ok: boolean; detail: string };
 
@@ -48,21 +49,26 @@ export function evaluateDirectWalletReadiness(state: CallPutWalletState | null, 
       ? `${usdg(state.usdgAllowanceRaw)} USDG already approved to the CallPut Controller (${CALLPUT_APPROVAL_SPENDER}). An order larger than this needs a new approval.`
       : `No USDG is approved yet. The Controller (${CALLPUT_APPROVAL_SPENDER}) pulls collateral with transferFrom, so the first order needs a separate approval transaction for exactly that order's USDG amount. You review and confirm it in your wallet before the order itself; OPTRA never approves automatically.`,
   });
-  checks.push({ id: "erc1155", ok: state.accountAcceptsErc1155 !== false, detail: state.accountAcceptsErc1155 === false ? "This wallet has contract code that rejects ERC-1155 option tokens, so every fill would revert and the execution fee would be lost." : "This wallet can receive ERC-1155 option tokens." });
+  const receiverDetail = state.accountAcceptsErc1155 === true
+    ? "The wallet has no receiver contract code or its CallPut position-token receiver behavior is verified."
+    : state.accountAcceptsErc1155 === false
+      ? "The CallPut position-token receiver check failed; order preparation is blocked."
+      : "CallPut contract-wallet receiver compatibility is unverified; order preparation is blocked until the deployed token callback path is verified.";
+  checks.push({ id: "erc1155", ok: state.accountAcceptsErc1155 === true, detail: receiverDetail });
   return checks;
 }
 
 export type UsSession = { open: boolean; label: string };
 
 /**
- * The US cash session is 09:30-16:00 America/New_York, Monday to Friday. Exchange holidays and early closes are NOT
- * modelled. CallPut's keeper behavior outside that session has not been observed by OPTRA.
+ * Reuses the scheduler's exchange calendar so holidays and early closes match the actual eligibility logic.
  */
 export function usSessionState(now: Date): UsSession {
-  const parts = new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", weekday: "short", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).formatToParts(now);
-  const get = (type: string) => parts.find((part) => part.type === type)?.value ?? "";
-  const weekday = get("weekday");
-  const minutes = Number(get("hour")) * 60 + Number(get("minute"));
-  const open = !["Sat", "Sun"].includes(weekday) && minutes >= 9 * 60 + 30 && minutes < 16 * 60;
-  return { open, label: open ? "US regular session is open (holidays not modelled)." : "US regular session is closed. CallPut's keeper behavior outside it has not been observed, so a request may sit pending." };
+  const session = marketSessionState(now.getTime());
+  if (session.open) return { open: true, label: "US regular session is open." };
+  const reason = session.closedReason === "holiday" ? "for an exchange holiday"
+    : session.closedReason === "weekend" ? "for the weekend"
+      : session.closedReason === "before_open" ? "before the regular open"
+        : "after the regular session close";
+  return { open: false, label: `US regular session is closed ${reason}. CallPut's keeper behavior outside it has not been observed, so a request may sit pending.` };
 }

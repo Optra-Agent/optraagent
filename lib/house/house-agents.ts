@@ -8,6 +8,7 @@ import type { AppDatabase } from "../db/client";
 import type { RecipeV1 } from "../domain/contracts";
 import { buildProtectivePutRecipe } from "../hooks/catalog";
 import { buildHouseRecipe, isHouseStrategyTemplate } from "../hooks/house-specs";
+import { MARKET_PRIORITY_SYMBOLS } from "../market/market-priority";
 import { canonicalRecipeHash, validateRecipe } from "../hooks/recipe-validator";
 import type { MarketHistoryResult } from "../market/crius-history";
 import type { EarningsSnapshot } from "../market/earnings";
@@ -33,7 +34,7 @@ export type HouseAgentDefinition = {
  * verified 30-day backtest produces at least one modeled entry (the same launch gate every agent passes). The rule,
  * not the result, picks each symbol; blocked results stay recorded as backtest runs, and no agent card is created for them.
  */
-export const HOUSE_SYMBOL_PRIORITY = ["NVDA", "TSLA", "MSFT", "AMZN", "GOOGL", "META", "AMD", "PLTR"] as const;
+export const HOUSE_SYMBOL_PRIORITY = MARKET_PRIORITY_SYMBOLS;
 
 /** Each agent starts its search at the symbol its PM recipe was written for, then follows the shared list. */
 const PREFERRED: Record<string, string> = { "optra-covered-call": "NVDA", "optra-cash-secured-put": "TSLA", "optra-protective-put": "NVDA", "optra-earnings-straddle": "NVDA" };
@@ -160,7 +161,23 @@ export async function ensureHouseAgents(deps: EnsureHouseAgentsDeps): Promise<Ho
           last = { ...base, status: "draft_waiting_for_data", agentId: null, reason: history.coverage.reason };
           continue;
         }
-        const earnings = isHouseStrategyTemplate(definition.templateId) && deps.getEarnings ? await deps.getEarnings(symbol).catch(() => null) : null;
+        let earnings: EarningsSnapshot | null = null;
+        if (isHouseStrategyTemplate(definition.templateId)) {
+          if (!deps.getEarnings) {
+            last = { ...base, status: "draft_waiting_for_data", agentId: null, reason: "Earnings calendar provenance is unavailable; no backtest was recorded." };
+            continue;
+          }
+          try {
+            earnings = await deps.getEarnings(symbol);
+          } catch {
+            last = { ...base, status: "draft_waiting_for_data", agentId: null, reason: "Earnings calendar provenance is unavailable; no backtest was recorded." };
+            continue;
+          }
+          if (!earnings) {
+            last = { ...base, status: "draft_waiting_for_data", agentId: null, reason: "Earnings calendar provenance is unavailable; no backtest was recorded." };
+            continue;
+          }
+        }
         const run = runBacktest({
           runId: newRunId(), recipe, candles: history.candles, corporateActionDates: history.corporateActionDates, earnings,
           requestedCandles: history.coverage.requestedCandles, now: now().toISOString(),

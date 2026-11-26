@@ -20,6 +20,7 @@ import { Label } from "@/components/ui/label";
 import { BenchmarkComparison } from "./BenchmarkComparison";
 import { modelAssumptions, type HouseTemplateId } from "../agents/house-meta";
 import { HouseBacktestResults } from "../HouseBacktestResults";
+import { prioritizeMarkets } from "../../../lib/market/market-priority";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 function errorMessage(value: unknown): string {
@@ -79,10 +80,11 @@ export function LabScreen({ initialAgentId = "" }: { initialAgentId?: string }) 
         return MarketListSchema.parse(body);
       })
       .then(({ markets: result }) => {
-        setMarkets(result);
+        const orderedMarkets = prioritizeMarkets(result);
+        setMarkets(orderedMarkets);
         setSelectedSymbol((current) => current && result.some((market) => market.symbol === current)
           ? current
-          : result.find((market) => market.symbol === "AAPL")?.symbol ?? result[0]?.symbol ?? "");
+          : orderedMarkets.find((market) => market.symbol === "AAPL")?.symbol ?? orderedMarkets[0]?.symbol ?? "");
         setMarketsLoading(false);
       })
       .catch((reason: unknown) => {

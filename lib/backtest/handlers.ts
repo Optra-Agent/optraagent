@@ -69,6 +69,7 @@ export function createBacktestHandlers(options: BacktestHandlerOptions) {
         if (!markets.some((market) => market.symbol === symbol.data)) return error("DATA_MISSING", `No active market is available for ${symbol.data}.`, 404);
         if (options.getHistory) {
           const history = await options.getHistory(symbol.data);
+          if (history.providerError) return error("UPSTREAM_UNAVAILABLE", history.providerError, 503);
           const currentTime = now().toISOString();
           return json(BacktestCoverageSchema.parse(inspectCandleCoverage({ symbol: symbol.data, candles: history.candles, now: currentTime })));
         }
@@ -96,9 +97,17 @@ export function createBacktestHandlers(options: BacktestHandlerOptions) {
           return error("DATA_MISSING", `No active market is available for ${recipe.data.underlyingSymbol}.`, 404);
         }
         const history = options.getHistory ? await options.getHistory(recipe.data.underlyingSymbol) : null;
-        const earnings = options.getEarnings && isHouseStrategyTemplate(recipe.data.templateId)
-          ? await options.getEarnings(recipe.data.underlyingSymbol).catch(() => null)
-          : null;
+        if (history?.providerError) return error("UPSTREAM_UNAVAILABLE", history.providerError, 503);
+        let earnings: EarningsSnapshot | null = null;
+        if (isHouseStrategyTemplate(recipe.data.templateId)) {
+          if (!options.getEarnings) return error("UPSTREAM_UNAVAILABLE", "Earnings history is not configured for this House backtest.", 503);
+          try {
+            earnings = await options.getEarnings(recipe.data.underlyingSymbol);
+          } catch {
+            return error("UPSTREAM_UNAVAILABLE", "Earnings history is temporarily unavailable. No backtest was recorded.", 503);
+          }
+          if (!earnings) return error("UPSTREAM_UNAVAILABLE", "Earnings history is temporarily unavailable. No backtest was recorded.", 503);
+        }
         const currentTime = now().toISOString();
         const run = runBacktest({
           runId: options.newRunId(),

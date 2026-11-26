@@ -14,6 +14,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
+import { compareMarketPriority, prioritizeMarkets } from "../../../lib/market/market-priority";
 
 type LoadStatus = "loading" | "ready" | "error";
 type Filter = "all" | "standard" | "adjusted";
@@ -64,9 +65,10 @@ export function MarketScreen() {
         return MarketListSchema.parse(body);
       })
       .then((result) => {
-        setMarkets(result.markets);
+        const orderedMarkets = prioritizeMarkets(result.markets);
+        setMarkets(orderedMarkets);
         setLoadedAt(new Date().toISOString());
-        setSelected((current) => (result.markets.some((market) => market.symbol === current) ? current : result.markets.find((market) => market.symbol === "AAPL")?.symbol ?? result.markets[0]?.symbol ?? ""));
+        setSelected((current) => (orderedMarkets.some((market) => market.symbol === current) ? current : orderedMarkets.find((market) => market.symbol === "AAPL")?.symbol ?? orderedMarkets[0]?.symbol ?? ""));
         setListStatus("ready");
       })
       .catch((reason: unknown) => {
@@ -135,7 +137,7 @@ export function MarketScreen() {
       name: (a, b) => cleanName(a.name).localeCompare(cleanName(b.name)),
       multiplier: (a, b) => Number(b.currentMultiplier) - Number(a.currentMultiplier) || a.symbol.localeCompare(b.symbol),
     };
-    return [...list].sort(by[sort]);
+    return [...list].sort((left, right) => compareMarketPriority(left.symbol, right.symbol) || by[sort](left, right));
   }, [markets, query, filter, sort]);
 
   const asset = markets.find((market) => market.symbol === selected);

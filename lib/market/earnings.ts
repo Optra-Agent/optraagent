@@ -81,23 +81,31 @@ export function createEarningsFeed(options: EarningsFeedOptions = {}) {
   const baseUrl = (options.baseUrl ?? DEFAULT_BASE_URL).replace(/\/$/, "");
   const timeoutMs = options.requestTimeoutMs ?? 8000;
   return {
-    /** Returns null when the calendar cannot be read or has no usable rows, so callers record DATA_MISSING. */
-    async getEarnings(symbolInput: string): Promise<EarningsSnapshot | null> {
+    /** A valid empty calendar is evidence; provider failures are thrown so callers cannot mistake them for no events. */
+    async getEarnings(symbolInput: string): Promise<EarningsSnapshot> {
       const symbol = symbolInput.trim().toUpperCase();
       if (!/^[A-Z0-9.]{1,16}$/.test(symbol)) throw new EarningsFeedError("A supported market symbol is required.");
+      let response: Response;
       try {
-        const response = await fetcher(`${baseUrl}/marketdata/earnings/?symbol=${encodeURIComponent(symbol)}`, {
+        response = await fetcher(`${baseUrl}/marketdata/earnings/?symbol=${encodeURIComponent(symbol)}`, {
           method: "GET",
           headers: { accept: "application/json" },
           cache: "no-store",
           signal: AbortSignal.timeout(timeoutMs),
         });
-        if (!response.ok) return null;
-        const snapshot = parseEarningsResponse(symbol, await response.json() as unknown, now().toISOString());
-        return snapshot && snapshot.events.length > 0 ? snapshot : null;
       } catch {
-        return null;
+        throw new EarningsFeedError("Robinhood earnings history is temporarily unavailable.");
       }
+      if (!response.ok) throw new EarningsFeedError(`Robinhood earnings endpoint returned HTTP ${response.status}.`);
+      let payload: unknown;
+      try {
+        payload = await response.json() as unknown;
+      } catch {
+        throw new EarningsFeedError("Robinhood earnings response is invalid.");
+      }
+      const snapshot = parseEarningsResponse(symbol, payload, now().toISOString());
+      if (!snapshot) throw new EarningsFeedError("Robinhood earnings response is invalid.");
+      return snapshot;
     },
   };
 }

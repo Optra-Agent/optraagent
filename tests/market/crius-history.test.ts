@@ -77,6 +77,16 @@ describe("Crius hourly market history", () => {
 
     expect(result.candles).toEqual([]);
     expect(result.coverage).toMatchObject({ ready: false, multiplierStatus: "unverified", fillApplied: false });
+    expect(result.providerError).toBe("Robinhood corporate-action history returned an invalid response.");
+  });
+
+  it("reports malformed candle payloads separately from genuine empty history", async () => {
+    const { instance } = feed({ candleResponse: { data: { interval: "1h", currency: "usd", t: [], o: [1], h: [], l: [], c: [], n: [], v: [] } } });
+
+    const result = await instance.getHistory("AAPL");
+
+    expect(result.candles).toEqual([]);
+    expect(result.providerError).toBe("Crius candle history returned an invalid response.");
   });
 
   it("does not bridge a missing real trade bucket or accept provider-filled rows", async () => {
@@ -88,5 +98,33 @@ describe("Crius hourly market history", () => {
 
     expect(result.coverage.ready).toBe(false);
     expect(result.coverage.consecutiveHours).toBeLessThan(result.coverage.availableCandles);
+  });
+
+  it("treats genuine empty history as insufficient data and shares corporate-action requests", async () => {
+    const emptyCandles = { data: { interval: "1h", currency: "usd", t: [], o: [], h: [], l: [], c: [], n: [], v: [] } };
+    const markets = [
+      { symbol: "AAPL", currentMultiplier: "1", tokenAddress: "0x1111111111111111111111111111111111111111" },
+      { symbol: "AMD", currentMultiplier: "1", tokenAddress: "0x2222222222222222222222222222222222222222" },
+    ];
+    let corporateActionRequests = 0;
+    const fetcher = async (inputUrl: string | URL | Request): Promise<Response> => {
+      const url = new URL(typeof inputUrl === "string" ? inputUrl : inputUrl instanceof URL ? inputUrl.toString() : inputUrl.url);
+      if (url.pathname.endsWith("/corporate-actions")) {
+        corporateActionRequests += 1;
+        await Promise.resolve();
+        return Response.json({ corpActions: [] });
+      }
+      return Response.json(emptyCandles);
+    };
+    const instance = createCriusHistoryFeed({ fetcher: fetcher as typeof fetch, listMarkets: async () => markets, now: () => new Date(capture.capturedAt) });
+
+    const [aapl, amd] = await Promise.all([instance.getHistory("AAPL"), instance.getHistory("AMD")]);
+
+    expect(corporateActionRequests).toBe(1);
+    for (const history of [aapl, amd]) {
+      expect(history.candles).toEqual([]);
+      expect(history.providerError).toBeUndefined();
+      expect(history.coverage).toMatchObject({ ready: false, availableCandles: 0, multiplierStatus: "stable_verified" });
+    }
   });
 });

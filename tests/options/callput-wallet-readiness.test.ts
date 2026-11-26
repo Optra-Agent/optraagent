@@ -3,7 +3,7 @@ import type { Address } from "viem";
 import { evaluateDirectWalletReadiness, minimumEthForOneOrder, usSessionState } from "../../lib/venue/callput-wallet-readiness";
 import type { CallPutWalletState } from "../../lib/venue/callput-robinhood-write";
 
-const state = (over: Partial<CallPutWalletState> = {}): CallPutWalletState => ({ chainId: 4663, account: "0x3cdb000000000000000000000000000000006dbb" as Address, usdgBalanceRaw: 450_270n, usdgAllowanceRaw: 0n, nativeBalanceWei: 387_000_000_000_000n, executionFeeWei: 60_000_000_000_000n, ...over });
+const state = (over: Partial<CallPutWalletState> = {}): CallPutWalletState => ({ chainId: 4663, account: "0x3cdb000000000000000000000000000000006dbb" as Address, usdgBalanceRaw: 450_270n, usdgAllowanceRaw: 0n, nativeBalanceWei: 387_000_000_000_000n, executionFeeWei: 60_000_000_000_000n, accountAcceptsErc1155: true, ...over });
 const by = (checks: ReturnType<typeof evaluateDirectWalletReadiness>) => Object.fromEntries(checks.map((check) => [check.id, check]));
 
 describe("direct-wallet readiness", () => {
@@ -12,6 +12,13 @@ describe("direct-wallet readiness", () => {
     expect(Object.values(checks).every((check) => check.ok)).toBe(true);
     expect(checks.allowance!.detail).toContain("separate approval transaction");
     expect(checks.usdg!.detail).toContain("0.450270 USDG");
+  });
+
+  it("blocks preparation when contract-wallet receiver compatibility is unverified", () => {
+    const receiver = by(evaluateDirectWalletReadiness(state({ accountAcceptsErc1155: undefined }), 4663)).erc1155!;
+    expect(receiver.ok).toBe(false);
+    expect(receiver.detail).toContain("unverified");
+    expect(receiver.detail).toContain("blocked");
   });
 
   it("flags the wrong network, an empty gas balance, no USDG, and a wallet that cannot receive ERC-1155", () => {
@@ -61,5 +68,11 @@ describe("US regular session", () => {
 
   it("warns that keeper behavior outside the session is unobserved", () => {
     expect(usSessionState(new Date("2026-11-22T15:00:00Z")).label).toContain("has not been observed");
+  });
+
+  it("uses the exchange calendar for Thanksgiving and the Black Friday early close", () => {
+    expect(usSessionState(new Date("2026-11-26T15:00:00Z")).open).toBe(false); // Thanksgiving
+    expect(usSessionState(new Date("2026-11-27T17:00:00Z")).open).toBe(true); // Black Friday, 12:00 ET
+    expect(usSessionState(new Date("2026-11-27T18:00:00Z")).open).toBe(false); // Black Friday, 13:00 ET close
   });
 });
