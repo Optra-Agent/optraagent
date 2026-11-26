@@ -26,7 +26,7 @@ test("agents screen shows real unauthenticated state and paper-only boundary", a
   await expect(page.getByText("Connect a wallet to view your agents.", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Connect wallet", exact: true })).toBeVisible();
   const history = page.getByRole("region", { name: "Historical House Agent backtests" });
-  await expect(history.getByRole("row", { name: /Covered Call.*AMD/ })).toContainText("-25.90%");
+  await expect(history.getByRole("row", { name: /Covered Call 23 Sept 2026.*24 Nov 2026.*AMD/ })).toContainText("-25.90%");
 });
 
 test("wallet connection explains when no supported extension is available", async ({ page }) => {
