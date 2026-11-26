@@ -3,6 +3,7 @@ import { expect, test } from "@playwright/test";
 const apple = { symbol: "AAPL", name: "Apple • Robinhood Token", currentMultiplier: "1.001092264102650688", tokenAddress: "0xaf3d76f1834a1d425780943c99ea8a608f8a93f9" };
 const adobe = { symbol: "ADBE", name: "Adobe • Robinhood Token", currentMultiplier: "1.000000000000000000", tokenAddress: "0x232b8ed6377be97813853b0ac104c4cda8378d1b" };
 const micron = { symbol: "MU", name: "Micron Technology • Robinhood Token", currentMultiplier: "1.000200000000000000", tokenAddress: "0xff08000000000000000000000000000000004afd" };
+const marketFixture = (symbol: string, name: string, addressDigit: string) => ({ ...apple, symbol, name: `${name} • Robinhood Token`, currentMultiplier: "1.000000000000000000", tokenAddress: `0x${addressDigit.repeat(40)}` });
 const snapshot = {
   symbol: "AAPL", source: "robinhood_stock_token_api", observedAt: "2026-11-12T03:30:00.000Z", receivedAt: "2026-11-12T03:31:00.000Z",
   underlyingBidUsd: "355.78", underlyingAskUsd: "356", currentMultiplier: apple.currentMultiplier,
@@ -106,6 +107,83 @@ test("Markets shows each company's bundled logo and a monogram where none is ver
   // The registry's logoUrl field is never trusted or requested.
   expect(external).toEqual([]);
   await expect(page.getByRole("complementary", { name: "AAPL details" }).locator("img")).toHaveAttribute("src", "/logos/AAPL.png");
+});
+
+test("Markets ranks verified completed backtests ahead of uncovered markets", async ({ page }) => {
+  test.setTimeout(120_000);
+  const markets = [apple, marketFixture("NVDA", "NVIDIA", "1"), marketFixture("GLD", "SPDR Gold Shares", "2"), marketFixture("AMD", "Advanced Micro Devices", "3"), marketFixture("AMZN", "Amazon", "4")];
+  await page.route("**/api/markets", (route) => route.fulfill({ json: { markets } }));
+  await page.route("**/api/markets/*", (route) => {
+    const symbol = new URL(route.request().url()).pathname.split("/").at(-1) ?? "AAPL";
+    return route.fulfill({ json: { ...snapshot, symbol } });
+  });
+  await page.route(/\/api\/backtests\/coverage\?symbol=/, (route) => {
+    const symbol = new URL(route.request().url()).searchParams.get("symbol") ?? "AAPL";
+    return route.fulfill({ json: { ...coverage(true), symbol } });
+  });
+  await page.goto("/market");
+
+  const rows = page.locator(".mk-row");
+  await expect(rows).toHaveCount(5);
+  await expect(rows.nth(0)).toContainText("6 completed backtests");
+  const symbols = await rows.evaluateAll((items) => items.map((item) => item.querySelector(".mk-asset-text b")?.textContent?.trim().replace("Options", "") ?? ""));
+  expect(symbols).toEqual(["AMZN", "NVDA", "AMD", "GLD", "AAPL"]);
+  await expect(rows.nth(0)).toContainText("2 valid no-entry outcomes");
+  await expect(rows.nth(2)).toContainText("4 completed backtests");
+  await expect(rows.nth(2)).toContainText("4 valid no-entry outcomes");
+  await expect(rows.nth(3)).toContainText("4 valid no-entry outcomes");
+  await expect(rows.nth(4)).toContainText("0 completed backtests · no verified history");
+  const historyLink = page.getByRole("complementary", { name: "AAPL details" }).getByRole("link", { name: "View historical backtest results" });
+  await expect(historyLink).toHaveAttribute("href", "/agents#house-backtests");
+  for (const width of [320, 390]) {
+    await page.setViewportSize({ width, height: 844 });
+    const documentWidth = await page.evaluate(() => document.documentElement.scrollWidth);
+    expect(documentWidth).toBeLessThanOrEqual(width);
+  }
+  await historyLink.click();
+  await expect(page).toHaveURL(/\/agents#house-backtests$/, { timeout: 45_000 });
+  await expect(page.getByRole("region", { name: "Historical House Agent backtests" })).toBeVisible({ timeout: 45_000 });
+});
+
+test("Markets preserves feed order instead of implying an alphabetical ranking when backtests are unavailable", async ({ page }) => {
+  const markets = [marketFixture("NVDA", "NVIDIA", "1"), apple, marketFixture("AMD", "Advanced Micro Devices", "3")];
+  await page.route("**/api/markets", (route) => route.fulfill({ json: { markets } }));
+  await page.route("**/api/markets/*", (route) => route.fulfill({ json: snapshot }));
+  await page.route("**/api/backtests/coverage?symbol=AAPL", (route) => route.fulfill({ json: coverage(true) }));
+  await page.route("**/api/public/v1/house-backtests", (route) => route.abort());
+  await page.goto("/market");
+
+  await expect(page.locator(".mk-backtest-status")).toContainText("Published backtest history could not be loaded");
+  const symbols = await page.locator(".mk-row").evaluateAll((items) => items.map((item) => item.querySelector(".mk-asset-text b")?.textContent?.trim().replace("Options", "") ?? ""));
+  expect(symbols).toEqual(["NVDA", "AAPL", "AMD"]);
+});
+
+test("Markets preserves feed order and explains an empty completed backtest campaign", async ({ page }) => {
+  const markets = [marketFixture("NVDA", "NVIDIA", "1"), apple, marketFixture("AMD", "Advanced Micro Devices", "3")];
+  await page.route("**/api/markets", (route) => route.fulfill({ json: { markets } }));
+  await page.route("**/api/markets/*", (route) => {
+    const symbol = new URL(route.request().url()).pathname.split("/").at(-1) ?? "AAPL";
+    return route.fulfill({ json: { ...snapshot, symbol } });
+  });
+  await page.route(/\/api\/backtests\/coverage\?symbol=/, (route) => {
+    const symbol = new URL(route.request().url()).searchParams.get("symbol") ?? "AAPL";
+    return route.fulfill({ json: { ...coverage(true), symbol } });
+  });
+  await page.route("**/api/public/v1/house-backtests", (route) => route.fulfill({ json: {
+    campaignId: "optra-empty-campaign-test",
+    asOf: "2026-11-26T00:00:00.000Z",
+    status: "complete",
+    runs: [],
+  } }));
+  await page.goto("/market");
+
+  const rows = page.locator(".mk-row");
+  await expect(rows).toHaveCount(3);
+  await expect.poll(() => rows.first().textContent()).not.toContain("Loading verified history");
+  const symbols = await rows.evaluateAll((items) => items.map((item) => item.querySelector(".mk-asset-text b")?.textContent?.trim().replace("Options", "") ?? ""));
+  expect(symbols).toEqual(["NVDA", "AAPL", "AMD"]);
+  await expect(page.locator(".mk-backtest-status")).toContainText("Published backtest history contains no runs; market feed order is shown.");
+  await expect(rows.first()).toContainText("No published backtest runs");
 });
 
 test("Markets falls back to a monogram when a bundled logo fails to load", async ({ page }) => {

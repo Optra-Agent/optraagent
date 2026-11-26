@@ -9,6 +9,7 @@ import { formatUtc, errorText, shortAddress } from "../format";
 import { Chip, PageHeader, Skeleton, StateBlock } from "../ui";
 import { callPutUnderlyingFor } from "../../../lib/market/callput-support";
 import { AssetLogo } from "./AssetLogo";
+import { isValidHouseBacktestNoEntry, useHouseBacktestCampaign } from "../HouseBacktestResults";
 import { buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -17,7 +18,7 @@ import { cn } from "@/lib/utils";
 
 type LoadStatus = "loading" | "ready" | "error";
 type Filter = "all" | "standard" | "adjusted";
-type Sort = "symbol" | "symbol-desc" | "name" | "multiplier";
+type Sort = "backtests" | "symbol" | "symbol-desc" | "name" | "multiplier";
 const PAGE = 30;
 
 async function readJson(response: Response): Promise<unknown> {
@@ -42,7 +43,7 @@ export function MarketScreen() {
   const [loadedAt, setLoadedAt] = useState("");
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<Filter>("all");
-  const [sort, setSort] = useState<Sort>("symbol");
+  const [sort, setSort] = useState<Sort>("backtests");
   const [shown, setShown] = useState(PAGE);
   const [selected, setSelected] = useState("");
   const [reload, setReload] = useState(0);
@@ -54,6 +55,7 @@ export function MarketScreen() {
   const [coverageStatus, setCoverageStatus] = useState<LoadStatus>("loading");
   const [coverageError, setCoverageError] = useState("");
   const [refresh, setRefresh] = useState(0);
+  const backtestState = useHouseBacktestCampaign();
 
   useEffect(() => {
     const controller = new AbortController();
@@ -122,6 +124,26 @@ export function MarketScreen() {
     setRefresh((value) => value + 1);
   }
 
+  const backtestStats = useMemo(() => {
+    const completedCounts = new Map<string, number>();
+    const noEntryCounts = new Map<string, number>();
+    const coverageQualified = new Set<string>();
+    if (backtestState.status !== "ready" || backtestState.response.status !== "complete" || backtestState.response.runs.length === 0) {
+      return { available: false, completedCounts, noEntryCounts, coverageQualified };
+    }
+
+    for (const run of backtestState.response.runs) {
+      if (run.hourlyCoverageComplete) coverageQualified.add(run.symbol);
+      if (run.status === "complete" && run.metrics !== null && run.hourlyCoverageComplete) {
+        completedCounts.set(run.symbol, (completedCounts.get(run.symbol) ?? 0) + 1);
+      }
+      if (isValidHouseBacktestNoEntry(run)) {
+        noEntryCounts.set(run.symbol, (noEntryCounts.get(run.symbol) ?? 0) + 1);
+      }
+    }
+    return { available: true, completedCounts, noEntryCounts, coverageQualified };
+  }, [backtestState]);
+
   const results = useMemo(() => {
     const needle = query.trim().toLowerCase();
     const list = markets.filter((market) => {
@@ -130,13 +152,17 @@ export function MarketScreen() {
       return !needle || market.symbol.toLowerCase().includes(needle) || cleanName(market.name).toLowerCase().includes(needle);
     });
     const by: Record<Sort, (a: MarketAsset, b: MarketAsset) => number> = {
+      backtests: (a, b) => (backtestStats.completedCounts.get(b.symbol) ?? 0) - (backtestStats.completedCounts.get(a.symbol) ?? 0)
+        || Number(backtestStats.coverageQualified.has(b.symbol)) - Number(backtestStats.coverageQualified.has(a.symbol))
+        || a.symbol.localeCompare(b.symbol),
       symbol: (a, b) => a.symbol.localeCompare(b.symbol),
       "symbol-desc": (a, b) => b.symbol.localeCompare(a.symbol),
       name: (a, b) => cleanName(a.name).localeCompare(cleanName(b.name)),
       multiplier: (a, b) => Number(b.currentMultiplier) - Number(a.currentMultiplier) || a.symbol.localeCompare(b.symbol),
     };
+    if (sort === "backtests" && !backtestStats.available) return list;
     return [...list].sort(by[sort]);
-  }, [markets, query, filter, sort]);
+  }, [markets, query, filter, sort, backtestStats]);
 
   const asset = markets.find((market) => market.symbol === selected);
   const blocked = snapshot ? snapshot.stale || snapshot.tradingHalt : false;
@@ -146,6 +172,20 @@ export function MarketScreen() {
     : !coverage?.ready ? "Backtest coverage is not ready for this market."
     : blocked ? "The quote is stale or halted, so paper entries are blocked." : "";
   const adjustedCount = markets.filter(adjusted).length;
+  const backtestLabel = (symbol: string) => {
+    if (backtestState.status === "loading") return "Loading verified history…";
+    if (backtestState.status === "error") return "History unavailable";
+    if (backtestState.response.status !== "complete") return "No complete published campaign";
+    if (!backtestStats.available) return "No published backtest runs";
+    const count = backtestStats.completedCounts.get(symbol) ?? 0;
+    const noEntryCount = backtestStats.noEntryCounts.get(symbol) ?? 0;
+    if (count > 0 && noEntryCount > 0) return `${count} completed backtests · ${noEntryCount} valid no-entry outcomes`;
+    if (count > 0) return `${count} completed backtests`;
+    if (noEntryCount > 0) return `0 completed backtests · ${noEntryCount} valid no-entry outcomes`;
+    return backtestStats.coverageQualified.has(symbol)
+      ? "0 completed backtests · verified historical coverage"
+      : "0 completed backtests · no verified history";
+  };
 
   return (
     <main className="page-container market-page">
@@ -184,8 +224,9 @@ export function MarketScreen() {
             <div className="mk-sort">
               <Label htmlFor="market-sort">Sort</Label>
               <Select value={sort} onValueChange={(value) => setSort(value as Sort)}>
-                <SelectTrigger id="market-sort" className="w-[190px]"><SelectValue /></SelectTrigger>
+                <SelectTrigger id="market-sort" className="w-[240px]"><SelectValue /></SelectTrigger>
                 <SelectContent>
+                  <SelectItem value="backtests">Verified backtests, high to low</SelectItem>
                   <SelectItem value="symbol">Symbol A to Z</SelectItem>
                   <SelectItem value="symbol-desc">Symbol Z to A</SelectItem>
                   <SelectItem value="name">Company A to Z</SelectItem>
@@ -195,6 +236,10 @@ export function MarketScreen() {
             </div>
           </div>
           <p className="mk-source mono">Source robinhood_stock_token_api · list loaded <time dateTime={loadedAt}>{formatUtc(loadedAt)}</time> · {results.length} of {markets.length} shown</p>
+          {backtestState.status === "loading" ? <p className="mk-backtest-status" role="status">Loading published backtest rankings…</p> : null}
+          {backtestState.status === "error" ? <p className="mk-backtest-status" role="alert">Published backtest history could not be loaded. Refresh the page to try again; completed counts are unavailable.</p> : null}
+          {backtestState.status === "ready" && backtestState.response.status !== "complete" ? <p className="mk-backtest-status" role="status">No complete published backtest campaign is available; completed counts are unavailable.</p> : null}
+          {backtestState.status === "ready" && backtestState.response.status === "complete" && !backtestStats.available ? <p className="mk-backtest-status" role="status">Published backtest history contains no runs; market feed order is shown.</p> : null}
 
           <div className="mk-layout">
             <section className="mk-list" aria-label="Markets">
@@ -203,8 +248,8 @@ export function MarketScreen() {
                   <li className="mk-head" aria-hidden="true"><span>Asset</span><span>Multiplier</span><span>Token</span><span /></li>
                   {results.slice(0, shown).map((market) => (
                     <li key={market.symbol}>
-                      <button type="button" className="mk-row" aria-pressed={market.symbol === selected} aria-label={`${market.symbol}, ${cleanName(market.name)}. Open details`} onClick={() => open(market.symbol)}>
-                        <span className="mk-asset"><AssetLogo symbol={market.symbol} /><span className="mk-asset-text"><b>{market.symbol}{callPutUnderlyingFor(market.symbol) ? <i className="mk-opt">Options</i> : null}</b><span>{cleanName(market.name)}</span></span></span>
+                      <button type="button" className="mk-row" aria-pressed={market.symbol === selected} aria-label={`${market.symbol}, ${cleanName(market.name)}. ${backtestLabel(market.symbol)}. Open details`} onClick={() => open(market.symbol)}>
+                        <span className="mk-asset"><AssetLogo symbol={market.symbol} /><span className="mk-asset-text"><b>{market.symbol}{callPutUnderlyingFor(market.symbol) ? <i className="mk-opt">Options</i> : null}</b><span>{cleanName(market.name)}</span><span className="mk-backtest-meta">{backtestLabel(market.symbol)}</span></span></span>
                         <span className="mk-mult mono">{Number(market.currentMultiplier).toFixed(4)}{adjusted(market) ? <Chip tone="ember">≠ 1</Chip> : null}</span>
                         <span className="mk-token mono">{market.tokenAddress ? shortAddress(market.tokenAddress) : "n/a"}</span>
                         <ChevronRight aria-hidden />
@@ -262,6 +307,7 @@ export function MarketScreen() {
 
                   <div className="mk-actions">
                     <Link className={buttonVariants()} href={`/market/${encodeURIComponent(asset.symbol)}`}>Open chart &amp; options<ArrowUpRight aria-hidden /></Link>
+                    <Link className={buttonVariants({ variant: "outline" })} href="/agents#house-backtests">View historical backtest results</Link>
                     {canBuild ? (
                       <Link className={buttonVariants({ variant: "outline" })} href={`/agents?symbol=${encodeURIComponent(asset.symbol)}#configure`}>Build a Protective Put on {asset.symbol}<ArrowUpRight aria-hidden /></Link>
                     ) : (

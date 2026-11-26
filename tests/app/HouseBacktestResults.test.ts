@@ -74,6 +74,7 @@ describe("HouseBacktestResults", () => {
     render(createElement(HouseBacktestResults));
 
     const region = await screen.findByRole("region", { name: "Historical House Agent backtests" });
+    expect(region.id).toBe("house-backtests");
     const negative = within(region).getByRole("row", { name: /Covered Call.*AMD/ });
     expect(negative.textContent).toMatch(/-25\.90%|−25\.90%/);
     expect(negative.textContent).toMatch(/32\.96%/);
@@ -86,11 +87,34 @@ describe("HouseBacktestResults", () => {
     expect(vi.mocked(fetch).mock.calls[0]?.[0]).toBe("/api/public/v1/house-backtests");
   });
 
+  it.each([
+    ["an exit order", { exitOrderCount: 1 }],
+    ["reported metrics", { metrics: completeRun.metrics }],
+    ["incomplete hourly coverage", { hourlyCoverageComplete: false }],
+  ])("does not classify a failed run as no-entry when it has %s", async (_contradiction, fields) => {
+    const responseBody = {
+      campaignId: CAMPAIGN_ID,
+      asOf: "2026-11-24T18:48:46.674Z",
+      status: "complete",
+      runs: [{ ...noEntryRun, ...fields }],
+    };
+    const parsed = PublicHouseBacktestCampaignResponseSchema.safeParse(responseBody);
+    expect(parsed.success, parsed.success ? undefined : JSON.stringify(parsed.error.issues)).toBe(true);
+    serve(responseBody);
+    render(createElement(HouseBacktestResults));
+
+    const region = await screen.findByRole("region", { name: "Historical House Agent backtests" });
+    const row = within(region).getByRole("row", { name: /Cash-Secured Put.*AMZN/ });
+    expect(row.textContent).toContain("Backtest failed");
+    expect(row.textContent).not.toContain("No modeled entry");
+  });
+
   it("shows an empty state until a complete campaign is available", async () => {
     serve({ campaignId: "optra-house-history-pending", asOf: "2026-11-24T18:48:46.674Z", status: "pending", runs: [] });
     render(createElement(HouseBacktestResults));
 
     expect(await screen.findByText("No published House backtest campaign")).toBeTruthy();
+    expect(document.getElementById("house-backtests")).not.toBeNull();
   });
 
   it("shows an error state when the public campaign route is unavailable", async () => {
@@ -98,5 +122,6 @@ describe("HouseBacktestResults", () => {
     render(createElement(HouseBacktestResults));
 
     expect((await screen.findByRole("alert")).textContent).toContain("Historical House backtests could not be loaded");
+    expect(document.getElementById("house-backtests")).not.toBeNull();
   });
 });

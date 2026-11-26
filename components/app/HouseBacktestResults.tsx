@@ -6,14 +6,38 @@ import type { PublicHouseBacktestCampaignResponse, PublicHouseBacktestRun } from
 import { formatPct, formatUsd, formatUtc, shortHash, signedTone } from "./format";
 import { Chip, Panel, StateBlock } from "./ui";
 
-type LoadState =
+export type HouseBacktestCampaignState =
   | { status: "loading" }
   | { status: "error" }
   | { status: "ready"; response: PublicHouseBacktestCampaignResponse };
 
+export function useHouseBacktestCampaign(enabled = true): HouseBacktestCampaignState {
+  const [state, setState] = useState<HouseBacktestCampaignState>({ status: "loading" });
+
+  useEffect(() => {
+    if (!enabled) return;
+    const controller = new AbortController();
+    void fetch("/api/public/v1/house-backtests", { cache: "no-store", signal: controller.signal })
+      .then(async (response) => {
+        if (!response.ok) throw new Error("unavailable");
+        return PublicHouseBacktestCampaignResponseSchema.parse(await response.json());
+      })
+      .then((response) => setState({ status: "ready", response }))
+      .catch(() => { if (!controller.signal.aborted) setState({ status: "error" }); });
+    return () => controller.abort();
+  }, [enabled]);
+
+  return state;
+}
+
+export function isValidHouseBacktestNoEntry(run: PublicHouseBacktestRun): boolean {
+  return run.status === "failed" && run.entryOrderCount === 0 && run.exitOrderCount === 0 && run.metrics === null
+    && run.hourlyCoverageComplete && run.reason.includes("no modeled entry fills");
+}
+
 function outcome(run: PublicHouseBacktestRun): string {
   if (run.status === "complete") return "Modeled entries";
-  return run.entryOrderCount === 0 && run.reason.includes("no modeled entry fills") ? "No modeled entry" : "Backtest failed";
+  return isValidHouseBacktestNoEntry(run) ? "No modeled entry" : "Backtest failed";
 }
 
 function ReturnCell({ run }: { run: PublicHouseBacktestRun }) {
@@ -28,33 +52,21 @@ function DrawdownCell({ run }: { run: PublicHouseBacktestRun }) {
 }
 
 export function HouseBacktestResults() {
-  const [state, setState] = useState<LoadState>({ status: "loading" });
-
-  useEffect(() => {
-    const controller = new AbortController();
-    void fetch("/api/public/v1/house-backtests", { cache: "no-store", signal: controller.signal })
-      .then(async (response) => {
-        if (!response.ok) throw new Error("unavailable");
-        return PublicHouseBacktestCampaignResponseSchema.parse(await response.json());
-      })
-      .then((response) => setState({ status: "ready", response }))
-      .catch(() => { if (!controller.signal.aborted) setState({ status: "error" }); });
-    return () => controller.abort();
-  }, []);
+  const state = useHouseBacktestCampaign();
 
   if (state.status === "loading") {
-    return <StateBlock kind="loading" title="Loading historical House Agent backtests" />;
+    return <div id="house-backtests"><StateBlock kind="loading" title="Loading historical House Agent backtests" /></div>;
   }
   if (state.status === "error") {
-    return <StateBlock kind="error" title="Historical House backtests could not be loaded">Refresh the page to try again.</StateBlock>;
+    return <div id="house-backtests"><StateBlock kind="error" title="Historical House backtests could not be loaded">Refresh the page to try again.</StateBlock></div>;
   }
   if (state.response.status !== "complete" || state.response.runs.length === 0) {
-    return <StateBlock kind="empty" title="No published House backtest campaign">The results appear when the complete verified campaign is persisted.</StateBlock>;
+    return <div id="house-backtests"><StateBlock kind="empty" title="No published House backtest campaign">The results appear when the complete verified campaign is persisted.</StateBlock></div>;
   }
 
   const runs = [...state.response.runs].sort((left, right) => left.symbol.localeCompare(right.symbol) || left.agentLabel.localeCompare(right.agentLabel));
   return (
-    <Panel className="house-backtests" aria-label="Historical House Agent backtests">
+    <Panel id="house-backtests" className="house-backtests" aria-label="Historical House Agent backtests">
       <div className="panel-head">
         <div><p className="eyebrow">VERIFIED HISTORICAL REPLAY</p><h2>Historical House Agent backtests</h2></div>
         <Chip tone="azure">{runs.length} runs</Chip>
