@@ -18,6 +18,7 @@ import { canonicalRecipeHash, validateRecipe } from "../hooks/recipe-validator";
 export const REQUIRED_HOURLY_SAMPLES = 720;
 export const REQUIRED_WARMUP_CANDLES = 721;
 export const REQUIRED_HISTORY_CANDLES = REQUIRED_HOURLY_SAMPLES + REQUIRED_WARMUP_CANDLES;
+export const MIN_SHORT_DECISION_HOURS = 168;
 const HOUR_MS = 60 * 60 * 1000;
 
 function validSnapshots(input: MarketSnapshot[], symbol: string, nowMs: number): MarketSnapshot[] | null {
@@ -90,18 +91,35 @@ export function hashMarketCandles(candles: MarketCandle[]): `sha256:${string}` {
   return `sha256:${createHash("sha256").update(JSON.stringify(stable)).digest("hex")}`;
 }
 
-export function inspectCandleCoverage(input: { symbol: string; candles: MarketCandle[]; now: string }): BacktestCoverage {
-  const nowMs = new Date(input.now).getTime();
+type ConsecutiveSelection = {
+  window: MarketCandle[];
+  fullWindow: boolean;
+  shorterWindow: boolean;
+  consecutiveHours: number;
+  parsedCount: number;
+  allValid: boolean;
+  actionInWindow: boolean;
+  tokenAddress: string | null;
+  multiplierStatus: MarketCandle["multiplierStatus"];
+};
+
+function selectConsecutiveCandleWindow(input: { symbol: string; candles: MarketCandle[]; nowMs: number }): ConsecutiveSelection {
   let consecutiveHours = 0;
-  let streak = 0;
   let previousStart = 0;
-  let valid = true;
-  const parsed: MarketCandle[] = [];
+  let allValid = true;
+  let parsedCount = 0;
+  let actionInWindow = false;
+  let tokenAddress: string | null = null;
+  let multiplierStatus: MarketCandle["multiplierStatus"] = "unverified";
+  const streaks: MarketCandle[][] = [];
+  let currentStreak: MarketCandle[] = [];
+
   for (const candidate of input.candles) {
+    if ((candidate as Partial<MarketCandle>).multiplierStatus === "action_in_window") actionInWindow = true;
     const result = MarketCandleSchema.safeParse(candidate);
     if (!result.success || result.data.symbol !== input.symbol || result.data.filled || result.data.tradeCount <= 0 || result.data.multiplierStatus !== "stable_verified") {
-      valid = false;
-      streak = 0;
+      allValid = false;
+      if (currentStreak.length > 0) { streaks.push(currentStreak); currentStreak = []; }
       previousStart = 0;
       continue;
     }
@@ -109,32 +127,99 @@ export function inspectCandleCoverage(input: { symbol: string; candles: MarketCa
     const start = new Date(candle.startAt).getTime();
     const end = new Date(candle.endAt).getTime();
     const received = new Date(candle.receivedAt).getTime();
-    if (end > nowMs || received > nowMs || end - start !== HOUR_MS) { valid = false; streak = 0; previousStart = 0; continue; }
-    streak = previousStart > 0 && start - previousStart === HOUR_MS ? streak + 1 : 1;
-    consecutiveHours = Math.max(consecutiveHours, streak);
+    if (end > input.nowMs || received > input.nowMs || end - start !== HOUR_MS) {
+      allValid = false;
+      if (currentStreak.length > 0) { streaks.push(currentStreak); currentStreak = []; }
+      previousStart = 0;
+      continue;
+    }
+    if (previousStart > 0 && start - previousStart === HOUR_MS) {
+      currentStreak.push(candle);
+    } else {
+      if (currentStreak.length > 0) streaks.push(currentStreak);
+      currentStreak = [candle];
+    }
+    consecutiveHours = Math.max(consecutiveHours, currentStreak.length);
     previousStart = start;
-    parsed.push(candle);
+    parsedCount += 1;
+    if (!tokenAddress) tokenAddress = candle.tokenAddress;
+    multiplierStatus = candle.multiplierStatus;
   }
-  const consecutiveWindow = parsed.slice(-REQUIRED_HISTORY_CANDLES);
-  const ready = valid && consecutiveWindow.length >= REQUIRED_HISTORY_CANDLES && consecutiveHours >= REQUIRED_HISTORY_CANDLES;
+  if (currentStreak.length > 0) streaks.push(currentStreak);
+
+  // Prefer the most recent streak that satisfies the full 1441-hour requirement.
+  for (let idx = streaks.length - 1; idx >= 0; idx -= 1) {
+    const streak = streaks[idx]!;
+    if (streak.length >= REQUIRED_HISTORY_CANDLES) {
+      return {
+        window: streak.slice(-REQUIRED_HISTORY_CANDLES),
+        fullWindow: true,
+        shorterWindow: false,
+        consecutiveHours,
+        parsedCount,
+        allValid,
+        actionInWindow,
+        tokenAddress,
+        multiplierStatus,
+      };
+    }
+  }
+
+  // Otherwise, select the most recent streak that satisfies the full 721-hour warmup + >=168h decision window.
+  const minShortTotal = REQUIRED_WARMUP_CANDLES + MIN_SHORT_DECISION_HOURS;
+  for (let idx = streaks.length - 1; idx >= 0; idx -= 1) {
+    const streak = streaks[idx]!;
+    if (streak.length >= minShortTotal) {
+      return {
+        window: streak,
+        fullWindow: false,
+        shorterWindow: true,
+        consecutiveHours,
+        parsedCount,
+        allValid,
+        actionInWindow,
+        tokenAddress,
+        multiplierStatus,
+      };
+    }
+  }
+
+  const lastStreak = streaks.at(-1) ?? [];
+  return {
+    window: lastStreak,
+    fullWindow: false,
+    shorterWindow: false,
+    consecutiveHours,
+    parsedCount,
+    allValid,
+    actionInWindow,
+    tokenAddress,
+    multiplierStatus,
+  };
+}
+
+export function inspectCandleCoverage(input: { symbol: string; candles: MarketCandle[]; now: string }): BacktestCoverage {
+  const nowMs = new Date(input.now).getTime();
+  const selection = selectConsecutiveCandleWindow({ symbol: input.symbol, candles: input.candles, nowMs });
+  const ready = selection.fullWindow && (selection.allValid || selection.window.length >= REQUIRED_HISTORY_CANDLES);
   const reason = ready
     ? `${REQUIRED_HOURLY_SAMPLES} hourly strategy samples and ${REQUIRED_WARMUP_CANDLES} warmup candles are consecutive, closed, nonempty, and multiplier verified.`
-    : input.candles.some((candle) => candle.multiplierStatus === "action_in_window")
+    : selection.actionInWindow
       ? "The candle window crosses a stock-token multiplier action; share-price normalization is unverified."
-      : `Only ${consecutiveHours} consecutive verified candles are available; ${REQUIRED_HISTORY_CANDLES} are required for 720 decisions and RV30 warmup.`;
-  const first = consecutiveWindow[0];
-  const last = consecutiveWindow.at(-1);
+      : `Only ${selection.consecutiveHours} consecutive verified candles are available; ${REQUIRED_HISTORY_CANDLES} are required for 720 decisions and RV30 warmup.`;
+  const first = selection.window[0];
+  const last = selection.window.at(-1);
   return BacktestCoverageSchema.parse({
     symbol: input.symbol,
-    availableSamples: parsed.length,
+    availableSamples: selection.parsedCount,
     requiredSamples: REQUIRED_HISTORY_CANDLES,
     startAt: first?.startAt ?? null,
     endAt: last?.endAt ?? null,
-    consecutiveHours,
+    consecutiveHours: selection.consecutiveHours,
     ready,
     dataSource: "crius_robinhood_chain_candles",
-    tokenAddress: parsed[0]?.tokenAddress ?? null,
-    multiplierStatus: input.candles.some((candle) => candle.multiplierStatus === "action_in_window") ? "action_in_window" : parsed.at(-1)?.multiplierStatus ?? "unverified",
+    tokenAddress: selection.tokenAddress,
+    multiplierStatus: selection.actionInWindow ? "action_in_window" : selection.multiplierStatus,
     fillApplied: false,
     reason,
   });
@@ -163,12 +248,16 @@ function runStrategyBacktest(input: {
   earnings: EarningsSnapshot | null;
   now: string;
   requestedCandles?: number;
+  allowShorterWindow?: boolean;
 }): BacktestRun {
   const { recipe, candles, templateId } = input;
   const recipeHash = canonicalRecipeHash(recipe);
   const coverage = inspectCandleCoverage({ symbol: recipe.underlyingSymbol, candles, now: input.now });
-  const first = candles[0];
-  const last = candles.at(-1);
+  const selection = selectConsecutiveCandleWindow({ symbol: recipe.underlyingSymbol, candles, nowMs: new Date(input.now).getTime() });
+  const canReplay = selection.fullWindow || (Boolean(input.allowShorterWindow) && selection.shorterWindow);
+  const replayCandles = canReplay ? selection.window : candles;
+  const first = replayCandles[0];
+  const last = replayCandles.at(-1);
   const earningsEvents = input.earnings?.events ?? [];
   const provenance: Record<string, unknown> = {
     provider: "Crius Robinhood Chain OHLCV",
@@ -220,16 +309,16 @@ function runStrategyBacktest(input: {
   let entryOrderCount = 0;
   let exitOrderCount = 0;
 
-  if (coverage.ready && validation.valid) {
-    const decisionStart = candles.length - REQUIRED_HOURLY_SAMPLES;
-    const decisionCandles = candles.slice(decisionStart);
-    let account: StrategyAccount | null = initialStrategyAccount(recipe, candles[decisionStart]!.endAt);
+  if (canReplay && validation.valid) {
+    const decisionStart = REQUIRED_WARMUP_CANDLES;
+    const decisionCandles = replayCandles.slice(decisionStart);
+    let account: StrategyAccount | null = initialStrategyAccount(recipe, replayCandles[decisionStart]!.endAt);
     let positions: StrategyPosition[] = [];
     const decisionCounts = { open: 0, hold: 0, close: 0, skip: 0 };
     const equitySeries: number[] = [];
     let idSequence = 0;
-    for (let index = decisionStart; index < candles.length; index += 1) {
-      const candle = candles[index]!;
+    for (let index = decisionStart; index < replayCandles.length; index += 1) {
+      const candle = replayCandles[index]!;
       const result = runStrategyTick({
         agentId: `backtest:${input.runId}`,
         tickId: `sample-${index}`,
@@ -238,7 +327,7 @@ function runStrategyBacktest(input: {
         recipeHash,
         snapshot: null,
         currentCandle: candle,
-        history: candles.slice(0, index),
+        history: replayCandles.slice(0, index),
         corporateActionDates: input.corporateActionDates,
         earnings: input.earnings,
         account,
@@ -254,13 +343,18 @@ function runStrategyBacktest(input: {
       const equity = strategyEquity(templateId, account, positions, Number(candle.shareCloseUsd));
       equitySeries.push(equity);
     }
-    sampleCount = REQUIRED_HOURLY_SAMPLES;
+    sampleCount = decisionCandles.length;
+    const windowDisclosure = selection.fullWindow
+      ? ""
+      : ` (shorter verified window after ${REQUIRED_WARMUP_CANDLES}-hour RV30 warmup; 720-hour full window unavailable)`;
     const startingSharePrice = Number(decisionCandles[0]!.shareCloseUsd);
     const endingSharePrice = Number(decisionCandles.at(-1)!.shareCloseUsd);
     const benchmarkPricesValid = startingSharePrice > 0 && endingSharePrice > 0 && Number.isFinite(startingSharePrice) && Number.isFinite(endingSharePrice);
     if (entryOrderCount === 0) {
       status = "failed";
-      reason = "The complete historical window produced no modeled entry fills; no performance metrics are reported and launch remains blocked.";
+      reason = selection.fullWindow
+        ? "The complete historical window produced no modeled entry fills; no performance metrics are reported and launch remains blocked."
+        : `The shorter verified historical window (${sampleCount} hourly decisions after ${REQUIRED_WARMUP_CANDLES}-hour RV30 warmup) produced no modeled entry fills; no performance metrics are reported and launch remains blocked.`;
     } else if (!benchmarkPricesValid || !account) {
       status = "failed";
       reason = "The first or last decision candle has an invalid share-normalized close; no performance metrics are reported and launch remains blocked.";
@@ -312,9 +406,9 @@ function runStrategyBacktest(input: {
         },
       };
       status = "complete";
-      reason = `Replayed ${sampleCount} provider candles through the shared strategy engine; ${entryOrderCount} modeled entries and ${exitOrderCount} modeled exits or settlements were applied with disclosed 50 bp slippage and no venue fees.`;
+      reason = `Replayed ${sampleCount} provider candles${windowDisclosure} through the shared strategy engine; ${entryOrderCount} modeled entries and ${exitOrderCount} modeled exits or settlements were applied with disclosed 50 bp slippage and no venue fees.`;
     }
-  } else if (coverage.ready && !validation.valid) {
+  } else if (canReplay && !validation.valid) {
     status = "failed";
     reason = `Recipe is not executable for paper options: ${validation.issues.map((issue) => issue.message).join(" ")}`;
   }
@@ -328,7 +422,7 @@ function runStrategyBacktest(input: {
     sampleCount,
     entryOrderCount,
     exitOrderCount,
-    hourlyCoverageComplete: coverage.ready,
+    hourlyCoverageComplete: selection.fullWindow,
     premiumSource: status === "complete" ? "modeled" : "unavailable",
     pricingMethod: status === "complete" ? "modeled" : "unavailable",
     status,
@@ -349,6 +443,7 @@ export function runBacktest(input: {
   earnings?: EarningsSnapshot | null;
   now: string;
   requestedCandles?: number;
+  allowShorterWindow?: boolean;
 }): BacktestRun {
   if (isHouseStrategyTemplate(input.recipe.templateId)) {
     return runStrategyBacktest({
@@ -360,14 +455,18 @@ export function runBacktest(input: {
       earnings: input.earnings ?? null,
       now: input.now,
       ...(input.requestedCandles !== undefined ? { requestedCandles: input.requestedCandles } : {}),
+      ...(input.allowShorterWindow !== undefined ? { allowShorterWindow: input.allowShorterWindow } : {}),
     });
   }
   const recipeHash = canonicalRecipeHash(input.recipe);
   const candles = input.candles ?? [];
   const coverage = inspectCandleCoverage({ symbol: input.recipe.underlyingSymbol, candles, now: input.now });
+  const selection = selectConsecutiveCandleWindow({ symbol: input.recipe.underlyingSymbol, candles, nowMs: new Date(input.now).getTime() });
+  const canReplay = selection.fullWindow || (Boolean(input.allowShorterWindow) && selection.shorterWindow);
+  const replayCandles = canReplay ? selection.window : candles;
   const dataHash = hashMarketCandles(candles);
-  const first = candles[0];
-  const last = candles.at(-1);
+  const first = replayCandles[0];
+  const last = replayCandles.at(-1);
   const provenance: Record<string, unknown> = {
     provider: "Crius Robinhood Chain OHLCV",
     endpoint: "GET /v1/robinhood/token/{contractAddress}/candles",
@@ -408,8 +507,8 @@ export function runBacktest(input: {
   let sampleCount = 0;
   let entryOrderCount = 0;
   let exitOrderCount = 0;
-  if (coverage.ready && validation.valid) {
-    const decisionStart = candles.length - REQUIRED_HOURLY_SAMPLES;
+  if (canReplay && validation.valid) {
+    const decisionStart = REQUIRED_WARMUP_CANDLES;
     const initialCapital = Number(input.recipe.parameters.initialCapitalUsd);
     let account: PaperAccountState = {
       initialCapitalUsd: initialCapital.toFixed(2),
@@ -417,12 +516,12 @@ export function runBacktest(input: {
       realizedPnlUsd: "0",
       peakEquityUsd: initialCapital.toFixed(2),
       dailyStartEquityUsd: initialCapital.toFixed(2),
-      dailyStartDate: candles[decisionStart]!.endAt.slice(0, 10),
+      dailyStartDate: replayCandles[decisionStart]!.endAt.slice(0, 10),
     };
     let position: PaperOptionPositionState | null = null;
     const equitySeries: number[] = [initialCapital];
-    for (let index = decisionStart; index < candles.length; index += 1) {
-      const candle = candles[index]!;
+    for (let index = decisionStart; index < replayCandles.length; index += 1) {
+      const candle = replayCandles[index]!;
       const result = runTick({
         agentId: `backtest:${input.runId}`,
         tickId: `sample-${index}`,
@@ -431,7 +530,7 @@ export function runBacktest(input: {
         recipeHash,
         snapshot: null,
         currentCandle: candle,
-        history: candles.slice(0, index),
+        history: replayCandles.slice(0, index),
         corporateActionDates: input.corporateActionDates,
         account,
         position,
@@ -445,9 +544,12 @@ export function runBacktest(input: {
       const equity = Number(account.cashUsd) + (position ? Number(position.markPriceUsd) * Number(position.quantity) : 0);
       equitySeries.push(equity);
     }
-    sampleCount = REQUIRED_HOURLY_SAMPLES;
+    const decisionCandles = replayCandles.slice(decisionStart);
+    sampleCount = decisionCandles.length;
+    const windowDisclosure = selection.fullWindow
+      ? ""
+      : ` (shorter verified window after ${REQUIRED_WARMUP_CANDLES}-hour RV30 warmup; 720-hour full window unavailable)`;
     if (entryOrderCount > 0) {
-      const decisionCandles = candles.slice(decisionStart);
       const startingSharePrice = Number(decisionCandles[0]!.shareCloseUsd);
       const endingSharePrice = Number(decisionCandles.at(-1)!.shareCloseUsd);
       const benchmarkPricesValid = Number.isFinite(startingSharePrice) && startingSharePrice > 0
@@ -498,13 +600,15 @@ export function runBacktest(input: {
           },
         };
         status = "complete";
-        reason = `Replayed ${sampleCount} provider candles through the shared engine; ${entryOrderCount} modeled entry fills and ${exitOrderCount} modeled exits were applied with disclosed 50 bp slippage and no venue fees.`;
+        reason = `Replayed ${sampleCount} provider candles${windowDisclosure} through the shared engine; ${entryOrderCount} modeled entry fills and ${exitOrderCount} modeled exits were applied with disclosed 50 bp slippage and no venue fees.`;
       }
     } else {
       status = "failed";
-      reason = "The complete historical window produced no modeled entry fills; no performance metrics are reported and launch remains blocked.";
+      reason = selection.fullWindow
+        ? "The complete historical window produced no modeled entry fills; no performance metrics are reported and launch remains blocked."
+        : `The shorter verified historical window (${sampleCount} hourly decisions after ${REQUIRED_WARMUP_CANDLES}-hour RV30 warmup) produced no modeled entry fills; no performance metrics are reported and launch remains blocked.`;
     }
-  } else if (coverage.ready && !validation.valid) {
+  } else if (canReplay && !validation.valid) {
     status = "failed";
     reason = `Recipe is not executable for paper options: ${validation.issues.map((issue) => issue.message).join(" ")}`;
   }
@@ -518,7 +622,7 @@ export function runBacktest(input: {
     sampleCount,
     entryOrderCount,
     exitOrderCount,
-    hourlyCoverageComplete: coverage.ready,
+    hourlyCoverageComplete: selection.fullWindow,
     premiumSource: status === "complete" ? "modeled" : "unavailable",
     pricingMethod: status === "complete" ? "modeled" : "unavailable",
     status,

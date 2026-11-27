@@ -111,6 +111,31 @@ test("Markets shows each company's bundled logo and a monogram where none is ver
 
 test("Markets ranks verified completed backtests ahead of uncovered markets", async ({ page }) => {
   test.setTimeout(120_000);
+  let releaseAgents!: () => void;
+  let reportAgentsRequest!: () => void;
+  const agentsRequested = new Promise<void>((resolve) => { reportAgentsRequest = resolve; });
+  const agentsGate = new Promise<void>((resolve) => { releaseAgents = resolve; });
+  const liveAgents = ["protective_put", "covered_call", "cash_secured_put", "earnings_straddle"].map((templateId, index) => ({
+    id: `house-layout-${index}`,
+    name: `House Agent ${index + 1}`,
+    templateId,
+    underlyingSymbol: ["NVDA", "TSLA", "AMD", "AMZN"][index],
+    status: "running",
+    recipeHash: `sha256:${"a".repeat(64)}`,
+    by: "Optra",
+    executionMode: "PAPER",
+    launchedAt: "2026-11-26T20:00:00.000Z",
+    latestDecision: { id: `decision-${index}`, action: "hold", reason: "The modeled position remains inside its exit rules.", createdAt: "2026-11-26T20:00:00.000Z" },
+    decisionCount: 18,
+    openPositions: 1,
+    account: { initialCapitalUsd: "10000", cashUsd: "8000", realizedPnlUsd: "250.00", equityUsd: "10250.00", lockedCollateralUsd: "2000" },
+    backtest: { id: `backtest-${index}`, totalReturnPct: "1.25", vsHoldingPct: "4.55", vsCashPct: "1.00", maxDrawdownPct: "3.50", premiumSource: "modeled", startAt: "2026-10-27T20:00:00.000Z", endAt: "2026-11-26T20:00:00.000Z" },
+  }));
+  await page.route("**/api/public/v1/agents", async (route) => {
+    reportAgentsRequest();
+    await agentsGate;
+    await route.fulfill({ json: { agents: liveAgents, executionMode: "PAPER" } });
+  });
   const markets = [apple, marketFixture("NVDA", "NVIDIA", "1"), marketFixture("GLD", "SPDR Gold Shares", "2"), marketFixture("AMD", "Advanced Micro Devices", "3"), marketFixture("AMZN", "Amazon", "4")];
   await page.route("**/api/markets", (route) => route.fulfill({ json: { markets } }));
   await page.route("**/api/markets/*", (route) => {
@@ -142,12 +167,17 @@ test("Markets ranks verified completed backtests ahead of uncovered markets", as
   }
   await historyLink.click();
   await expect(page).toHaveURL(/\/agents#house-backtests$/, { timeout: 45_000 });
+  await agentsRequested;
   await expect(page.getByRole("region", { name: "Historical House Agent backtests" })).toBeVisible({ timeout: 45_000 });
   const historyHeading = page.getByRole("heading", { name: "Historical House Agent backtests", exact: true });
   await expect(historyHeading).toBeVisible({ timeout: 45_000 });
+  const agentsResponse = page.waitForResponse((response) => new URL(response.url()).pathname === "/api/public/v1/agents");
+  releaseAgents();
+  expect((await agentsResponse).ok()).toBe(true);
+  await expect(page.locator("#house-agents .ag-card")).toHaveCount(4);
   await expect.poll(() => historyHeading.evaluate((element) => {
     const top = element.getBoundingClientRect().top;
-    return top >= 0 && top < window.innerHeight;
+    return top >= 0 && top <= 200;
   }), { timeout: 45_000 }).toBe(true);
 });
 

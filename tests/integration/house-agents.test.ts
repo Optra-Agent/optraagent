@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { eq } from "drizzle-orm";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { agents } from "../../db/schema";
+import { agents, backtestRuns } from "../../db/schema";
 import { DrizzleAuthRepository } from "../../lib/auth/drizzle-repository";
 import { createDatabase, type DatabaseConnection } from "../../lib/db/client";
 import { isRegularEquitySession } from "../../lib/engine/us-market-session";
@@ -222,5 +222,22 @@ describe("OPTRA House Agents on the persisted strategy engine", () => {
     const again = await ensureHouseAgents({ ...options, getHistory: async (symbol) => { reads += 1; return historyAt(symbol, CAPTURED); } });
     expect(reads).toBe(0);
     expect(again[0]).toMatchObject({ status: "backtest_blocked", agentId: null });
+  });
+
+  it("does not persist a House backtest when earnings provenance is unavailable", async () => {
+    const connection = await database();
+    const outcomes = await ensureHouseAgents({
+      db: connection.db,
+      now: () => CAPTURED,
+      getHistory: (symbol) => historyAt(symbol, CAPTURED),
+      getEarnings: async () => { throw new Error("Robinhood earnings history is unavailable."); },
+      definitions: HOUSE_AGENT_DEFINITIONS.filter((definition) => definition.key === "optra-earnings-straddle"),
+      symbols: () => ["NVDA"],
+    });
+
+    expect(outcomes[0]).toMatchObject({ status: "draft_waiting_for_data", agentId: null, underlyingSymbol: "NVDA" });
+    expect(outcomes[0]?.reason).toMatch(/earnings/i);
+    expect(await connection.db.select().from(backtestRuns)).toHaveLength(0);
+    expect(await connection.db.select().from(agents)).toHaveLength(0);
   });
 });

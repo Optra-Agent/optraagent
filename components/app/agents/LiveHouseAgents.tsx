@@ -14,7 +14,7 @@ import { strategyLine } from "./house-meta";
 type Load = { status: "loading" } | { status: "error" } | { status: "ready"; agents: PublicHouseAgent[] };
 
 /** OPTRA's own House Agents, running on paper right now. Read from the public API; nothing here is a user's agent. */
-export function LiveHouseAgents() {
+export function LiveHouseAgents({ onSettled }: { onSettled?: () => void } = {}) {
   const [state, setState] = useState<Load>({ status: "loading" });
 
   useEffect(() => {
@@ -24,10 +24,17 @@ export function LiveHouseAgents() {
         if (!response.ok) throw new Error("unavailable");
         return PublicAgentsResponseSchema.parse(await response.json());
       })
-      .then((result) => setState({ status: "ready", agents: result.agents }))
-      .catch(() => { if (!controller.signal.aborted) setState({ status: "error" }); });
+      .then((result) => {
+        setState({ status: "ready", agents: result.agents });
+        onSettled?.();
+      })
+      .catch(() => {
+        if (controller.signal.aborted) return;
+        setState({ status: "error" });
+        onSettled?.();
+      });
     return () => controller.abort();
-  }, []);
+  }, [onSettled]);
 
   if (state.status === "error") return null;
   return (

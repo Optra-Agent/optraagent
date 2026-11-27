@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ApiErrorSchema, AgentListResponseSchema } from "../../../lib/domain/contracts";
 import type { Agent } from "../../../lib/domain/contracts";
 import { useAuthSession } from "../AuthSessionProvider";
@@ -29,6 +29,9 @@ export function AgentListScreen({ initialTemplate = "protective_put" }: { initia
   const [result, setResult] = useState<{ key: string; status: "ready" | "error"; agents: Agent[]; error: string }>({ key: "", status: "ready", agents: [], error: "" });
   const [reload, setReload] = useState(0);
   const [template, setTemplate] = useState<HouseTemplateId>(initialTemplate);
+  const [houseAgentsSettled, setHouseAgentsSettled] = useState(false);
+  const historyScrollDone = useRef(false);
+  const notifyHouseAgentsSettled = useCallback(() => setHouseAgentsSettled(true), []);
 
   const requestKey = `${session?.user.id ?? ""}:${reload}`;
   const loadStatus = result.key === requestKey ? result.status : "loading";
@@ -52,6 +55,14 @@ export function AgentListScreen({ initialTemplate = "protective_put" }: { initia
       });
     return () => controller.abort();
   }, [requestKey, status]);
+
+  useEffect(() => {
+    if (historyScrollDone.current || status === "loading" || !houseAgentsSettled || window.location.hash !== "#house-backtests") return;
+    const target = document.getElementById("house-backtests");
+    if (!target) return;
+    target.scrollIntoView({ block: "start" });
+    historyScrollDone.current = true;
+  }, [houseAgentsSettled, status]);
 
   const journeyStep = status !== "signed_in" ? 1 : agents.some((agent) => agent.status !== "draft") ? 5 : agents.length > 0 ? 3 : 2;
 
@@ -77,7 +88,7 @@ export function AgentListScreen({ initialTemplate = "protective_put" }: { initia
         </div>
       ) : null}
 
-      <LiveHouseAgents />
+      <LiveHouseAgents onSettled={notifyHouseAgentsSettled} />
       <HouseBacktestResults />
 
       <AgentGallery selected={template} onSelect={setTemplate} owned={agents} ownedStatus={status === "signed_in" ? loadStatus : "ready"} ownedError={error} signedIn={status === "signed_in"} onRetry={() => setReload((value) => value + 1)} />
