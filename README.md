@@ -2,11 +2,15 @@
   <img src="public/banner.png" alt="OPTRA Agent" width="100%" />
 </p>
 
+<p align="center">
+  <strong>Official X:</strong> <a href="https://x.com/optraagent">@optraagent</a>
+  &nbsp;&middot;&nbsp;
+  <strong>Token CA:</strong> <code>0xc46f6a8149d5a400a230d3cdfc7a3a9abf3150fc</code>
+</p>
+
 # OPTRA Agent
 
 OPTRA Agent is a wallet-connected application for configuring, testing, and running options strategies against tokenized stock markets. Its strategy engine composes application-level rules, evaluates them against verified market history, and keeps simulated execution separate from transactions a user signs with a wallet.
-
-- **Contract Address (CA):** `0xc46f6a8149d5a400a230d3cdfc7a3a9abf3150fc`
 
 ## 01. Overview
 
