@@ -136,7 +136,7 @@ test("Markets ranks verified completed backtests ahead of uncovered markets", as
     await agentsGate;
     await route.fulfill({ json: { agents: liveAgents, executionMode: "PAPER" } });
   });
-  const markets = [apple, marketFixture("NVDA", "NVIDIA", "1"), marketFixture("GLD", "SPDR Gold Shares", "2"), marketFixture("AMD", "Advanced Micro Devices", "3"), marketFixture("AMZN", "Amazon", "4")];
+  const markets = [apple, marketFixture("NVDA", "NVIDIA", "1"), marketFixture("GLD", "SPDR Gold Shares", "2"), marketFixture("AMD", "Advanced Micro Devices", "3"), marketFixture("AMZN", "Amazon", "4"), marketFixture("JPM", "JPMorgan Chase", "5")];
   await page.route("**/api/markets", (route) => route.fulfill({ json: { markets } }));
   await page.route("**/api/markets/*", (route) => {
     const symbol = new URL(route.request().url()).pathname.split("/").at(-1) ?? "AAPL";
@@ -149,15 +149,15 @@ test("Markets ranks verified completed backtests ahead of uncovered markets", as
   await page.goto("/market");
 
   const rows = page.locator(".mk-row");
-  await expect(rows).toHaveCount(5);
-  await expect(rows.nth(0)).toContainText("6 completed backtests");
+  await expect(rows).toHaveCount(6);
+  await expect(rows.nth(0)).toContainText("3 completed backtests");
   const symbols = await rows.evaluateAll((items) => items.map((item) => item.querySelector(".mk-asset-text b")?.textContent?.trim().replace("Options", "") ?? ""));
-  expect(symbols).toEqual(["AMZN", "NVDA", "AMD", "GLD", "AAPL"]);
-  await expect(rows.nth(0)).toContainText("2 valid no-entry outcomes");
-  await expect(rows.nth(2)).toContainText("4 completed backtests");
-  await expect(rows.nth(2)).toContainText("4 valid no-entry outcomes");
-  await expect(rows.nth(3)).toContainText("4 valid no-entry outcomes");
-  await expect(rows.nth(4)).toContainText("0 completed backtests · no verified history");
+  expect(symbols).toEqual(["AMZN", "NVDA", "AAPL", "AMD", "GLD", "JPM"]);
+  await expect(rows.nth(0)).toContainText("1 valid no-entry outcomes");
+  await expect(rows.nth(2)).toContainText("2 completed backtests");
+  await expect(rows.nth(3)).toContainText("2 completed backtests");
+  await expect(rows.nth(4)).toContainText("4 valid no-entry outcomes");
+  await expect(rows.nth(5)).toContainText("0 completed backtests · no verified history");
   const historyLink = page.getByRole("complementary", { name: "AAPL details" }).getByRole("link", { name: "View historical backtest results" });
   await expect(historyLink).toHaveAttribute("href", "/agents#house-backtests");
   for (const width of [320, 390]) {

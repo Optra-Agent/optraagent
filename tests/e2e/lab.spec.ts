@@ -11,7 +11,7 @@ test("Lab reports source-backed replay coverage and blocks when its full window 
 
   await expect(page.getByRole("heading", { name: "Lab", exact: true })).toBeVisible();
   await expect(page.getByText("0 / 1441 verified hourly candles", { exact: true })).toBeVisible();
-  await expect(page.getByText("Only 0 consecutive verified candles are available; 1441 are required for 720 decisions and RV30 warmup.", { exact: true })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Backtest coverage" }).getByText("Only 0 consecutive verified candles are available; 1441 are required for 720 decisions and RV30 warmup.", { exact: true })).toBeVisible();
   await expect(page.getByText("Backtest blocked", { exact: true })).toBeVisible();
   await expect(page.getByText("Total return", { exact: true })).toHaveCount(0);
 });
