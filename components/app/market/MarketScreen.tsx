@@ -20,6 +20,8 @@ type LoadStatus = "loading" | "ready" | "error";
 type Filter = "all" | "standard" | "adjusted";
 type Sort = "backtests" | "symbol" | "symbol-desc" | "name" | "multiplier";
 const PAGE = 30;
+const POPULAR_MARKET_ORDER = ["NVDA", "AAPL", "TSLA", "MSFT", "AMZN", "GOOGL", "META", "AMD"] as const;
+const POPULAR_MARKET_RANK = new Map<string, number>(POPULAR_MARKET_ORDER.map((symbol, index) => [symbol, index]));
 
 async function readJson(response: Response): Promise<unknown> {
   try { return await response.json(); } catch { return null; }
@@ -45,7 +47,7 @@ export function MarketScreen() {
   const [filter, setFilter] = useState<Filter>("all");
   const [sort, setSort] = useState<Sort>("backtests");
   const [shown, setShown] = useState(PAGE);
-  const [selected, setSelected] = useState("");
+  const [userSelected, setUserSelected] = useState("");
   const [reload, setReload] = useState(0);
 
   const [snapshot, setSnapshot] = useState<MarketSnapshot | null>(null);
@@ -68,7 +70,6 @@ export function MarketScreen() {
       .then((result) => {
         setMarkets(result.markets);
         setLoadedAt(new Date().toISOString());
-        setSelected((current) => (result.markets.some((market) => market.symbol === current) ? current : result.markets.find((market) => market.symbol === "AAPL")?.symbol ?? result.markets[0]?.symbol ?? ""));
         setListStatus("ready");
       })
       .catch((reason: unknown) => {
@@ -78,6 +79,69 @@ export function MarketScreen() {
       });
     return () => controller.abort();
   }, [reload]);
+
+  const backtestStats = useMemo(() => {
+    const completedCounts = new Map<string, number>();
+    const noEntryCounts = new Map<string, number>();
+    const coverageQualified = new Set<string>();
+    if (backtestState.status !== "ready" || backtestState.response.status !== "complete" || backtestState.response.runs.length === 0) {
+      return { available: false, completedCounts, noEntryCounts, coverageQualified };
+    }
+
+    for (const run of backtestState.response.runs) {
+      if (run.hourlyCoverageComplete || run.sampleCount >= 168) coverageQualified.add(run.symbol);
+      if (run.status === "complete" && run.metrics !== null) {
+        completedCounts.set(run.symbol, (completedCounts.get(run.symbol) ?? 0) + 1);
+      }
+      if (isValidHouseBacktestNoEntry(run)) {
+        noEntryCounts.set(run.symbol, (noEntryCounts.get(run.symbol) ?? 0) + 1);
+      }
+    }
+    return { available: true, completedCounts, noEntryCounts, coverageQualified };
+  }, [backtestState]);
+
+  const results = useMemo(() => {
+    const needle = query.trim().toLowerCase();
+    const list = markets.filter((market) => {
+      if (filter === "standard" && adjusted(market)) return false;
+      if (filter === "adjusted" && !adjusted(market)) return false;
+      return !needle || market.symbol.toLowerCase().includes(needle) || cleanName(market.name).toLowerCase().includes(needle);
+    });
+    const by: Record<Sort, (a: MarketAsset, b: MarketAsset) => number> = {
+      backtests: (a, b) => {
+        const aComplete = backtestStats.completedCounts.get(a.symbol) ?? 0;
+        const bComplete = backtestStats.completedCounts.get(b.symbol) ?? 0;
+        const aNoEntry = backtestStats.noEntryCounts.get(a.symbol) ?? 0;
+        const bNoEntry = backtestStats.noEntryCounts.get(b.symbol) ?? 0;
+        const aHasVerified = aComplete > 0 || aNoEntry > 0 || backtestStats.coverageQualified.has(a.symbol);
+        const bHasVerified = bComplete > 0 || bNoEntry > 0 || backtestStats.coverageQualified.has(b.symbol);
+        if (aHasVerified !== bHasVerified) return Number(bHasVerified) - Number(aHasVerified);
+
+        const aPop = aComplete > 0 ? POPULAR_MARKET_RANK.get(a.symbol) : undefined;
+        const bPop = bComplete > 0 ? POPULAR_MARKET_RANK.get(b.symbol) : undefined;
+        if (aPop !== undefined || bPop !== undefined) {
+          if (aPop !== undefined && bPop !== undefined) return aPop - bPop;
+          return aPop !== undefined ? -1 : 1;
+        }
+
+        return bComplete - aComplete
+          || bNoEntry - aNoEntry
+          || a.symbol.localeCompare(b.symbol);
+      },
+      symbol: (a, b) => a.symbol.localeCompare(b.symbol),
+      "symbol-desc": (a, b) => b.symbol.localeCompare(a.symbol),
+      name: (a, b) => cleanName(a.name).localeCompare(cleanName(b.name)),
+      multiplier: (a, b) => Number(b.currentMultiplier) - Number(a.currentMultiplier) || a.symbol.localeCompare(b.symbol),
+    };
+    if (sort === "backtests" && !backtestStats.available) return list;
+    return [...list].sort(by[sort]);
+  }, [markets, query, filter, sort, backtestStats]);
+
+  const selected = userSelected && markets.some((market) => market.symbol === userSelected)
+    ? userSelected
+    : listStatus === "ready"
+      ? (results[0]?.symbol ?? markets[0]?.symbol ?? "")
+      : "";
 
   useEffect(() => {
     if (!selected) return;
@@ -114,7 +178,7 @@ export function MarketScreen() {
     if (symbol === selected) return;
     setSnapshot(null); setCoverage(null); setQuoteError(""); setCoverageError("");
     setQuoteStatus("loading"); setCoverageStatus("loading");
-    setSelected(symbol);
+    setUserSelected(symbol);
     // On narrow screens the details sit below the list, so bring them into view.
     if (window.matchMedia("(max-width: 1040px)").matches) window.setTimeout(() => document.getElementById("market-detail")?.scrollIntoView({ block: "start", behavior: "smooth" }), 50);
   }
@@ -123,46 +187,6 @@ export function MarketScreen() {
     setQuoteStatus("loading"); setCoverageStatus("loading");
     setRefresh((value) => value + 1);
   }
-
-  const backtestStats = useMemo(() => {
-    const completedCounts = new Map<string, number>();
-    const noEntryCounts = new Map<string, number>();
-    const coverageQualified = new Set<string>();
-    if (backtestState.status !== "ready" || backtestState.response.status !== "complete" || backtestState.response.runs.length === 0) {
-      return { available: false, completedCounts, noEntryCounts, coverageQualified };
-    }
-
-    for (const run of backtestState.response.runs) {
-      if (run.hourlyCoverageComplete) coverageQualified.add(run.symbol);
-      if (run.status === "complete" && run.metrics !== null && run.hourlyCoverageComplete) {
-        completedCounts.set(run.symbol, (completedCounts.get(run.symbol) ?? 0) + 1);
-      }
-      if (isValidHouseBacktestNoEntry(run)) {
-        noEntryCounts.set(run.symbol, (noEntryCounts.get(run.symbol) ?? 0) + 1);
-      }
-    }
-    return { available: true, completedCounts, noEntryCounts, coverageQualified };
-  }, [backtestState]);
-
-  const results = useMemo(() => {
-    const needle = query.trim().toLowerCase();
-    const list = markets.filter((market) => {
-      if (filter === "standard" && adjusted(market)) return false;
-      if (filter === "adjusted" && !adjusted(market)) return false;
-      return !needle || market.symbol.toLowerCase().includes(needle) || cleanName(market.name).toLowerCase().includes(needle);
-    });
-    const by: Record<Sort, (a: MarketAsset, b: MarketAsset) => number> = {
-      backtests: (a, b) => (backtestStats.completedCounts.get(b.symbol) ?? 0) - (backtestStats.completedCounts.get(a.symbol) ?? 0)
-        || Number(backtestStats.coverageQualified.has(b.symbol)) - Number(backtestStats.coverageQualified.has(a.symbol))
-        || a.symbol.localeCompare(b.symbol),
-      symbol: (a, b) => a.symbol.localeCompare(b.symbol),
-      "symbol-desc": (a, b) => b.symbol.localeCompare(a.symbol),
-      name: (a, b) => cleanName(a.name).localeCompare(cleanName(b.name)),
-      multiplier: (a, b) => Number(b.currentMultiplier) - Number(a.currentMultiplier) || a.symbol.localeCompare(b.symbol),
-    };
-    if (sort === "backtests" && !backtestStats.available) return list;
-    return [...list].sort(by[sort]);
-  }, [markets, query, filter, sort, backtestStats]);
 
   const asset = markets.find((market) => market.symbol === selected);
   const blocked = snapshot ? snapshot.stale || snapshot.tradingHalt : false;

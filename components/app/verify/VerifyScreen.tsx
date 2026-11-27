@@ -15,7 +15,7 @@ const statusLabel: Record<PublicClaim["status"], { label: string; tone: Tone }> 
   limited: { label: "Limited", tone: "neutral" },
   preview: { label: "Preview", tone: "neutral" },
   unavailable: { label: "Unavailable", tone: "ember" },
-  disabled: { label: "Disabled", tone: "ember" },
+  disabled: { label: "Gated", tone: "ember" },
 };
 
 const claimTitle: Record<string, string> = {

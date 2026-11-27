@@ -276,7 +276,7 @@ export function LabScreen({ initialAgentId = "" }: { initialAgentId?: string }) 
               <>
                 <div className="coverage-count">
                   <strong className="mono">{coverage.availableSamples} / {coverage.requiredSamples} verified hourly candles</strong>
-                  <span className={coverage.ready ? "coverage-state coverage-ready" : "coverage-state coverage-blocked"}>{coverage.ready ? "Coverage ready" : "Backtest blocked"}</span>
+                  <span className={coverage.ready ? "coverage-state coverage-ready" : "coverage-state coverage-blocked"}>{coverage.ready ? "Coverage ready" : "Coverage pending"}</span>
                 </div>
                 <div className="meter" role="img" aria-label={`${progress}% of the required candles are available`}><span style={{ width: `${progress}%` }} /></div>
                 <p className="coverage-reason">{coverage.reason}</p>

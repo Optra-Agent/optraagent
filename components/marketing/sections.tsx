@@ -210,7 +210,7 @@ function ExecutionModes({ running }: { running: number | null }) {
 }
 
 const CLAIM_TITLE: Record<string, string> = { market_data: "Market data", hook_catalog: "Hook catalog", house_agents: "House Agent templates", public_house_agents: "Running House Agents", decision_tape: "Decision Tape", historical_backtest: "Historical backtest", ...TRADING_CAPABILITY_TITLES, v4_claim_level: "Uniswap v4 claim level" };
-const CLAIM_LABEL: Record<string, string> = { verified: "Verified", limited: "Limited", preview: "Preview", unavailable: "Unavailable", disabled: "Disabled" };
+const CLAIM_LABEL: Record<string, string> = { verified: "Verified", limited: "Limited", preview: "Preview", unavailable: "Unavailable", disabled: "Gated" };
 
 /** What is built and what is not, read from the server's own verification response. One real public call sits beside it. */
 export function Proof({ verification, docs, houseAgentsRunning = null }: { verification: PublicVerification; docs: ApiDoc[]; houseAgentsRunning?: number | null }) {
@@ -250,11 +250,11 @@ export function Proof({ verification, docs, houseAgentsRunning = null }: { verif
 
 const faqStatic = [
   ["Is this real money?", "Agents run on paper with virtual USDG and need no deposit. Real money is involved only when you place a wallet-signed CallPut order yourself on Tape, where you confirm every transaction in your own wallet. No OPTRA agent places a real-money order."],
-  ["Can an agent trade for me with real money?", "Not yet. The autonomous execution engine is built and passed its Mainnet-fork acceptance, but it stays off until you authorize a trading session, all seven live gates pass and production acceptance is complete. Verify shows each requirement."],
+  ["Can an agent trade for me with real money?", "Real-money autonomous execution is gated pending production acceptance and all seven live gates. Today, you can configure rule-based strategies, run verified historical backtests, monitor automated Paper Agents on Optra Tape, and prepare wallet-authorized CallPut orders where supported."],
   ["What are synthetic options?", "Calls and puts priced from Robinhood Chain stock-token prices. They are not shares, and they are not tokenized stock ownership."],
   ["What is a modeled premium?", "A theoretical Black–Scholes price, using 30-day realized volatility × 1.1. It is not a recorded option quote, a listed contract or a real fill, and venue fees are not included."],
   ["Why does a backtest need 1,441 candles?", "721 hourly candles warm up the volatility estimate and 720 candles are decisions. Gaps or a missing corporate-action check block the run instead of filling in data."],
-  ["What does the AI do?", "Nothing yet. Rules decide, and AI composition is the next step. Today you pick rules by clicking in Forge."],
+  ["What does the AI do?", "Deterministic rules drive every trade today—configured in Forge, backtested in Lab, and logged on Optra Tape. AI-assisted rule composition is on the roadmap."],
 ] as const;
 
 export function Faq({ facts }: { facts: Facts }) {
@@ -290,7 +290,7 @@ export function FinalCta() {
           <div className="m-wrap m-final-inner">
             <p className="m-eyebrow">START HERE</p>
             <h2 id="final-title">Launch your first agent.</h2>
-            <p>Pick Protective Put, backtest it on past prices, launch it with virtual money, and read why it acted on the Tape. Paper agents need no deposit and never touch real money.</p>
+            <p>Pick a strategy, backtest it on verified history, launch an automated Paper Agent, and inspect every decision on Optra Tape—with no deposit required.</p>
             <div className="m-actions">
               <Link className={buttonVariants({ size: "lg" })} href="/agents">Launch an agent</Link>
               <Link className={buttonVariants({ variant: "outline", size: "lg" })} href="/verify">See what is verified</Link>
