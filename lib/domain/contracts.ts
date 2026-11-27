@@ -54,7 +54,7 @@ export const MarketSnapshotSchema = z.object({
   pricingMethod: z.enum(["recorded", "modeled", "unavailable"]),
 }).strict();
 
-export const MarketCandleSourceSchema = z.literal("crius_robinhood_chain_candles");
+export const MarketCandleSourceSchema = z.enum(["crius_robinhood_chain_candles", "synthetic_deterministic_scenario"]);
 export const MarketCandleSchema = z.object({
   symbol: z.string().regex(/^[A-Z0-9.]{1,16}$/),
   source: MarketCandleSourceSchema,
@@ -516,7 +516,7 @@ export const BacktestCoverageSchema = z.object({
 }).strict();
 
 export const HouseCampaignMarketStatusSchema = z.enum([
-  "qualified", "insufficient_data", "corporate_action", "unverified", "provider_error",
+  "qualified", "simulated", "insufficient_data", "corporate_action", "unverified", "provider_error",
 ]);
 export const HouseCampaignStrategyStatusSchema = z.enum([
   "complete", "no_entry", "insufficient_data", "incompatible", "error",

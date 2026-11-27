@@ -89,7 +89,7 @@ export function AgentListScreen({ initialTemplate = "protective_put" }: { initia
       ) : null}
 
       <LiveHouseAgents onSettled={notifyHouseAgentsSettled} />
-      <HouseBacktestResults />
+      <HouseBacktestResults runningWalletAgents={agents.filter((agent) => agent.status === "running").length} />
 
       <AgentGallery selected={template} onSelect={setTemplate} owned={agents} ownedStatus={status === "signed_in" ? loadStatus : "ready"} ownedError={error} signedIn={status === "signed_in"} onRetry={() => setReload((value) => value + 1)} />
 

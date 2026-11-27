@@ -83,12 +83,17 @@ export function MarketScreen() {
   const backtestStats = useMemo(() => {
     const completedCounts = new Map<string, number>();
     const noEntryCounts = new Map<string, number>();
+    const simulatedCounts = new Map<string, number>();
     const coverageQualified = new Set<string>();
     if (backtestState.status !== "ready" || backtestState.response.status !== "complete" || backtestState.response.runs.length === 0) {
-      return { available: false, completedCounts, noEntryCounts, coverageQualified };
+      return { available: false, completedCounts, noEntryCounts, simulatedCounts, coverageQualified };
     }
 
     for (const run of backtestState.response.runs) {
+      if (run.dataSource === "synthetic_deterministic_scenario") {
+        simulatedCounts.set(run.symbol, (simulatedCounts.get(run.symbol) ?? 0) + 1);
+        continue;
+      }
       if (run.hourlyCoverageComplete || run.sampleCount >= 168) coverageQualified.add(run.symbol);
       if (run.status === "complete" && run.metrics !== null) {
         completedCounts.set(run.symbol, (completedCounts.get(run.symbol) ?? 0) + 1);
@@ -97,7 +102,7 @@ export function MarketScreen() {
         noEntryCounts.set(run.symbol, (noEntryCounts.get(run.symbol) ?? 0) + 1);
       }
     }
-    return { available: true, completedCounts, noEntryCounts, coverageQualified };
+    return { available: true, completedCounts, noEntryCounts, simulatedCounts, coverageQualified };
   }, [backtestState]);
 
   const results = useMemo(() => {
@@ -206,6 +211,8 @@ export function MarketScreen() {
     if (count > 0 && noEntryCount > 0) return `${count} completed backtests · ${noEntryCount} valid no-entry outcomes`;
     if (count > 0) return `${count} completed backtests`;
     if (noEntryCount > 0) return `0 completed backtests · ${noEntryCount} valid no-entry outcomes`;
+    const simulatedCount = backtestStats.simulatedCounts.get(symbol) ?? 0;
+    if (simulatedCount > 0) return `0 verified · ${simulatedCount} simulated evaluations`;
     return backtestStats.coverageQualified.has(symbol)
       ? "0 completed backtests · verified historical coverage"
       : "0 completed backtests · no verified history";

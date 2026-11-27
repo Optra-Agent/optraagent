@@ -124,10 +124,9 @@ describe("HouseBacktestResults", () => {
     render(createElement(HouseBacktestResults));
 
     const matrix = await screen.findByRole("region", { name: "Market-by-strategy coverage" });
-    within(matrix).getByText("View 2 markets across four House Agent strategies").click();
     const rows = within(matrix).getAllByRole("row");
     expect(rows[1]?.textContent).toContain("NVDA");
-    expect(rows[1]?.textContent).toContain("Qualified");
+    expect(rows[1]?.textContent).toContain("Verified Historical");
     expect(rows[1]?.textContent).toContain("0x1111…1111");
     expect(rows[1]?.textContent).toContain("Backtested");
     expect(rows[2]?.textContent).toContain("AAPL");

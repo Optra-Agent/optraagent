@@ -209,6 +209,7 @@ export function inspectCandleCoverage(input: { symbol: string; candles: MarketCa
       : `Only ${selection.consecutiveHours} consecutive verified candles are available; ${REQUIRED_HISTORY_CANDLES} are required for 720 decisions and RV30 warmup.`;
   const first = selection.window[0];
   const last = selection.window.at(-1);
+  const isSynthetic = first?.source === "synthetic_deterministic_scenario";
   return BacktestCoverageSchema.parse({
     symbol: input.symbol,
     availableSamples: selection.parsedCount,
@@ -217,11 +218,13 @@ export function inspectCandleCoverage(input: { symbol: string; candles: MarketCa
     endAt: last?.endAt ?? null,
     consecutiveHours: selection.consecutiveHours,
     ready,
-    dataSource: "crius_robinhood_chain_candles",
+    dataSource: first?.source ?? "crius_robinhood_chain_candles",
     tokenAddress: selection.tokenAddress,
     multiplierStatus: selection.actionInWindow ? "action_in_window" : selection.multiplierStatus,
     fillApplied: false,
-    reason,
+    reason: isSynthetic && ready
+      ? `Simulated deterministic scenario: ${REQUIRED_HOURLY_SAMPLES} synthetic hourly decisions and ${REQUIRED_WARMUP_CANDLES} warmup candles (not verified historical market data).`
+      : reason,
   });
 }
 
@@ -413,6 +416,7 @@ function runStrategyBacktest(input: {
     reason = `Recipe is not executable for paper options: ${validation.issues.map((issue) => issue.message).join(" ")}`;
   }
 
+  const isSynthetic = first?.source === "synthetic_deterministic_scenario";
   return BacktestRunSchema.parse({
     id: input.runId,
     recipeHash,
@@ -422,7 +426,7 @@ function runStrategyBacktest(input: {
     sampleCount,
     entryOrderCount,
     exitOrderCount,
-    hourlyCoverageComplete: selection.fullWindow,
+    hourlyCoverageComplete: isSynthetic ? false : selection.fullWindow,
     premiumSource: status === "complete" ? "modeled" : "unavailable",
     pricingMethod: status === "complete" ? "modeled" : "unavailable",
     status,
@@ -430,7 +434,7 @@ function runStrategyBacktest(input: {
     historyDataHash: hashMarketCandles(candles),
     historyProvenance: provenance,
     pricingAssumptions,
-    reason,
+    reason: isSynthetic ? `Simulated deterministic scenario (not verified historical market data): ${reason}` : reason,
     createdAt: input.now,
   });
 }
