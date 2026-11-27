@@ -6,6 +6,8 @@
 
 OPTRA Agent is a wallet-connected application for configuring, testing, and running options strategies against tokenized stock markets. Its strategy engine composes application-level rules, evaluates them against verified market history, and keeps simulated execution separate from transactions a user signs with a wallet.
 
+- **Contract Address (CA):** `0xc46f6a8149d5a400a230d3cdfc7a3a9abf3150fc`
+
 ## 01. Overview
 
 OPTRA organizes strategy rules as reusable hooks across six stages: entry gates, contract selection, position sizing, position management, expiry handling, and risk breakers. Users can configure supported recipes and parameters, run a historical backtest, inspect the rule trace, and launch eligible strategies in Paper Mode.

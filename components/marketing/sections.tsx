@@ -13,6 +13,7 @@ import type { FlowScenario } from "./graph-flow";
 import { HeroStage } from "./HeroStage";
 import { AgentPhones } from "./AgentPhones";
 import { AgentEnsemble } from "./AgentEnsemble";
+import { ContractAddressPill } from "./ContractAddressPill";
 import { FinaleCast } from "./FinaleCast";
 import { LIVE_ENGINE_BUILT, LIVE_ENGINE_STATUS, LIVE_REQUIREMENTS } from "../app/live-requirements";
 import { TRADING_CAPABILITY_TITLES } from "../../lib/public/trading-capabilities";
@@ -49,6 +50,9 @@ export function Hero({ facts }: { facts: Facts }) {
           <div className="hero-actions">
             <Link className={cn(buttonVariants({ size: "lg" }))} href="/agents">Launch an agent</Link>
             <a className={cn(buttonVariants({ variant: "outline", size: "lg" }))} href="#floor">See the protective floor</a>
+          </div>
+          <div className="hero-ca">
+            <ContractAddressPill />
           </div>
           <p className="hero-micro">No deposit needed. Options are synthetic and modeled from Robinhood Chain stock-token prices. Not shares, not investment advice.</p>
         </div>
@@ -290,6 +294,9 @@ export function FinalCta() {
             <div className="m-actions">
               <Link className={buttonVariants({ size: "lg" })} href="/agents">Launch an agent</Link>
               <Link className={buttonVariants({ variant: "outline", size: "lg" })} href="/verify">See what is verified</Link>
+            </div>
+            <div className="fin-ca">
+              <ContractAddressPill />
             </div>
             <p className="fin-note">Modeled premiums. Not investment advice.</p>
           </div>
