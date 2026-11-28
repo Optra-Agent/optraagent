@@ -94,13 +94,13 @@ test("Markets shows each company's bundled logo and a monogram where none is ver
   const rows = page.locator(".mk-row");
   await expect(rows).toHaveCount(4);
   for (const [ticker, file] of [["AAPL", "AAPL.png"], ["ADBE", "ADBE.png"], ["MU", "MU.png"]] as const) {
-    const logo = rows.filter({ has: page.locator(".mk-asset-text b", { hasText: new RegExp(`^${ticker}$`) }) }).locator(".asset-logo");
+    const logo = rows.filter({ has: page.locator(".mk-asset-text b", { hasText: new RegExp(`^${ticker}(?:Options)?$`) }) }).locator(".asset-logo");
     await expect(logo).toHaveAttribute("data-fallback", "0");
     await expect(logo.locator("img")).toHaveAttribute("src", `/logos/${file}`);
     await expect.poll(() => logo.locator("img").evaluate((img: HTMLImageElement) => img.complete && img.naturalWidth > 0)).toBe(true);
   }
   // SPY has no verified mark of its own, so it shows a monogram rather than a wrong or generic image.
-  const spyLogo = rows.filter({ has: page.locator(".mk-asset-text b", { hasText: /^SPY$/ }) }).locator(".asset-logo");
+  const spyLogo = rows.filter({ has: page.locator(".mk-asset-text b", { hasText: /^SPY(?:Options)?$/ }) }).locator(".asset-logo");
   await expect(spyLogo).toHaveAttribute("data-fallback", "1");
   await expect(spyLogo.locator(".asset-initials")).toHaveText("SPY");
   await expect(spyLogo.locator("img")).toHaveCount(0);

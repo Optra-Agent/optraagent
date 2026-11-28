@@ -191,7 +191,7 @@ export function HouseBacktestResults({ runningWalletAgents = 0 }: { runningWalle
   return (
     <Panel className="house-backtests" aria-label="Historical House Agent backtests">
       <div id="house-backtests" className="panel-head">
-        <div><p className="eyebrow">FULL REGISTRY · VERIFIED &amp; SIMULATED COVERAGE</p><h2>Historical House Agent backtests</h2></div>
+        <div><p className="eyebrow">VERIFIED &amp; SIMULATED COVERAGE</p><h2>Historical House Agent backtests</h2></div>
         <Chip tone="azure">{allRuns.length} evaluations</Chip>
       </div>
       <div className="coverage-kpis" aria-label="Market coverage summary">
