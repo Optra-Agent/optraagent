@@ -94,13 +94,13 @@ test("Markets shows each company's bundled logo and a monogram where none is ver
   const rows = page.locator(".mk-row");
   await expect(rows).toHaveCount(4);
   for (const [ticker, file] of [["AAPL", "AAPL.png"], ["ADBE", "ADBE.png"], ["MU", "MU.png"]] as const) {
-    const logo = rows.filter({ hasText: ticker }).locator(".asset-logo");
+    const logo = rows.filter({ has: page.locator(".mk-asset-text b", { hasText: new RegExp(`^${ticker}$`) }) }).locator(".asset-logo");
     await expect(logo).toHaveAttribute("data-fallback", "0");
     await expect(logo.locator("img")).toHaveAttribute("src", `/logos/${file}`);
     await expect.poll(() => logo.locator("img").evaluate((img: HTMLImageElement) => img.complete && img.naturalWidth > 0)).toBe(true);
   }
   // SPY has no verified mark of its own, so it shows a monogram rather than a wrong or generic image.
-  const spyLogo = rows.filter({ hasText: "SPY" }).locator(".asset-logo");
+  const spyLogo = rows.filter({ has: page.locator(".mk-asset-text b", { hasText: /^SPY$/ }) }).locator(".asset-logo");
   await expect(spyLogo).toHaveAttribute("data-fallback", "1");
   await expect(spyLogo.locator(".asset-initials")).toHaveText("SPY");
   await expect(spyLogo.locator("img")).toHaveCount(0);
@@ -158,7 +158,7 @@ test("Markets ranks verified completed backtests ahead of uncovered markets", as
   await expect(rows.nth(2)).toContainText("3 completed backtests");
   await expect(rows.nth(3)).toContainText("2 completed backtests");
   await expect(rows.nth(4)).toContainText("4 valid no-entry outcomes");
-  await expect(rows.nth(5)).toContainText("0 completed backtests · no verified history");
+  await expect(rows.nth(5)).toContainText("0 verified · 4 simulated evaluations");
   const historyLink = page.getByRole("complementary", { name: "NVDA details" }).getByRole("link", { name: "View historical backtest results" });
   await expect(historyLink).toHaveAttribute("href", "/agents#house-backtests");
   for (const width of [320, 390]) {
