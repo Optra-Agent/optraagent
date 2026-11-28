@@ -3,7 +3,7 @@ import { expect, test } from "@playwright/test";
 test("Verify renders server claims with evidence links and keeps unshipped features labeled", async ({ page }) => {
   await page.goto("/verify");
 
-  await expect(page.getByRole("heading", { level: 1, name: "Verify", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: "OPTRA — Protocol Transparency & Verification", exact: true })).toBeVisible();
   const status = page.getByLabel("Trading status");
   await expect(status.getByText("Wallet-signed trading", { exact: true })).toBeVisible();
   await expect(status.getByText(/^(Available|Signing not enabled)$/)).toBeVisible();
@@ -23,10 +23,12 @@ test("Verify renders server claims with evidence links and keeps unshipped featu
   await expect(built.getByText("Engine built · Live activation required", { exact: true })).toBeVisible();
   await expect(built.getByText(/uninitialized with no pool, holds no funds and is not part of options execution/)).toBeVisible();
   await expect(built.getByText(/claim level is L0/)).toBeVisible();
-  const planned = page.getByRole("region", { name: "Roadmap" });
-  await expect(planned.getByText("AI strategy composition", { exact: true })).toBeVisible();
-  await expect(planned.getByText("Planned", { exact: true }).first()).toBeVisible();
-  await expect(planned.getByText("Autonomous Agent Engine")).toHaveCount(0);
+  const marketIntel = page.getByRole("region", { name: "Market Intelligence" });
+  await expect(marketIntel.getByText("205 Markets", { exact: true })).toBeVisible();
+  const x402 = page.getByRole("region", { name: "x402 Economic Autonomy" });
+  await expect(x402.getByText("Pilot Verified", { exact: true })).toBeVisible();
+  const harmonic = page.getByRole("region", { name: "Harmonic Agent Verification" });
+  await expect(harmonic.getByText("Connected", { exact: true })).toBeVisible();
 });
 
 test("Verify shows an error state when claims cannot be loaded", async ({ page }) => {
@@ -34,5 +36,5 @@ test("Verify shows an error state when claims cannot be loaded", async ({ page }
   await page.goto("/verify");
 
   await expect(page.getByRole("main").getByRole("alert")).toContainText("Claims are offline.");
-  await expect(page.getByRole("region", { name: "Roadmap" })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Market Intelligence" })).toBeVisible();
 });
