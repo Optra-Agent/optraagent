@@ -120,10 +120,12 @@ export class KernelVerificationService {
     const status: ProofStatus = allProved ? "PROVED" : "REFUTED";
 
     let externalReference: string | null = null;
+    let verifier: "ARISTOTLE" | "LOCAL_KERNEL" = "LOCAL_KERNEL";
     if (input.contractAddress && this.client.requestVerification) {
       try {
         const res = await this.client.requestVerification({ address: input.contractAddress });
         externalReference = res.externalReference;
+        verifier = "ARISTOTLE";
       } catch {
         // Non-blocking if external contract verification is unavailable
       }
@@ -144,6 +146,7 @@ export class KernelVerificationService {
         "allowNakedShortOptions = false",
         "allowTradingCapitalForServices = false",
         "Atomic USDG arithmetic is 6-decimal non-negative",
+        `verifier=${verifier}`,
       ],
       externalReference,
       resolvedAt: new Date(),
