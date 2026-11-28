@@ -8,9 +8,11 @@ import { createPaperHandlers } from "./handlers";
 import { createPaperScheduler } from "./scheduler";
 
 export async function getPaperHandlers() {
-  const repository = new DrizzlePaperRepository(await getDatabase());
+  const db = await getDatabase();
+  const repository = new DrizzlePaperRepository(db);
   return createPaperHandlers({
     repository,
+    db,
     readSession: lookupWalletSession,
     getSnapshot: (symbol) => getMarketFeed().getSnapshot(symbol),
     getHistory: (symbol) => getMarketHistoryFeed().getHistory(symbol),
@@ -19,9 +21,11 @@ export async function getPaperHandlers() {
 }
 
 export async function getPaperScheduler() {
-  const repository = new DrizzlePaperRepository(await getDatabase());
+  const db = await getDatabase();
+  const repository = new DrizzlePaperRepository(db);
   return createPaperScheduler({
     repository,
+    db,
     secret: process.env.CRON_SECRET,
     getHistory: (symbol) => getMarketHistoryFeed().getHistory(symbol),
     getEarnings: (symbol) => getEarningsFeed().getEarnings(symbol),

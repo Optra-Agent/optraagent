@@ -149,6 +149,13 @@ export function runStrategyTick(input: StrategyTickInput): StrategyTickResult {
     portfolio: { account: StrategyAccount; changes: PositionChange[] },
     context?: { sourceName?: string; derived?: Record<string, unknown>; history?: MarketCandle[]; earningsEvents?: unknown[] },
   ): StrategyTickResult => {
+    if (input.paidVolatilityResource) {
+      trace.system(
+        "system.x402_resource",
+        "pass",
+        `Consumed x402 paid volatility resource (${input.paidVolatilityResource.regime}, IV ${(input.paidVolatilityResource.impliedVolatility * 100).toFixed(1)}%) from ${input.paidVolatilityResource.providerId}.`,
+      );
+    }
     trace.fill(hookIds, "Not evaluated this tick because an earlier rule decided the outcome.");
     const history = context?.history ?? [];
     const marketContext = input.includeMarketContext === false ? undefined : {
@@ -160,6 +167,7 @@ export function runStrategyTick(input: StrategyTickInput): StrategyTickResult {
       derived: context?.derived ?? {},
       earnings: input.earnings ? { source: input.earnings.source, fetchedAt: input.earnings.fetchedAt, events: context?.earningsEvents ?? [] } : null,
       positionsBefore: startingPositions.length,
+      ...(input.paidVolatilityResource ? { x402Resource: input.paidVolatilityResource } : {}),
     };
     return {
       decision: AgentDecisionSchema.parse({

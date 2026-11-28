@@ -12,6 +12,8 @@ import { runTick } from "../engine/run-tick";
 import { runStrategyTick } from "../engine/strategy/run-strategy-tick";
 import { isHouseStrategyTemplate } from "../hooks/house-specs";
 import type { EarningsSnapshot } from "../market/earnings";
+import type { AppDatabase } from "../db/client";
+import { acquireVolatilityResourceForTick, recordStrategyEvaluatedEvent } from "../economics/acquire-volatility-resource";
 import { StrategyTickStateError } from "./strategy-persistence";
 import { PaperTickStateError } from "./drizzle-repository";
 import type { PersistTickResult, DrizzlePaperRepository } from "./drizzle-repository";
@@ -24,6 +26,7 @@ type SnapshotReader = (symbol: string) => Promise<MarketSnapshot>;
 
 export type PaperHandlerOptions = {
   repository: PaperRepository;
+  db?: AppDatabase;
   readSession: SessionReader;
   getSnapshot: SnapshotReader;
   getHistory?: (symbol: string) => Promise<MarketHistoryResult>;
@@ -97,6 +100,21 @@ export function createPaperHandlers(options: PaperHandlerOptions) {
           currentCandle = history.candles[index]!;
         }
         const priorCandles = history?.candles.filter((candle) => new Date(candle.endAt).getTime() <= new Date(occurredAt).getTime() && candle.endAt !== occurredAt);
+        const economicResource = options.db
+          ? await acquireVolatilityResourceForTick({
+              db: options.db,
+              agentId: agent.id,
+              ownerId,
+              agentStatus: agent.status,
+              isHouseAgent: false,
+              underlyingSymbol: agent.recipe.underlyingSymbol,
+              tickId,
+              occurredAt,
+              now: now(),
+            }).catch(() => null)
+          : null;
+        const paidVolatilityResource = economicResource?.status === "acquired" ? economicResource.volatilityData : null;
+
         if (isHouseStrategyTemplate(agent.templateId) && options.repository.persistStrategyTick) {
           const earnings = options.getEarnings ? await options.getEarnings(agent.recipe.underlyingSymbol).catch(() => null) : null;
           const persistedStrategy = await options.repository.persistStrategyTick({
@@ -118,9 +136,20 @@ export function createPaperHandlers(options: PaperHandlerOptions) {
               earnings,
               account: context.account,
               positions: context.positions,
+              paidVolatilityResource,
               state: { status: context.agent.status as "running" },
             }),
           });
+          if (options.db && economicResource && economicResource.status !== "disabled") {
+            await recordStrategyEvaluatedEvent({
+              db: options.db,
+              agentId: agent.id,
+              decisionId: persistedStrategy.decision.id,
+              action: persistedStrategy.decision.action,
+              reason: persistedStrategy.decision.reason,
+              now: now(),
+            }).catch(() => undefined);
+          }
           return tickResponse(persistedStrategy);
         }
         const persisted = await options.repository.persistTick({
@@ -141,9 +170,20 @@ export function createPaperHandlers(options: PaperHandlerOptions) {
             corporateActionDates: history?.corporateActionDates,
             account: context.account,
             position: context.position,
+            paidVolatilityResource,
             state: { status: context.agent.status },
           }),
         });
+        if (options.db && economicResource && economicResource.status !== "disabled") {
+          await recordStrategyEvaluatedEvent({
+            db: options.db,
+            agentId: agent.id,
+            decisionId: persisted.decision.id,
+            action: persisted.decision.action,
+            reason: persisted.decision.reason,
+            now: now(),
+          }).catch(() => undefined);
+        }
         return tickResponse(persisted);
       } catch (cause) {
         if (cause instanceof PaperTickStateError || cause instanceof StrategyTickStateError) {

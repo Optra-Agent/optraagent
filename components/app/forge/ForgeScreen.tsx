@@ -15,6 +15,9 @@ import {
 } from "../../../lib/domain/contracts";
 import type { HookCatalogResponse, HookDefinition, HookStage, MarketAsset, RecipeValidationResult } from "../../../lib/domain/contracts";
 import { buildProtectivePutRecipe, PAPER_PROTECTIVE_PUT_HOOK_IDS } from "../../../lib/hooks/catalog";
+import { parseUsdgToAtomic } from "../../../lib/economics/atomic";
+import { DEFAULT_ECONOMIC_MANDATE, OPTRA_VOLATILITY_PROVIDER_ID } from "../../../lib/economics/types";
+import type { ServiceCategory } from "../../../lib/economics/types";
 import { shortHash, titleCase, errorText } from "../format";
 import { Chip, PageHeader, StateBlock, Panel } from "../ui";
 import { Button } from "@/components/ui/button";
@@ -67,6 +70,11 @@ export function ForgeScreen() {
   const [validation, setValidation] = useState<RecipeValidationResult | null>(null);
   const [validationError, setValidationError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [x402Enabled, setX402Enabled] = useState(true);
+  const [dailyServiceBudgetUsdg, setDailyServiceBudgetUsdg] = useState("1.00");
+  const [perRequestLimitUsdg, setPerRequestLimitUsdg] = useState("0.10");
+  const [initialServiceFundUsdg, setInitialServiceFundUsdg] = useState("1.00");
+  const [approvedCategories, setApprovedCategories] = useState<ServiceCategory[]>(["VOLATILITY_DATA", "MARKET_DATA"]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -175,6 +183,39 @@ export function ForgeScreen() {
       const body = await readBody(response);
       if (!response.ok) throw new Error(apiMessage(body, "The validated draft could not be saved."));
       const saved = AgentDetailSchema.parse(body);
+      try {
+        await fetch(`/api/agents/${encodeURIComponent(saved.id)}/economics`, {
+          method: "POST",
+          credentials: "include",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            action: "update_mandate",
+            mandate: {
+              ...DEFAULT_ECONOMIC_MANDATE,
+              enabled: x402Enabled,
+              dailyServiceBudgetAtomic: parseUsdgToAtomic(dailyServiceBudgetUsdg || "1.00"),
+              perRequestLimitAtomic: parseUsdgToAtomic(perRequestLimitUsdg || "0.10"),
+              approvedProviders: [OPTRA_VOLATILITY_PROVIDER_ID],
+              approvedServiceCategories: approvedCategories.length > 0 ? approvedCategories : ["VOLATILITY_DATA"],
+            },
+            reason: "Configured Economic Mandate in Forge.",
+          }),
+        });
+        if (x402Enabled && Number(initialServiceFundUsdg) > 0) {
+          await fetch(`/api/agents/${encodeURIComponent(saved.id)}/economics`, {
+            method: "POST",
+            credentials: "include",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+              action: "fund",
+              amountUsdg: initialServiceFundUsdg,
+              reason: "Initial Service Budget allocation from Forge.",
+            }),
+          });
+        }
+      } catch {
+        // Non-blocking: draft is saved and Economic Mandate can be adjusted on the Economics tab.
+      }
       router.push(`/agents/${encodeURIComponent(saved.id)}`);
     } catch (reason) {
       setValidationError(errorText(reason, "The validated draft could not be saved."));
@@ -271,6 +312,56 @@ export function ForgeScreen() {
                 <Input id="forge-premium-cap" type="number" min="0.1" max="2" step="0.1" inputMode="decimal" value={maxPremiumPctHolding} onChange={(event) => { setMaxPremiumPctHolding(event.target.value); invalidateValidation(); }} required />
               </div>
             </div>
+
+            <fieldset className="forge-hooks">
+              <legend>Economic Mandate (x402 Machine Services)</legend>
+              <p className="forge-hooks-note">
+                Separate from Trading Capital: machine services (volatility &amp; market data) draw only from the isolated Service Budget. Unknown providers are denied by default.
+              </p>
+              <div className="forge-basics">
+                <div className="field">
+                  <Label htmlFor="forge-x402-enabled">Machine spending</Label>
+                  <Select value={x402Enabled ? "enabled" : "disabled"} onValueChange={(v) => setX402Enabled(v === "enabled")}>
+                    <SelectTrigger id="forge-x402-enabled" className="w-full"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="enabled">Enabled (bounded x402)</SelectItem>
+                      <SelectItem value="disabled">Disabled</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="field">
+                  <Label htmlFor="forge-daily-service-budget">Daily Service Budget (USDG)</Label>
+                  <Input id="forge-daily-service-budget" type="number" min="0" step="0.1" value={dailyServiceBudgetUsdg} onChange={(e) => setDailyServiceBudgetUsdg(e.target.value)} />
+                </div>
+                <div className="field">
+                  <Label htmlFor="forge-per-request-limit">Per-Request Cap (USDG)</Label>
+                  <Input id="forge-per-request-limit" type="number" min="0" step="0.01" value={perRequestLimitUsdg} onChange={(e) => setPerRequestLimitUsdg(e.target.value)} />
+                </div>
+                <div className="field">
+                  <Label htmlFor="forge-initial-service-fund">Initial Service Budget Fund (USDG)</Label>
+                  <Input id="forge-initial-service-fund" type="number" min="0" step="0.1" value={initialServiceFundUsdg} onChange={(e) => setInitialServiceFundUsdg(e.target.value)} />
+                </div>
+              </div>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {(["VOLATILITY_DATA", "MARKET_DATA", "VERIFICATION", "RESEARCH"] as const).map((cat) => {
+                  const checked = approvedCategories.includes(cat);
+                  return (
+                    <label className="forge-economic-category" key={cat}>
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={() =>
+                          setApprovedCategories((prev) =>
+                            checked ? prev.filter((item) => item !== cat) : [...prev, cat],
+                          )
+                        }
+                      />
+                      <span><strong>{cat}</strong></span>
+                    </label>
+                  );
+                })}
+              </div>
+            </fieldset>
 
             <fieldset className="forge-hooks">
               <legend>Hook rules</legend>

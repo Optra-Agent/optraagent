@@ -315,3 +315,132 @@ export const liveRiskAcknowledgements = pgTable("live_risk_acknowledgements", {
   country: varchar("country", { length: 2 }),
   acceptedAt: timestamp("accepted_at", { withTimezone: true }).notNull().defaultNow(),
 });
+
+/** Wave A: Global Risk Desk economic controls. Overrides all individual agent economic mandates. */
+export const economicGlobalControls = pgTable("economic_global_controls", {
+  id: varchar("id", { length: 32 }).primaryKey(),
+  pauseAllAutonomousAgents: boolean("pause_all_autonomous_agents").notNull().default(false),
+  pauseNewEntries: boolean("pause_new_entries").notNull().default(false),
+  pauseMachineServiceSpending: boolean("pause_machine_service_spending").notNull().default(false),
+  disableX402Globally: boolean("disable_x402_globally").notNull().default(false),
+  emergencyDenyAllMachinePayments: boolean("emergency_deny_all_machine_payments").notNull().default(false),
+  disabledProviders: jsonb("disabled_providers").$type<string[]>().notNull().default([]),
+  disabledCategories: jsonb("disabled_categories").$type<string[]>().notNull().default([]),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+/** Wave A (T4): Centrally auditable OPTRA Service Provider Registry for x402 machine services. */
+export const serviceProviders = pgTable("service_providers", {
+  id: varchar("id", { length: 64 }).primaryKey(),
+  name: varchar("name", { length: 120 }).notNull(),
+  endpoint: text("endpoint").notNull(),
+  serviceCategory: varchar("service_category", { length: 32 }).notNull(),
+  paymentProtocol: varchar("payment_protocol", { length: 16 }).notNull().default("X402"),
+  acceptedAssets: jsonb("accepted_assets").$type<string[]>().notNull(),
+  network: varchar("network", { length: 32 }).notNull(),
+  payTo: varchar("pay_to", { length: 42 }).notNull(),
+  status: varchar("status", { length: 16 }).notNull().default("ACTIVE"),
+  trustTier: varchar("trust_tier", { length: 24 }).notNull().default("OPTRA_VERIFIED"),
+  ownership: varchar("ownership", { length: 24 }).notNull().default("OPTRA_OWNED"),
+  expectedResponseSchema: varchar("expected_response_schema", { length: 64 }),
+  maxKnownPriceAtomic: varchar("max_known_price_atomic", { length: 78 }),
+  healthCheckUrl: text("health_check_url"),
+  metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default({}),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+/** Wave A (T1): Isolated Agent Economic Account & Service Budget (never shared with Trading Capital). */
+export const agentEconomicAccounts = pgTable("agent_economic_accounts", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  agentId: uuid("agent_id").notNull().unique().references(() => agents.id, { onDelete: "cascade" }),
+  ownerId: uuid("owner_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  serviceBalanceAtomic: varchar("service_balance_atomic", { length: 78 }).notNull().default("0"),
+  totalFundedAtomic: varchar("total_funded_atomic", { length: 78 }).notNull().default("0"),
+  totalSpentAtomic: varchar("total_spent_atomic", { length: 78 }).notNull().default("0"),
+  spentTodayAtomic: varchar("spent_today_atomic", { length: 78 }).notNull().default("0"),
+  spendDayUtc: varchar("spend_day_utc", { length: 10 }).notNull(),
+  requestsThisHour: integer("requests_this_hour").notNull().default(0),
+  hourWindowStart: varchar("hour_window_start", { length: 32 }).notNull(),
+  mandate: jsonb("mandate").$type<Record<string, unknown>>().notNull(),
+  mandateHash: varchar("mandate_hash", { length: 71 }).notNull(),
+  mandateVersion: integer("mandate_version").notNull().default(1),
+  machineSpendingStatus: varchar("machine_spending_status", { length: 16 }).notNull().default("PAUSED"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  index("agent_economic_accounts_owner_idx").on(table.ownerId),
+]);
+
+/** Wave A (T1): Immutable audit log for every Service Budget or Economic Mandate mutation. */
+export const agentEconomicBudgetEvents = pgTable("agent_economic_budget_events", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  agentId: uuid("agent_id").notNull().references(() => agents.id, { onDelete: "cascade" }),
+  ownerId: uuid("owner_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  eventType: varchar("event_type", { length: 32 }).notNull(),
+  amountAtomic: varchar("amount_atomic", { length: 78 }).notNull().default("0"),
+  balanceAfterAtomic: varchar("balance_after_atomic", { length: 78 }).notNull(),
+  mandateHash: varchar("mandate_hash", { length: 71 }).notNull(),
+  actor: varchar("actor", { length: 64 }).notNull(),
+  reason: text("reason").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  index("agent_economic_budget_events_agent_idx").on(table.agentId, table.createdAt),
+]);
+
+/** Wave A (T3/T10): Persistent x402 payment & reconciliation ledger with duplicate/replay protection. */
+export const x402PaymentRecords = pgTable("x402_payment_records", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  decisionId: varchar("decision_id", { length: 256 }).notNull(),
+  agentId: uuid("agent_id").notNull().references(() => agents.id, { onDelete: "cascade" }),
+  providerId: varchar("provider_id", { length: 64 }).notNull(),
+  serviceCategory: varchar("service_category", { length: 32 }).notNull(),
+  requestNonce: varchar("request_nonce", { length: 128 }).notNull(),
+  requestHash: varchar("request_hash", { length: 71 }).notNull(),
+  idempotencyKey: varchar("idempotency_key", { length: 128 }).notNull(),
+  amountAtomic: varchar("amount_atomic", { length: 78 }).notNull(),
+  asset: varchar("asset", { length: 64 }).notNull(),
+  network: varchar("network", { length: 32 }).notNull(),
+  paymentMode: varchar("payment_mode", { length: 16 }).notNull().default("EXACT"),
+  settlementMode: varchar("settlement_mode", { length: 24 }).notNull().default("PAPER_REHEARSAL"),
+  status: varchar("status", { length: 24 }).notNull(),
+  reasonCode: varchar("reason_code", { length: 64 }).notNull(),
+  paymentChallenge: jsonb("payment_challenge").$type<Record<string, unknown>>(),
+  paymentReference: varchar("payment_reference", { length: 128 }),
+  settlementReference: varchar("settlement_reference", { length: 128 }),
+  txHash: varchar("tx_hash", { length: 66 }),
+  responseHash: varchar("response_hash", { length: 71 }),
+  validationStatus: varchar("validation_status", { length: 16 }).notNull().default("PENDING"),
+  validationReason: text("validation_reason"),
+  economicMandateHash: varchar("economic_mandate_hash", { length: 71 }).notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  uniqueIndex("x402_payment_records_agent_idemp_idx").on(table.agentId, table.idempotencyKey),
+  uniqueIndex("x402_payment_records_agent_nonce_idx").on(table.agentId, table.requestNonce),
+  index("x402_payment_records_agent_created_idx").on(table.agentId, table.createdAt),
+  index("x402_payment_records_decision_idx").on(table.decisionId),
+]);
+
+/** Wave A (T7): First-class Economic Trace events for OPTRA Decision Tape. */
+export const x402TapeEvents = pgTable("x402_tape_events", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  decisionId: varchar("decision_id", { length: 256 }).notNull(),
+  agentId: uuid("agent_id").notNull().references(() => agents.id, { onDelete: "cascade" }),
+  eventType: varchar("event_type", { length: 40 }).notNull(),
+  providerId: varchar("provider_id", { length: 64 }),
+  serviceCategory: varchar("service_category", { length: 32 }),
+  amountAtomic: varchar("amount_atomic", { length: 78 }),
+  asset: varchar("asset", { length: 64 }),
+  requestHash: varchar("request_hash", { length: 71 }),
+  responseHash: varchar("response_hash", { length: 71 }),
+  paymentReference: varchar("payment_reference", { length: 128 }),
+  txHash: varchar("tx_hash", { length: 66 }),
+  economicMandateHash: varchar("economic_mandate_hash", { length: 71 }).notNull(),
+  reason: text("reason").notNull(),
+  metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default({}),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  index("x402_tape_events_agent_created_idx").on(table.agentId, table.createdAt),
+  index("x402_tape_events_decision_idx").on(table.decisionId),
+]);

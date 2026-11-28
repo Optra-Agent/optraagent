@@ -64,6 +64,13 @@
       "when": 1795345201321,
       "tag": "0008_live_risk_acknowledgement",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1795824550273,
+      "tag": "0009_calm_thing",
+      "breakpoints": true
     }
   ]
 }
