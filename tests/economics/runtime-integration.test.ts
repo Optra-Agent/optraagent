@@ -221,5 +221,93 @@ describe("Wave A House & Custom Agent Runtime Integration", () => {
       else process.env.X402_PILOT_AGENT_ID = prevPilot;
     }
   });
+
+  it("enforces atomic one-payment pilot cap across concurrent reservations", async () => {
+    rootDir = mkdtempSync(join(tmpdir(), "optra-pilot-cap-"));
+    const conn = await createDatabase({ dataDir: join(rootDir, "db"), nodeEnv: "test" });
+    open.push(conn);
+
+    const [user] = await conn.db.insert(users).values({ address: "0x4444444444444444444444444444444444444444" }).returning();
+    const recipe = buildProtectivePutRecipe({ underlyingSymbol: "NVDA", protectedShares: "100", initialCapitalUsd: "100000", name: "Pilot Agent" });
+    const [pilotAgent] = await conn.db.insert(agents).values({
+      ownerId: user!.id, name: recipe.name, templateId: "custom", status: "running",
+      recipe, recipeHash: canonicalRecipeHash(recipe), kind: "user", visibility: "private",
+    }).returning();
+
+    const econRepo = new DrizzleEconomicRepository(conn.db);
+    await econRepo.getOrCreateEconomicAccount(pilotAgent!.id, user!.id, {
+      isHouseAgent: false,
+      initialMandate: DEFAULT_HOUSE_ECONOMIC_MANDATE,
+      initialBalanceAtomic: parseUsdgToAtomic("1.00"),
+      now: NOW,
+    });
+    const provider = await econRepo.getServiceProvider(OPTRA_VOLATILITY_PROVIDER_ID);
+
+    const prevMode = process.env.X402_FACILITATOR_MODE;
+    const prevPilot = process.env.X402_PILOT_AGENT_ID;
+    const prevMax = process.env.X402_PILOT_MAX_PAYMENTS;
+    process.env.X402_FACILITATOR_MODE = "live";
+    process.env.X402_PILOT_AGENT_ID = pilotAgent!.id;
+    process.env.X402_PILOT_MAX_PAYMENTS = "1";
+
+    try {
+      const [r1, r2] = await Promise.all([
+        econRepo.authorizePaymentRequest({
+          agentId: pilotAgent!.id,
+          agentStatus: "running",
+          request: {
+            decisionId: `${pilotAgent!.id}:tick-c1`,
+            agentId: pilotAgent!.id,
+            category: "VOLATILITY_DATA",
+            providerId: OPTRA_VOLATILITY_PROVIDER_ID,
+            purpose: "Concurrent tick 1",
+            underlyingSymbol: "NVDA",
+            maxPriceAtomic: parseUsdgToAtomic("0.05"),
+            quotedPriceAtomic: parseUsdgToAtomic("0.02"),
+            asset: "USDG",
+            criticality: "OPTIONAL",
+            requestNonce: "nonce-c1",
+            idempotencyKey: "idemp-c1",
+            createdAt: NOW.toISOString(),
+          },
+          requestHash: "sha256:" + "a".repeat(64),
+          provider,
+          now: NOW,
+        }),
+        econRepo.authorizePaymentRequest({
+          agentId: pilotAgent!.id,
+          agentStatus: "running",
+          request: {
+            decisionId: `${pilotAgent!.id}:tick-c2`,
+            agentId: pilotAgent!.id,
+            category: "VOLATILITY_DATA",
+            providerId: OPTRA_VOLATILITY_PROVIDER_ID,
+            purpose: "Concurrent tick 2",
+            underlyingSymbol: "NVDA",
+            maxPriceAtomic: parseUsdgToAtomic("0.05"),
+            quotedPriceAtomic: parseUsdgToAtomic("0.02"),
+            asset: "USDG",
+            criticality: "OPTIONAL",
+            requestNonce: "nonce-c2",
+            idempotencyKey: "idemp-c2",
+            createdAt: NOW.toISOString(),
+          },
+          requestHash: "sha256:" + "b".repeat(64),
+          provider,
+          now: NOW,
+        }),
+      ]);
+
+      const allowedCount = [r1.decision.allowed, r2.decision.allowed].filter(Boolean).length;
+      expect(allowedCount).toBe(1);
+    } finally {
+      if (prevMode === undefined) delete process.env.X402_FACILITATOR_MODE;
+      else process.env.X402_FACILITATOR_MODE = prevMode;
+      if (prevPilot === undefined) delete process.env.X402_PILOT_AGENT_ID;
+      else process.env.X402_PILOT_AGENT_ID = prevPilot;
+      if (prevMax === undefined) delete process.env.X402_PILOT_MAX_PAYMENTS;
+      else process.env.X402_PILOT_MAX_PAYMENTS = prevMax;
+    }
+  });
 });
 

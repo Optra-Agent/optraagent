@@ -1,4 +1,4 @@
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, inArray } from "drizzle-orm";
 import type { AppDatabase } from "../db/client";
 import {
   agentEconomicAccounts,
@@ -527,7 +527,7 @@ export class DrizzleEconomicRepository {
           }
         : { ...DEFAULT_GLOBAL_CONTROLS };
 
-      const decision = evaluateEconomicPolicy({
+      let decision = evaluateEconomicPolicy({
         mandate,
         request: input.request,
         spendState,
@@ -536,6 +536,40 @@ export class DrizzleEconomicRepository {
         globalControls,
         now,
       });
+
+      const liveMode = process.env.X402_FACILITATOR_MODE === "live";
+      const effectiveSettlementMode: SettlementMode = input.settlementMode ?? (liveMode ? "ONCHAIN_SETTLED" : "PAPER_REHEARSAL");
+
+      if (decision.allowed && liveMode) {
+        const pilotAgentId = process.env.X402_PILOT_AGENT_ID?.trim();
+        if (!pilotAgentId || pilotAgentId !== input.agentId) {
+          decision = {
+            ...decision,
+            allowed: false,
+            reasonCode: "GLOBAL_KILL_SWITCH",
+            reason: "Live x402 spending is restricted to the authorized X402_PILOT_AGENT_ID.",
+          };
+        } else {
+          const maxPilotPayments = Math.max(1, Number(process.env.X402_PILOT_MAX_PAYMENTS ?? "1"));
+          const reservedOrSettled = await tx
+            .select({ id: x402PaymentRecords.id })
+            .from(x402PaymentRecords)
+            .where(
+              and(
+                eq(x402PaymentRecords.settlementMode, "ONCHAIN_SETTLED"),
+                inArray(x402PaymentRecords.status, ["REQUESTED", "AUTHORIZED", "SETTLED", "RECONCILED"]),
+              ),
+            );
+          if (reservedOrSettled.length >= maxPilotPayments) {
+            decision = {
+              ...decision,
+              allowed: false,
+              reasonCode: "DAILY_BUDGET_EXCEEDED",
+              reason: `Pilot maximum payment cap (${maxPilotPayments}) reached or already reserved by a concurrent tick.`,
+            };
+          }
+        }
+      }
 
       const amountAtomic = input.request.quotedPriceAtomic ?? input.request.maxPriceAtomic;
       const [inserted] = await tx
@@ -552,7 +586,7 @@ export class DrizzleEconomicRepository {
           asset: input.request.asset,
           network: input.provider?.network ?? "eip155:4663",
           paymentMode: input.paymentMode ?? "EXACT",
-          settlementMode: input.settlementMode ?? "PAPER_REHEARSAL",
+          settlementMode: effectiveSettlementMode,
           status: decision.allowed ? "AUTHORIZED" : "DENIED",
           reasonCode: decision.reasonCode,
           paymentChallenge: input.paymentChallenge ?? null,
