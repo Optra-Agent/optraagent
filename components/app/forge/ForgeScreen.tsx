@@ -346,7 +346,7 @@ export function ForgeScreen() {
                 {(["VOLATILITY_DATA", "MARKET_DATA", "VERIFICATION", "RESEARCH"] as const).map((cat) => {
                   const checked = approvedCategories.includes(cat);
                   return (
-                    <label className="forge-hook" key={cat}>
+                    <label className="forge-economic-category" key={cat}>
                       <input
                         type="checkbox"
                         checked={checked}
