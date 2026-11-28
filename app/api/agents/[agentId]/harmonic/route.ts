@@ -92,6 +92,36 @@ export async function POST(
       return NextResponse.json({ ok: true, proof });
     }
 
+    if (action === "file") {
+      const underlying = String(body.underlying ?? agent.recipe.underlyingSymbol ?? "NVDA").toUpperCase();
+      const direction = (body.direction === "down" ? "down" : "up") as "up" | "down";
+      const decisionId = `manual-${agent.id.slice(0, 8)}-${Date.now()}`;
+      const result = await service.filePreActionExpectation({
+        agentId: agent.id,
+        decisionId,
+        underlying,
+        strategy: agent.templateId,
+        action: "MANUAL_FILING",
+        direction,
+        horizon: "1d",
+        expectedCondition: `${agent.templateId} ${direction} expectation on ${underlying}`,
+        recipeHash: agent.recipeHash,
+        strategyMandateHash: hashCanonical(agent.recipe),
+        riskMandateHash: hashCanonical({ allowNakedShortOptions: false }),
+        economicMandateHash: hashCanonical({ allowTradingCapitalForServices: false }),
+        runtimeVersion: "optra.runtime.v3",
+      });
+      if (!result.unverified) {
+        await service.recordOutcomeAndGrade({
+          agentId: agent.id,
+          decisionId,
+          ruleCompliance: "PASS",
+          expectationOutcome: "PENDING",
+        });
+      }
+      return NextResponse.json({ ok: true, ...result });
+    }
+
     if (action === "reveal" && typeof body.decisionId === "string") {
       const expectation = await service.revealExpectation(agent.id, body.decisionId);
       return NextResponse.json({ ok: true, expectation });
