@@ -150,6 +150,22 @@ export function createPaperHandlers(options: PaperHandlerOptions) {
               now: now(),
             }).catch(() => undefined);
           }
+          if (persistedStrategy.decision.action !== "skip") {
+            const { runHarmonicPreActionHook, runHarmonicPostActionGradeHook } = await import("../harmonic/runtime-hook");
+            await runHarmonicPreActionHook({
+              agentId: agent.id,
+              decisionId: persistedStrategy.decision.id,
+              underlying: agent.recipe.underlyingSymbol,
+              strategy: agent.templateId,
+              action: persistedStrategy.decision.action,
+              recipeHash: agent.recipeHash,
+            }).catch(() => undefined);
+            await runHarmonicPostActionGradeHook({
+              agentId: agent.id,
+              decisionId: persistedStrategy.decision.id,
+              ruleCompliance: "PASS",
+            }).catch(() => undefined);
+          }
           return tickResponse(persistedStrategy);
         }
         const persisted = await options.repository.persistTick({

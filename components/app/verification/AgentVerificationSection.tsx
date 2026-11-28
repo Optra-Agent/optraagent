@@ -177,6 +177,14 @@ export function AgentVerificationSection({
           <button
             type="button"
             disabled={busy !== null}
+            onClick={() => void runAction("file")}
+            className="rounded-lg bg-violet-500/20 px-3 py-1.5 text-xs font-medium text-violet-300 ring-1 ring-violet-500/40 hover:bg-violet-500/30 disabled:opacity-50"
+          >
+            {busy === "file" ? "Filing..." : "File Expectation"}
+          </button>
+          <button
+            type="button"
+            disabled={busy !== null}
             onClick={() => void runAction("verify")}
             className="rounded-lg bg-sky-500/20 px-3 py-1.5 text-xs font-medium text-sky-300 ring-1 ring-sky-500/40 hover:bg-sky-500/30 disabled:opacity-50"
           >
@@ -231,7 +239,9 @@ export function AgentVerificationSection({
           </div>
           <div className="mt-0.5 text-xs text-zinc-400">
             {latestProof?.status === "PROVED"
-              ? "Property proved"
+              ? latestProof.externalReference
+                ? "External Aristotle verdict (ARISTOTLE)"
+                : "Local deterministic kernel check (LOCAL_KERNEL)"
               : latestProof?.status === "STALE"
                 ? "Proof stale after code/config change"
                 : latestProof?.status === "REFUTED"
@@ -288,6 +298,26 @@ export function AgentVerificationSection({
               Inspect on Harmonic Registry →
             </a>
           )}
+        </div>
+      )}
+      {data?.tapeEvents && data.tapeEvents.length > 0 && (
+        <div className="rounded-lg border border-zinc-800/80 bg-zinc-900/40 p-4 text-xs">
+          <div className="mb-2 font-medium text-zinc-200">
+            Harmonic Decision Tape ({data.tapeEvents.length})
+          </div>
+          <ul className="space-y-1.5">
+            {data.tapeEvents.slice(0, 8).map((ev) => (
+              <li key={ev.id} className="flex flex-wrap items-center justify-between gap-2 text-zinc-300">
+                <span>
+                  <code className="font-mono text-[11px] text-emerald-300">{ev.eventType}</code>{" "}
+                  — {ev.reason}
+                </span>
+                <span className="text-[11px] text-zinc-500">
+                  {new Date(ev.createdAt).toLocaleString()}
+                </span>
+              </li>
+            ))}
+          </ul>
         </div>
       )}
     </section>
