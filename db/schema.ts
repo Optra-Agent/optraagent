@@ -444,3 +444,134 @@ export const x402TapeEvents = pgTable("x402_tape_events", {
   index("x402_tape_events_agent_created_idx").on(table.agentId, table.createdAt),
   index("x402_tape_events_decision_idx").on(table.decisionId),
 ]);
+
+// ============================================================================
+// Wave B: Harmonic Agent Verification, Registry, Filing, Grading & Proofs
+// ============================================================================
+
+/** Wave B (T14): Persistent OPTRA-to-Harmonic Agent Registry identity binding. */
+export const harmonicAgentBindings = pgTable("harmonic_agent_bindings", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  optraAgentId: uuid("optra_agent_id").notNull().references(() => agents.id, { onDelete: "cascade" }),
+  harmonicRegistryId: varchar("harmonic_registry_id", { length: 128 }),
+  harmonicIdentity: varchar("harmonic_identity", { length: 128 }),
+  registrationStatus: varchar("registration_status", { length: 24 }).notNull().default("UNREGISTERED"),
+  encryptedSecret: text("encrypted_secret"),
+  secretFingerprint: varchar("secret_fingerprint", { length: 64 }),
+  registeredAt: timestamp("registered_at", { withTimezone: true }),
+  lastError: text("last_error"),
+  metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default({}),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  uniqueIndex("harmonic_agent_bindings_optra_agent_idx").on(table.optraAgentId),
+]);
+
+/** Wave B (T17): Per-agent Harmonic verification & filing policy. */
+export const verificationPolicies = pgTable("verification_policies", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  agentId: uuid("agent_id").notNull().references(() => agents.id, { onDelete: "cascade" }),
+  harmonicRequiredBeforeExecution: boolean("harmonic_required_before_execution").notNull().default(false),
+  filingMode: varchar("filing_mode", { length: 24 }).notNull().default("PUBLIC_OPEN"),
+  onHarmonicUnavailable: varchar("on_harmonic_unavailable", { length: 32 }).notNull().default("ALLOW_WITH_UNVERIFIED_LABEL"),
+  requireProofBeforeActivation: boolean("require_proof_before_activation").notNull().default(false),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  uniqueIndex("verification_policies_agent_idx").on(table.agentId),
+]);
+
+/** Wave B (T15–T16): Pre-action OPTRA expectations & Harmonic filings/seals. */
+export const harmonicExpectations = pgTable("harmonic_expectations", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  agentId: uuid("agent_id").notNull().references(() => agents.id, { onDelete: "cascade" }),
+  decisionId: varchar("decision_id", { length: 256 }).notNull(),
+  filingMode: varchar("filing_mode", { length: 24 }).notNull(),
+  status: varchar("status", { length: 24 }).notNull(),
+  underlying: varchar("underlying", { length: 16 }).notNull(),
+  strategy: varchar("strategy", { length: 64 }).notNull(),
+  action: varchar("action", { length: 32 }).notNull(),
+  direction: varchar("direction", { length: 16 }).notNull(),
+  horizon: varchar("horizon", { length: 16 }).notNull(),
+  expectedCondition: text("expected_condition").notNull(),
+  recipeHash: varchar("recipe_hash", { length: 71 }).notNull(),
+  strategyMandateHash: varchar("strategy_mandate_hash", { length: 71 }).notNull(),
+  riskMandateHash: varchar("risk_mandate_hash", { length: 71 }).notNull(),
+  economicMandateHash: varchar("economic_mandate_hash", { length: 71 }).notNull(),
+  runtimeVersion: varchar("runtime_version", { length: 64 }).notNull(),
+  harmonicReference: varchar("harmonic_reference", { length: 128 }),
+  commitmentHash: varchar("commitment_hash", { length: 64 }),
+  encryptedSalt: text("encrypted_salt"),
+  externalUrl: text("external_url"),
+  payload: jsonb("payload").$type<Record<string, unknown>>().notNull().default({}),
+  errorMessage: text("error_message"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  revealedAt: timestamp("revealed_at", { withTimezone: true }),
+}, (table) => [
+  index("harmonic_expectations_agent_created_idx").on(table.agentId, table.createdAt),
+  uniqueIndex("harmonic_expectations_agent_decision_idx").on(table.agentId, table.decisionId),
+]);
+
+/** Wave B (T19): Outcome & deterministic grading correlated to decisionId. */
+export const optraGrades = pgTable("optra_grades", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  agentId: uuid("agent_id").notNull().references(() => agents.id, { onDelete: "cascade" }),
+  decisionId: varchar("decision_id", { length: 256 }).notNull(),
+  expectationId: uuid("expectation_id").references(() => harmonicExpectations.id, { onDelete: "set null" }),
+  harmonicReference: varchar("harmonic_reference", { length: 128 }),
+  ruleCompliance: varchar("rule_compliance", { length: 24 }).notNull().default("UNKNOWN"),
+  expectationOutcome: varchar("expectation_outcome", { length: 24 }).notNull().default("PENDING"),
+  executionQuality: integer("execution_quality"),
+  pnl: varchar("pnl", { length: 64 }),
+  evidenceRefs: jsonb("evidence_refs").$type<string[]>().notNull().default([]),
+  metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default({}),
+  gradedAt: timestamp("graded_at", { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  index("optra_grades_agent_graded_idx").on(table.agentId, table.gradedAt),
+  uniqueIndex("optra_grades_agent_decision_idx").on(table.agentId, table.decisionId),
+]);
+
+/** Wave B (T21–T24): Formal verification proof artifacts bound to exact code/mandate hashes. */
+export const optraProofs = pgTable("optra_proofs", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  agentId: uuid("agent_id").notNull().references(() => agents.id, { onDelete: "cascade" }),
+  proofProvider: varchar("proof_provider", { length: 32 }).notNull().default("HARMONIC_AGENT"),
+  verifier: varchar("verifier", { length: 32 }).notNull().default("ARISTOTLE"),
+  status: varchar("status", { length: 24 }).notNull().default("PENDING"),
+  kernelName: varchar("kernel_name", { length: 64 }).notNull(),
+  kernelHash: varchar("kernel_hash", { length: 71 }).notNull(),
+  recipeHash: varchar("recipe_hash", { length: 71 }).notNull(),
+  strategyMandateHash: varchar("strategy_mandate_hash", { length: 71 }).notNull(),
+  riskMandateHash: varchar("risk_mandate_hash", { length: 71 }).notNull(),
+  economicMandateHash: varchar("economic_mandate_hash", { length: 71 }).notNull(),
+  codeVersion: varchar("code_version", { length: 64 }).notNull(),
+  properties: jsonb("properties").$type<Array<{ id: string; description: string; status: string }>>().notNull().default([]),
+  assumptions: jsonb("assumptions").$type<string[]>().notNull().default([]),
+  externalReference: varchar("external_reference", { length: 128 }),
+  requestedAt: timestamp("requested_at", { withTimezone: true }).notNull().defaultNow(),
+  resolvedAt: timestamp("resolved_at", { withTimezone: true }),
+}, (table) => [
+  index("optra_proofs_agent_requested_idx").on(table.agentId, table.requestedAt),
+]);
+
+/** Wave B (T18): Harmonic verification & registry events for OPTRA Decision Tape. */
+export const harmonicTapeEvents = pgTable("harmonic_tape_events", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  decisionId: varchar("decision_id", { length: 256 }).notNull(),
+  agentId: uuid("agent_id").notNull().references(() => agents.id, { onDelete: "cascade" }),
+  eventType: varchar("event_type", { length: 48 }).notNull(),
+  recipeHash: varchar("recipe_hash", { length: 71 }),
+  strategyMandateHash: varchar("strategy_mandate_hash", { length: 71 }),
+  riskMandateHash: varchar("risk_mandate_hash", { length: 71 }),
+  economicMandateHash: varchar("economic_mandate_hash", { length: 71 }),
+  kernelHash: varchar("kernel_hash", { length: 71 }),
+  harmonicReference: varchar("harmonic_reference", { length: 128 }),
+  status: varchar("status", { length: 32 }).notNull(),
+  externalUrl: text("external_url"),
+  reason: text("reason").notNull(),
+  metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default({}),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  index("harmonic_tape_events_agent_created_idx").on(table.agentId, table.createdAt),
+  index("harmonic_tape_events_decision_idx").on(table.decisionId),
+]);

@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { AgentEconomicsSection } from "../economics/AgentEconomicsSection";
+import { AgentVerificationSection } from "../verification/AgentVerificationSection";
 import {
   AgentDetailSchema,
   ApiErrorSchema,
@@ -318,6 +319,7 @@ export function AgentDetailScreen({ agentId }: { agentId: string }) {
             </TabsContent>
             <TabsContent value="economics">
           <AgentEconomicsSection agentId={agent.id} mode="owner" />
+          <AgentVerificationSection agentId={agent.id} agentName={agent.name} mode="user" />
             </TabsContent>
           </Tabs>
         </>
