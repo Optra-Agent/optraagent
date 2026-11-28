@@ -9,6 +9,8 @@ import type { EarningsSnapshot } from "../market/earnings";
 import { isRegularEquitySession } from "../engine/us-market-session";
 import { canonicalRecipeHash, validateRecipe } from "../hooks/recipe-validator";
 import type { MarketHistoryResult } from "../market/crius-history";
+import type { AppDatabase } from "../db/client";
+import { acquireVolatilityResourceForTick, recordStrategyEvaluatedEvent } from "../economics/acquire-volatility-resource";
 import { PaperTickStateError } from "./drizzle-repository";
 import { CANDLE_FINALIZATION_GRACE_MS } from "./schedule-constants";
 import { StrategyTickStateError } from "./strategy-persistence";
@@ -24,6 +26,7 @@ type SchedulerLog = (entry: Record<string, unknown>) => void;
 
 export type PaperSchedulerOptions = {
   repository: SchedulerRepository;
+  db?: AppDatabase;
   secret?: string;
   getHistory: (symbol: string) => Promise<MarketHistoryResult>;
   /** Earnings calendar for the strategy templates that read it. A rejection or null is recorded as missing data, never guessed. */
@@ -329,6 +332,20 @@ export function createPaperScheduler(options: PaperSchedulerOptions) {
             const tickId = tickIdFor(candle);
             try {
               const priorCandles = candles.slice(0, index);
+              const economicResource = options.db
+                ? await acquireVolatilityResourceForTick({
+                    db: options.db,
+                    agentId: agent.id,
+                    ownerId: agent.ownerId,
+                    agentStatus: agent.status,
+                    isHouseAgent: true,
+                    underlyingSymbol: symbol,
+                    tickId,
+                    occurredAt: candle.endAt,
+                    now: now(),
+                  }).catch(() => null)
+                : null;
+              const paidVolatilityResource = economicResource?.status === "acquired" ? economicResource.volatilityData : null;
               const result = strategyAgent
                 ? await options.repository.persistStrategyTick({
                   ownerId: agent.ownerId,
@@ -349,6 +366,7 @@ export function createPaperScheduler(options: PaperSchedulerOptions) {
                     earnings,
                     account: context.account,
                     positions: context.positions,
+                    paidVolatilityResource,
                     state: { status: context.agent.status as "running" },
                   }),
                 })
@@ -370,9 +388,20 @@ export function createPaperScheduler(options: PaperSchedulerOptions) {
                   corporateActionDates: history.corporateActionDates,
                   account: context.account,
                   position: context.position,
+                  paidVolatilityResource,
                   state: { status: context.agent.status },
                 }),
               });
+              if (options.db && economicResource && economicResource.status !== "disabled") {
+                await recordStrategyEvaluatedEvent({
+                  db: options.db,
+                  agentId: agent.id,
+                  decisionId: result.decision.id,
+                  action: result.decision.action,
+                  reason: result.decision.reason,
+                  now: now(),
+                }).catch(() => undefined);
+              }
 
               if (result.duplicate) {
                 summary.duplicates += 1;

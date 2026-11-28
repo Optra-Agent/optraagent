@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { AgentEconomicsSection } from "../economics/AgentEconomicsSection";
 import { useEffect, useState } from "react";
 import { ApiErrorSchema, PublicHouseAgentDetailSchema } from "../../../lib/domain/contracts";
 import type { PublicHouseAgentDetail } from "../../../lib/domain/contracts";
@@ -165,6 +166,7 @@ export function HouseAgentDetail({ agentId }: { agentId: string }) {
 
       <Panel aria-label="Positions"><div className="panel-head"><h2>Positions</h2></div><PositionGrid positions={detail.positions} /></Panel>
       <Panel aria-label="Paper orders"><div className="panel-head"><h2>Modeled paper orders</h2></div><OrdersTable orders={detail.orders} /></Panel>
+      <AgentEconomicsSection agentId={detail.id} mode="public" />
       <Panel aria-label="Decision Tape">
         <div className="panel-head"><div><p className="eyebrow">APPEND-ONLY · PAPER</p><h2>Decision Tape</h2></div></div>
         <TapeList decisions={detail.decisions} />

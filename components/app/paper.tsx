@@ -79,16 +79,19 @@ function record(value: unknown): Record<string, unknown> | null {
 }
 
 /** What data the evaluation read, taken from the persisted decision itself: the candle, the history hash and window. */
-export function decisionProvenance(decision: AgentDecision): { candleEndAt: string | null; historyHash: string | null; historyCandles: number | null } {
+export function decisionProvenance(decision: AgentDecision): { candleEndAt: string | null; historyHash: string | null; historyCandles: number | null; x402Provider: string | null; x402Regime: string | null } {
   const context = record(decision.marketContext);
   const observation = record(context?.observation);
   const window = record(context?.historyWindow);
+  const x402Resource = record(context?.x402Resource);
   const history = Array.isArray(context?.history) ? context.history.length : null;
   const candles = typeof window?.candles === "number" ? window.candles : history;
   return {
     candleEndAt: typeof observation?.endAt === "string" ? observation.endAt : null,
     historyHash: typeof context?.historyDataHash === "string" ? context.historyDataHash : null,
     historyCandles: candles,
+    x402Provider: typeof x402Resource?.providerId === "string" ? x402Resource.providerId : null,
+    x402Regime: typeof x402Resource?.regime === "string" ? x402Resource.regime : null,
   };
 }
 
@@ -121,6 +124,7 @@ export function TapeList({ decisions, emptyText = "No persisted decisions." }: {
               <p className="tape-source mono">
                 <Database aria-hidden />Source {decision.snapshotSource}
                 {provenance.historyHash ? <><span aria-hidden="true"> · </span><span title={provenance.historyHash}>History {shortHash(provenance.historyHash, 14, 6)}{provenance.historyCandles ? ` (${provenance.historyCandles} candles)` : ""}</span></> : null}
+                {provenance.x402Provider ? <><span aria-hidden="true"> · </span><span>x402 {provenance.x402Provider}{provenance.x402Regime ? ` (${provenance.x402Regime})` : ""}</span></> : null}
                 <span aria-hidden="true"> · </span>Recipe {shortHash(decision.recipeHash, 14, 6)}
               </p>
               <DecisionTrace decision={decision} />

@@ -1,4 +1,5 @@
 import type { AgentDecision, HookResult, MarketCandle, MarketSnapshot, RecipeV1 } from "../../domain/contracts";
+import type { VolatilityOraclePayload } from "../../economics/resource-validator";
 import type { EarningsEvent, EarningsSnapshot } from "../../market/earnings";
 
 export type StrategyTemplateId = "covered_call" | "cash_secured_put" | "earnings_straddle";
@@ -101,6 +102,7 @@ export type StrategyTickInput = {
   earnings?: EarningsSnapshot | null;
   account?: StrategyAccount | null;
   positions?: StrategyPosition[];
+  paidVolatilityResource?: VolatilityOraclePayload | null;
   includeMarketContext?: boolean;
   state: { status: "draft" | "running" | "paused" | "stopped" };
 };

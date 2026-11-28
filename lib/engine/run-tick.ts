@@ -6,6 +6,7 @@ import {
 } from "../domain/contracts";
 import type { AgentDecision, HookResult, MarketCandle, MarketSnapshot, RecipeV1 } from "../domain/contracts";
 import { annualizedRealizedVolatility, blackScholesEuropeanPut, rv30ImpliedVolatility } from "../options/black-scholes";
+import type { VolatilityOraclePayload } from "../economics/resource-validator";
 import { canonicalRecipeHash, validateRecipe } from "../hooks/recipe-validator";
 import { isRegularEquitySession } from "./us-market-session";
 import {
@@ -79,6 +80,7 @@ export type RunTickInput = {
   corporateActionDates?: string[];
   account?: PaperAccountState | null;
   position?: PaperOptionPositionState | null;
+  paidVolatilityResource?: VolatilityOraclePayload | null;
   includeMarketContext?: boolean;
   state: TickState;
 };
@@ -165,6 +167,7 @@ function finalize(input: RunTickInput, action: AgentDecision["action"], reason: 
     history,
     corporateActionDates: input.corporateActionDates ?? [],
     model: input.recipe.parameters.paperModel ?? null,
+    ...(input.paidVolatilityResource ? { x402Resource: input.paidVolatilityResource } : {}),
   };
   return {
     decision: AgentDecisionSchema.parse({
@@ -259,7 +262,28 @@ export function runTick(input: RunTickInput): RunTickResult {
   const rvFast = annualizedRealizedVolatility(history, Number(calmo.rvFastHours));
   const rvSlow = annualizedRealizedVolatility(history, Number(calmo.rvSlowHours));
   const rvRatio = rvFast !== null && rvSlow !== null && rvSlow > 0 ? rvFast / rvSlow : null;
-  const rv30 = rv30ImpliedVolatility(history, Number(model.ivMultiplier));
+  const computedRv30 = rv30ImpliedVolatility(history, Number(model.ivMultiplier));
+  const rv30 = input.paidVolatilityResource
+    ? {
+        rv30: input.paidVolatilityResource.realizedVolatility30d,
+        iv: input.paidVolatilityResource.impliedVolatility,
+      }
+    : computedRv30;
+  if (input.paidVolatilityResource) {
+    hookResults.push(
+      recordHook(
+        "system.x402_resource",
+        undefined,
+        "pass",
+        `Consumed x402 paid volatility resource (${input.paidVolatilityResource.regime}, IV ${(input.paidVolatilityResource.impliedVolatility * 100).toFixed(1)}%) from ${input.paidVolatilityResource.providerId}.`,
+        {
+          value: Number((input.paidVolatilityResource.impliedVolatility * 100).toFixed(2)),
+          unit: "% IV",
+          dataRefs: [`x402:${input.paidVolatilityResource.providerId}:${input.paidVolatilityResource.symbol}`],
+        },
+      ),
+    );
+  }
   const actionNow = new Date(current.observedAt).getTime();
   const actionWindowBefore = Number(corpax.pauseHoursBefore) * HOUR_MS;
   const actionWindowAfter = Number(corpax.pauseHoursAfter) * HOUR_MS;

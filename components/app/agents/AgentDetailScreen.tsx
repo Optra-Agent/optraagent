@@ -4,6 +4,7 @@ import { AgentCharacter, CHARACTERS, type CharacterId } from "../../marketing/ch
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+import { AgentEconomicsSection } from "../economics/AgentEconomicsSection";
 import {
   AgentDetailSchema,
   ApiErrorSchema,
@@ -275,6 +276,7 @@ export function AgentDetailScreen({ agentId }: { agentId: string }) {
               <TabsTrigger value="positions" className="agent-tab-trigger">Positions ({data.positions.length})</TabsTrigger>
               <TabsTrigger value="orders" className="agent-tab-trigger">Orders ({data.orders.length})</TabsTrigger>
               <TabsTrigger value="tape" className="agent-tab-trigger">Tape ({data.decisions.length})</TabsTrigger>
+              <TabsTrigger value="economics" className="agent-tab-trigger">Economics</TabsTrigger>
             </TabsList>
             <TabsContent value="overview">
           <Panel className="agent-overview">
@@ -313,6 +315,9 @@ export function AgentDetailScreen({ agentId }: { agentId: string }) {
             <div className="panel-head"><h2>Decision Tape</h2><Link className={buttonVariants({ variant: "link" })} href={`/tape?agentId=${encodeURIComponent(agent.id)}`}>Open full Tape</Link></div>
             <TapeList decisions={data.decisions} />
           </Panel>
+            </TabsContent>
+            <TabsContent value="economics">
+          <AgentEconomicsSection agentId={agent.id} mode="owner" />
             </TabsContent>
           </Tabs>
         </>
