@@ -41,10 +41,43 @@ const builtUnderAcceptance: readonly Capability[] = [
   { title: "OptraGuardHook (Uniswap v4-inspired spot-swap guard)", label: "Deployed, unaudited", tone: "neutral", text: "One experimental guard is deployed to Robinhood Chain Mainnet (see Mainnet contracts below). It is unaudited, uninitialized with no pool, holds no funds and is not part of options execution. The Uniswap v4 claim level is L0." },
 ];
 
-const roadmap: readonly Capability[] = [
-  { title: "AI strategy composition", label: "Planned", tone: "neutral", text: "No AI provider is configured. Rules decide; recipes are built by clicking." },
-  { title: "Community public agents", label: "Planned", tone: "neutral", text: "Only OPTRA's own House Agents are public. A user's agent and its Tape stay private to the wallet that owns them." },
-  { title: "Listing, Floor, MCP, x402", label: "Planned", tone: "neutral", text: "Roadmap items with no route or service yet." },
+const x402Capabilities: readonly Capability[] = [
+  {
+    title: "x402 Economic Autonomy (Robinhood Chain Mainnet)",
+    label: "Pilot Verified",
+    tone: "azure",
+    text: "Agents hold an isolated USDG Service Budget separate from Trading Capital, governed by an Economic Mandate (daily budget, per-request cap, provider allowlist, replay protection). Production currently keeps liveSettlementEnabled=false.",
+  },
+  {
+    title: "Verified Mainnet Pilot Settlement (0.02 USDG)",
+    label: "Reconciled",
+    tone: "azure",
+    text: "Autonomous Protective Put pilot settled 0.02 USDG via Aeron facilitator on Robinhood Chain Mainnet (eip155:4663) for OPTRA Volatility Oracle data (tx 0x785be081...2325f). Separate Covered Call historical paper replay verified full OPEN order + Decision Tape correlation.",
+  },
+];
+
+const harmonicCapabilities: readonly Capability[] = [
+  {
+    title: "Harmonic Agent Registry & Pre-Action Expectations",
+    label: "Connected",
+    tone: "azure",
+    text: "Integrated with https://harmonicagent.solutions/mcp/registry (registered identity: OPTRA Pilot V3). Supports PUBLIC_OPEN filings, SEALED sha256('registry:v1|...') commitments, Decision Tape HARMONIC_* events, and deterministic OptraGrade recording.",
+  },
+  {
+    title: "Critical Boundary Verification (LOCAL_KERNEL vs ARISTOTLE)",
+    label: "Local Kernel",
+    tone: "neutral",
+    text: "Deterministic local invariant checks (P1 Covered Call exposure, P5 Daily Budget cap, P6 Per-Request cap, P7 Capital isolation) are labeled verifier=LOCAL_KERNEL. External ARISTOTLE verdicts are only claimed when returned by Harmonic verify_request.",
+  },
+];
+
+const marketIntelligenceCapabilities: readonly Capability[] = [
+  {
+    title: "Market Coverage & Strategy Evaluations",
+    label: "205 Markets",
+    tone: "azure",
+    text: "820 total strategy evaluations across 205 markets: 28 verified historical markets (112 evaluations) and 177 deterministic simulated markets (708 evaluations). Historical evidence and simulated scenarios are tracked separately.",
+  },
 ];
 
 function CapabilityPanel({ name, heading, items }: { name: string; heading: string; items: readonly Capability[] }) {
@@ -96,15 +129,38 @@ export function VerifyScreen() {
     <main className="page-container">
       <PageHeader
         eyebrow="BUILT, NOT PROMISED"
-        title="Verify"
-        description="The capability summary is written by OPTRA. Every claim under Technical verification comes from the server's public verification payload, with a link to the evidence behind it."
+        title="OPTRA — Protocol Transparency & Verification"
+        description="Live protocol status, market intelligence, x402 economic autonomy, Harmonic Agent verification, and security controls backed by public API claims and on-chain evidence."
       />
 
       {status === "loading" ? <StateBlock kind="loading" title="Loading verification claims…" /> : null}
       {status === "error" ? <StateBlock kind="error" title="Claims unavailable"><p>{error}</p></StateBlock> : null}
       <CapabilityPanel name="Available now" heading="Available now" items={availableNow} />
+      <CapabilityPanel name="Market Intelligence" heading="Market Intelligence" items={marketIntelligenceCapabilities} />
+      <CapabilityPanel name="x402 Economic Autonomy" heading="x402 Economic Autonomy" items={x402Capabilities} />
+      <CapabilityPanel name="Harmonic Agent Verification" heading="Harmonic Agent Verification" items={harmonicCapabilities} />
       <CapabilityPanel name="Built and under acceptance" heading="Built and under acceptance" items={builtUnderAcceptance} />
-      <CapabilityPanel name="Roadmap" heading="Roadmap" items={roadmap} />
+      <Panel aria-label="Evidence and Transparency">
+        <div className="panel-head"><h2>Evidence &amp; Transparency</h2></div>
+        <ul className="claim-list">
+          <li className="claim">
+            <div className="claim-head"><h3>Mainnet x402 Pilot Settlement</h3><Chip tone="azure">0.02 USDG</Chip></div>
+            <p>
+              <a href={explorerTxUrl("0x785be0819076ce0f238157be3c273ee114c61187230207f297ffca958b32325f")} target="_blank" rel="noreferrer">
+                Blockscout Tx 0x785be081...2325f →
+              </a>
+            </p>
+          </li>
+          <li className="claim">
+            <div className="claim-head"><h3>Harmonic Agent Registry</h3><Chip tone="azure">MCP</Chip></div>
+            <p>
+              <a href="https://harmonicagent.solutions/#/registry" target="_blank" rel="noreferrer">
+                harmonicagent.solutions/#/registry →
+              </a>
+            </p>
+          </li>
+        </ul>
+      </Panel>
       <div className="panel-head"><h2>Technical verification</h2></div>
 
       {verification ? (
