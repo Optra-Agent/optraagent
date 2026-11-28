@@ -60,6 +60,30 @@ export async function acquireVolatilityResourceForTick(input: {
     };
   }
 
+  // Pilot isolation guard: when live settlement is enabled, only the explicitly authorized pilot agent
+  // may spend, and pilot spending stops automatically once X402_PILOT_MAX_PAYMENTS (default 1) is reached.
+  if (process.env.X402_FACILITATOR_MODE === "live") {
+    const pilotAgentId = process.env.X402_PILOT_AGENT_ID?.trim();
+    if (!pilotAgentId || pilotAgentId !== input.agentId) {
+      return {
+        status: "disabled",
+        decisionId,
+        volatilityData: null,
+        reason: "Live x402 spending is restricted to the authorized X402_PILOT_AGENT_ID.",
+      };
+    }
+    const maxPilotPayments = Number(process.env.X402_PILOT_MAX_PAYMENTS ?? "1");
+    const settledCount = await economicRepo.countOnchainSettledPayments(pilotAgentId);
+    if (settledCount >= maxPilotPayments) {
+      return {
+        status: "denied",
+        decisionId,
+        volatilityData: null,
+        reason: `Pilot maximum successful payments (${maxPilotPayments}) already reached; pilot spending stopped.`,
+      };
+    }
+  }
+
   const providerId = account.mandate.approvedProviders[0] ?? OPTRA_VOLATILITY_PROVIDER_ID;
   const provider = await economicRepo.getServiceProvider(providerId);
   const requestNonce = createHash("sha256")

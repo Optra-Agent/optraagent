@@ -176,4 +176,50 @@ describe("Wave A House & Custom Agent Runtime Integration", () => {
       expect(tape.some((e) => e.eventType === "X402_PAYMENT_SETTLED" && e.decisionId === decision.decision.id)).toBe(true);
     }
   });
+
+  it("blocks non-pilot agents when X402_FACILITATOR_MODE=live and X402_PILOT_AGENT_ID is set", async () => {
+    rootDir = mkdtempSync(join(tmpdir(), "optra-pilot-guard-"));
+    const conn = await createDatabase({ dataDir: join(rootDir, "db"), nodeEnv: "test" });
+    open.push(conn);
+
+    const [user] = await conn.db.insert(users).values({ address: "0x3333333333333333333333333333333333333333" }).returning();
+    const recipe = buildProtectivePutRecipe({ underlyingSymbol: "NVDA", protectedShares: "100", initialCapitalUsd: "100000", name: "Non-Pilot Agent" });
+    const [otherAgent] = await conn.db.insert(agents).values({
+      ownerId: user!.id, name: recipe.name, templateId: "custom", status: "running",
+      recipe, recipeHash: canonicalRecipeHash(recipe), kind: "user", visibility: "private",
+    }).returning();
+    const econRepo = new DrizzleEconomicRepository(conn.db);
+    await econRepo.getOrCreateEconomicAccount(otherAgent!.id, user!.id, {
+      isHouseAgent: false,
+      initialMandate: DEFAULT_HOUSE_ECONOMIC_MANDATE,
+      initialBalanceAtomic: parseUsdgToAtomic("1.00"),
+      now: NOW,
+    });
+
+    const prevMode = process.env.X402_FACILITATOR_MODE;
+    const prevPilot = process.env.X402_PILOT_AGENT_ID;
+    process.env.X402_FACILITATOR_MODE = "live";
+    process.env.X402_PILOT_AGENT_ID = "00000000-0000-0000-0000-000000000001";
+    try {
+      const res = await acquireVolatilityResourceForTick({
+        db: conn.db,
+        agentId: otherAgent!.id,
+        ownerId: user!.id,
+        agentStatus: "running",
+        isHouseAgent: false,
+        underlyingSymbol: "NVDA",
+        tickId: "tick-non-pilot",
+        occurredAt: NOW.toISOString(),
+        now: NOW,
+      });
+      expect(res.status).toBe("disabled");
+      expect(res.reason).toContain("X402_PILOT_AGENT_ID");
+    } finally {
+      if (prevMode === undefined) delete process.env.X402_FACILITATOR_MODE;
+      else process.env.X402_FACILITATOR_MODE = prevMode;
+      if (prevPilot === undefined) delete process.env.X402_PILOT_AGENT_ID;
+      else process.env.X402_PILOT_AGENT_ID = prevPilot;
+    }
+  });
 });
+

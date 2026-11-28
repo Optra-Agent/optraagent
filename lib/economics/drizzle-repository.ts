@@ -683,6 +683,19 @@ export class DrizzleEconomicRepository {
     return rows.map(toPaymentView);
   }
 
+  async countOnchainSettledPayments(agentId?: string): Promise<number> {
+    const rows = agentId
+      ? await this.db
+          .select({ id: x402PaymentRecords.id })
+          .from(x402PaymentRecords)
+          .where(and(eq(x402PaymentRecords.agentId, agentId), eq(x402PaymentRecords.settlementMode, "ONCHAIN_SETTLED")))
+      : await this.db
+          .select({ id: x402PaymentRecords.id })
+          .from(x402PaymentRecords)
+          .where(eq(x402PaymentRecords.settlementMode, "ONCHAIN_SETTLED"));
+    return rows.length;
+  }
+
   async listEconomicTapeEvents(agentId: string, limit = 100): Promise<X402TapeEventRecord[]> {
     const rows = await this.db
       .select()
